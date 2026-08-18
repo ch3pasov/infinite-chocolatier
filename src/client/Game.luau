@@ -74,39 +74,30 @@ function Game.new(gui: ScreenGui, remotes)
 	self.root.BorderSizePixel = 0
 	self.root.Parent = gui
 
-	local title = Instance.new("TextLabel")
-	title.Name = "Title"
-	title.AnchorPoint = Vector2.new(0.5, 0)
-	title.Position = UDim2.fromScale(0.5, 0.035)
-	title.Size = UDim2.fromOffset(600, 42)
-	title.BackgroundTransparency = 1
-	title.Font = Enum.Font.GothamBold
-	title.Text = "INFINITE CHOCOLATE"
-	title.TextColor3 = Theme.text
-	title.TextSize = 26
-	title.Parent = self.root
-
 	self.counter = Instance.new("TextLabel")
 	self.counter.Name = "Counter"
-	self.counter.Position = UDim2.fromOffset(28, 24)
-	self.counter.Size = UDim2.fromOffset(220, 64)
+	self.counter.Position = UDim2.fromOffset(24, 20)
+	self.counter.Size = UDim2.fromOffset(240, 48)
 	self.counter.BackgroundTransparency = 1
 	self.counter.Font = Enum.Font.GothamBold
 	self.counter.TextXAlignment = Enum.TextXAlignment.Left
 	self.counter.TextColor3 = Theme.accent
-	self.counter.TextSize = 34
+	self.counter.TextSize = 28
 	self.counter.Text = "ДОЛЬКИ  0"
+	-- Счётчик остаётся подключённым к серверу, но первый экран не перегружаем
+	-- экономическим HUD: здесь игрок должен видеть только жест и плитку.
+	self.counter.Visible = false
 	self.counter.Parent = self.root
 
 	self.status = Instance.new("TextLabel")
 	self.status.Name = "Status"
 	self.status.AnchorPoint = Vector2.new(0.5, 1)
-	self.status.Position = UDim2.fromScale(0.5, 0.965)
-	self.status.Size = UDim2.fromOffset(760, 44)
+	self.status.Position = UDim2.fromScale(0.5, Config.Board.statusPositionY)
+	self.status.Size = UDim2.fromOffset(900, 58)
 	self.status.BackgroundTransparency = 1
 	self.status.Font = Enum.Font.GothamMedium
 	self.status.TextColor3 = Theme.accentSoft
-	self.status.TextSize = 20
+	self.status.TextSize = 32
 	self.status.Text = "Обведи пунктир — рез 1 из 3"
 	self.status.Parent = self.root
 
@@ -114,10 +105,10 @@ function Game.new(gui: ScreenGui, remotes)
 	self.board.Name = "ChocolateBoard"
 	self.board.AnchorPoint = Vector2.new(0.5, 0.5)
 	self.board.BackgroundColor3 = Theme.chocolateDark
+	self.board.BackgroundTransparency = 1
 	self.board.BorderSizePixel = 0
 	self.board.ClipsDescendants = false
 	self.board.Parent = self.root
-	rounded(self.board, 14)
 
 	self.pieceLayer = Instance.new("Frame")
 	self.pieceLayer.Name = "Pieces"
@@ -152,7 +143,7 @@ function Game:layout()
 	local cell = round(size / self.recipe.cols)
 	self.cell = cell
 	self.board.Size = UDim2.fromOffset(cell * self.recipe.cols, cell * self.recipe.rows)
-	self.board.Position = UDim2.fromScale(0.5, 0.53)
+	self.board.Position = UDim2.fromScale(0.5, Config.Board.positionY)
 
 	clear(self.pieceLayer)
 	self.pieces = {}
@@ -179,13 +170,14 @@ function Game:layout()
 
 		for _, cellInfo in piece.cells do
 			local tile = Instance.new("Frame")
-			tile.Position = UDim2.fromOffset((cellInfo.c - piece.minC) * cell + 3, (cellInfo.r - piece.minR) * cell + 3)
-			tile.Size = UDim2.fromOffset(cell - 6, cell - 6)
+			local inset = Config.Board.cellInset
+			tile.Position = UDim2.fromOffset((cellInfo.c - piece.minC) * cell + inset, (cellInfo.r - piece.minR) * cell + inset)
+			tile.Size = UDim2.fromOffset(cell - inset * 2, cell - inset * 2)
 			tile.BackgroundColor3 = Theme.chocolate
 			tile.BorderSizePixel = 0
 			tile.ZIndex = 2
 			tile.Parent = frame
-			rounded(tile, 9)
+			rounded(tile, Config.Board.cornerRadius)
 			local stroke = Instance.new("UIStroke")
 			stroke.Color = Theme.chocolateEdge
 			stroke.Transparency = 0.38
@@ -220,15 +212,16 @@ function Game:buildPaths()
 end
 
 function Game:drawDashed(path, parent: Instance, color: Color3)
-	local dashLength = 12
-	local gap = 9
 	for _, segment in path.geom.segments do
 		local direction = (segment.b - segment.a).Unit
 		local distance = 0
+		local dashLength = math.max(12, self.cell * 0.24)
+		local gap = math.max(9, self.cell * 0.16)
+		local thickness = math.max(5, self.cell * 0.06)
 		while distance < segment.len do
 			local startPoint = segment.a + direction * distance
 			local endPoint = segment.a + direction * math.min(distance + dashLength, segment.len)
-			makeSegment(parent, startPoint, endPoint, 4, color, 0.05, 7)
+			makeSegment(parent, startPoint, endPoint, thickness, color, 0.05, 7)
 			distance += dashLength + gap
 		end
 	end
@@ -258,7 +251,8 @@ function Game:showCutHint()
 	pip.AnchorPoint = Vector2.new(0.5, 0.5)
 	local anchor = Geom.pointAt(path.geom, self.cutProgress)
 	pip.Position = UDim2.fromOffset(anchor.X, anchor.Y)
-	pip.Size = UDim2.fromOffset(18, 18)
+	local pipSize = math.max(18, self.cell * 0.38)
+	pip.Size = UDim2.fromOffset(pipSize, pipSize)
 	pip.BackgroundColor3 = Theme.accent
 	pip.BorderSizePixel = 0
 	pip.ZIndex = 9
