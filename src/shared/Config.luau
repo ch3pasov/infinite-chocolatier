@@ -6,8 +6,14 @@ local Config = {}
 Config.Board = {
 	columns = 6,
 	rows = 4,
-	maxSize = 510,
-	minSize = 300,
+	-- Плитка должна быть главным объектом кадра, поэтому минимальный размер
+	-- рассчитан и на окно Studio, а не только на маленький viewport.
+	maxSize = 640,
+	minSize = 420,
+	cellInset = 5,
+	cornerRadius = 17,
+	positionY = 0.42,
+	statusPositionY = 0.91,
 }
 
 Config.Recipe = {
