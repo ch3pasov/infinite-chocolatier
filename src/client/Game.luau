@@ -190,7 +190,9 @@ function Game:layout()
 end
 
 function Game:screenToBoard(position: Vector3 | Vector2): Vector2
-	local inset = GuiService:GetGuiInset()
+	-- ScreenGui игнорирует системный inset после скрытия стандартного HUD Roblox.
+	-- Иначе координата мыши смещалась бы вниз на высоту бывшего topbar.
+	local inset = self.gui.IgnoreGuiInset and Vector2.zero or GuiService:GetGuiInset()
 	local screen = Vector2.new(position.X, position.Y) - inset
 	return screen - self.board.AbsolutePosition
 end
