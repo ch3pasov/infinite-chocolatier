@@ -62,6 +62,7 @@ function Game.new(gui: ScreenGui, remotes)
 	self.recipe = Recipe.build(Config.Recipe)
 	self.active = "cut"
 	self.cutIndex = 1
+	self.cutProgress = 0
 	self.drag = nil
 	self.pieces = {}
 	self.pendingSlides = {}
@@ -255,7 +256,8 @@ function Game:showCutHint()
 	local pip = Instance.new("Frame")
 	pip.Name = "Start"
 	pip.AnchorPoint = Vector2.new(0.5, 0.5)
-	pip.Position = UDim2.fromOffset(path.points[1].X, path.points[1].Y)
+	local anchor = Geom.pointAt(path.geom, self.cutProgress)
+	pip.Position = UDim2.fromOffset(anchor.X, anchor.Y)
 	pip.Size = UDim2.fromOffset(18, 18)
 	pip.BackgroundColor3 = Theme.accent
 	pip.BorderSizePixel = 0
@@ -278,9 +280,11 @@ function Game:bindInput()
 		if self.active == "cut" then
 			local path = self.paths[self.cutIndex]
 			if path then
-				local distance = (point - path.points[1]).Magnitude
-				if distance <= Config.Cutting.startRadius then
-					self.drag = { kind = "cut", progress = 0, last = point }
+				local anchor = Geom.pointAt(path.geom, self.cutProgress)
+				local distance = (point - anchor).Magnitude
+				local _, arc = Geom.project(path.geom, point)
+				if distance <= Config.Cutting.startRadius and math.abs(arc - self.cutProgress) <= Config.Cutting.startRadius then
+					self.drag = { kind = "cut", progress = self.cutProgress, last = point }
 					if self.startPip then
 						self.startPip.Visible = false
 					end
@@ -309,6 +313,11 @@ function Game:bindInput()
 	self.ended = UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
+		end
+		if self.drag then
+			-- Короткий сегмент на слабом устройстве иногда не получает отдельный InputChanged.
+			-- Финальная точка всё равно должна попасть в проверку маршрута до отпускания.
+			self:updateDrag(self:screenToBoard(input.Position))
 		end
 		self:endDrag()
 	end)
@@ -339,7 +348,11 @@ function Game:updateDrag(point: Vector2)
 		local distance, arc = Geom.project(path.geom, point)
 		if distance > Config.Cutting.slipTolerance then
 			drag.progress = 0
+			self.cutProgress = 0
 			self:drawProgress(path, 0)
+			if self.startPip then
+				self.startPip.Position = UDim2.fromOffset(path.points[1].X, path.points[1].Y)
+			end
 			if self.status then
 				self.status.Text = "Срыв — начни линию заново"
 			end
@@ -347,6 +360,7 @@ function Game:updateDrag(point: Vector2)
 		end
 		if arc <= drag.progress + Config.Cutting.maxJump and arc >= drag.progress - Config.Cutting.backtrack then
 			drag.progress = math.max(drag.progress, arc)
+			self.cutProgress = drag.progress
 		end
 		self:drawProgress(path, drag.progress)
 		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
@@ -368,6 +382,11 @@ function Game:endDrag()
 
 	if drag.kind == "cut" then
 		if self.active == "cut" and self.startPip then
+			local path = self.paths[self.cutIndex]
+			if path then
+				local anchor = Geom.pointAt(path.geom, self.cutProgress)
+				self.startPip.Position = UDim2.fromOffset(anchor.X, anchor.Y)
+			end
 			self.startPip.Visible = true
 		end
 	elseif drag.kind == "slide" then
@@ -390,6 +409,7 @@ end
 function Game:finishCut()
 	self.drag = nil
 	local path = self.paths[self.cutIndex]
+	self.cutProgress = 0
 	self:drawProgress(path, path.geom.length)
 	if self.startPip then
 		self.startPip:Destroy()
@@ -464,6 +484,7 @@ end
 function Game:resetRound()
 	self.active = "cut"
 	self.cutIndex = 1
+	self.cutProgress = 0
 	self.drag = nil
 	self.targets = {}
 	self.pendingSlides = {}
