@@ -11,6 +11,8 @@
 - три реза по пунктирным линиям;
 - перемещение нужных кусков в целевые места;
 - серверный счётчик долек;
+- первый экран собран вокруг крупной плитки и нижней инструкции, без
+  стандартного Roblox HUD;
 - локальный запуск через Rojo/Roblox Studio, без публикации place.
 
 ## Проверки
@@ -18,7 +20,7 @@
 ```bash
 rokit install
 lune run tests/run
-rojo build --output /tmp/infinite-chocolatier-check.rbxlx
+rojo build --output infinite-chocolatier-visual-v2.rbxlx
 ```
 
 Для живой проверки нужен один экземпляр Roblox Studio:
