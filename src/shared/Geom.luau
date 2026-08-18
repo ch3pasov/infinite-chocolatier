@@ -58,4 +58,20 @@ function Geom.project(path: Path, point: Vector2): (number, number)
 	return nearestDistance, nearestArc
 end
 
+function Geom.pointAt(path: Path, arc: number): Vector2
+	if #path.segments == 0 then
+		return Vector2.zero
+	end
+
+	local target = math.clamp(arc, 0, path.length)
+	for _, segment in path.segments do
+		if target <= segment.start + segment.len then
+			return segment.a + (segment.b - segment.a) * ((target - segment.start) / segment.len)
+		end
+	end
+
+	local last = path.segments[#path.segments]
+	return last.b
+end
+
 return Geom

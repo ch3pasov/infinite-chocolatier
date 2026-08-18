@@ -18,4 +18,11 @@ return function(harness)
 		local path = Geom.path({ V.new(0, 0), V.new(0, 0), V.new(5, 0) })
 		harness.equals(#path.segments, 1)
 	end)
+
+	harness.test("точка на дуге возвращается для продолжения жеста", function()
+		local path = Geom.path({ V.new(0, 0), V.new(3, 0), V.new(3, 4) })
+		harness.equals(Geom.pointAt(path, 0), V.new(0, 0))
+		harness.equals(Geom.pointAt(path, 5), V.new(3, 2))
+		harness.equals(Geom.pointAt(path, 99), V.new(3, 4))
+	end)
 end
