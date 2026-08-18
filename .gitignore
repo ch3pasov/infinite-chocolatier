@@ -1,0 +1,15 @@
+# Roblox / Rojo
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+sourcemap.json
+
+# Rokit
+.rokit/
+
+# macOS
+.DS_Store
+
+# Codex local Git metadata
+.git-codex/
