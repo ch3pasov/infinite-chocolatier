@@ -13,3 +13,6 @@ sourcemap.json
 
 # Codex local Git metadata
 .git-codex/
+
+# Исторический снимок Claude хранится локально и не входит в рабочую сборку.
+archive/

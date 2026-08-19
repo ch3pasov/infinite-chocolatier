@@ -4,6 +4,7 @@ Vector2 = require("@lune/roblox").Vector2
 
 local harness = require("./harness")
 require("./syntax.spec")(harness)
+require("./config.spec")(harness)
 require("./geom.spec")(harness)
 require("./recipe.spec")(harness)
 
