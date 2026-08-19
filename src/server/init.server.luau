@@ -36,6 +36,6 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	end
 
 	lastPayout[player] = now
-	slices[player] = (slices[player] or 0) + Config.Recipe.payout.amount
+	slices[player] = (slices[player] or 0) + Config.Payout.amount
 	sendState(player)
 end)

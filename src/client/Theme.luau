@@ -7,6 +7,8 @@ return {
 	chocolate = Color3.fromRGB(76, 35, 20),
 	chocolateDark = Color3.fromRGB(51, 24, 16),
 	chocolateEdge = Color3.fromRGB(117, 65, 38),
+	chocolateRaised = Color3.fromRGB(91, 43, 24),
+	chocolateShadow = Color3.fromRGB(35, 16, 12),
 	accent = Color3.fromRGB(248, 190, 67),
 	accentSoft = Color3.fromRGB(255, 220, 121),
 	cut = Color3.fromRGB(255, 233, 162),
