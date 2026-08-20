@@ -1,7 +1,8 @@
 --!strict
--- Игровой цикл иллюзии: один диагональный рез -> перенос верхнего полигона.
+-- Игровой цикл повторяет пятичастную Curry-перестановку из видео-референса.
 
 local GuiService = game:GetService("GuiService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -57,6 +58,13 @@ local function makeFrame(
 	return frame
 end
 
+local function makeLayer(parent: Instance, name: string, zIndex: number): Frame
+	local frame = makeFrame(parent, name, Vector2.zero, Vector2.zero, Theme.background, zIndex)
+	frame.BackgroundTransparency = 1
+	frame.ClipsDescendants = false
+	return frame
+end
+
 local function makeSegment(
 	parent: Instance,
 	a: Vector2,
@@ -75,7 +83,7 @@ local function makeSegment(
 	frame.BackgroundTransparency = transparency or 0
 	frame.BorderSizePixel = 0
 	frame.ZIndex = zIndex or 10
-	rounded(frame, math.floor(thickness / 2))
+	rounded(frame, math.max(1, math.floor(thickness / 2)))
 	frame.Parent = parent
 	return frame
 end
@@ -146,10 +154,9 @@ local function renderClippedRoundedRect(
 		return
 	end
 
-	-- Roblox UI не имеет надёжной произвольной маски. Мы растрируем только те
-	-- шоколадные примитивы, которые реально пересекает рез: аналитическая
-	-- граница вычисляется для каждой узкой колонки. Это сохраняет рельеф и
-	-- рамки, не создаёт общего прямоугольного wedge и не требует EditableImage.
+	-- Roblox UI не умеет произвольные маски. Только примитивы, пересечённые
+	-- диагональю, раскладываются на однопиксельные колонки; прямоугольные
+	-- границы остальных частей обрезаются дешёвым ClipsDescendants.
 	local x = position.X
 	local right = position.X + size.X
 	while x < right - 1e-6 do
@@ -185,15 +192,15 @@ function Game.new(gui: ScreenGui, remotes)
 	self.active = "cut"
 	self.cutProgress = 0
 	self.drag = nil
-	self.wedgeOffset = Vector2.zero
+	self.pieces = {}
+	self.animationToken = 0
+	self.tweens = {}
 
 	self.root = makeFrame(gui, "Root", Vector2.zero, Vector2.zero, Theme.background, 1)
 	self.root.Size = UDim2.fromScale(1, 1)
 
 	self.counter = Instance.new("TextLabel")
 	self.counter.Name = "Counter"
-	-- Левый верхний угол занят системными кнопками Roblox даже при скрытом
-	-- Topbar. Центр оставляет счётчик читаемым в Studio и на узком экране.
 	self.counter.AnchorPoint = Vector2.new(0.5, 0)
 	self.counter.Position = UDim2.new(0.5, 0, 0, 12)
 	self.counter.Size = UDim2.fromOffset(260, 48)
@@ -203,17 +210,19 @@ function Game.new(gui: ScreenGui, remotes)
 	self.counter.TextColor3 = Theme.accent
 	self.counter.TextSize = 25
 	self.counter.Text = "ДОЛЬКИ  0"
+	self.counter.ZIndex = 900
 	self.counter.Parent = self.root
 
 	self.status = Instance.new("TextLabel")
 	self.status.Name = "Status"
 	self.status.AnchorPoint = Vector2.new(0.5, 1)
 	self.status.Position = UDim2.fromScale(0.5, Config.Board.statusPositionY)
-	self.status.Size = UDim2.fromScale(0.92, 0.08)
+	self.status.Size = UDim2.fromScale(0.94, 0.08)
 	self.status.BackgroundTransparency = 1
 	self.status.Font = Enum.Font.GothamMedium
 	self.status.TextColor3 = Theme.accentSoft
 	self.status.TextScaled = true
+	self.status.ZIndex = 900
 	local textConstraint = Instance.new("UITextSizeConstraint")
 	textConstraint.MinTextSize = 17
 	textConstraint.MaxTextSize = 28
@@ -225,23 +234,10 @@ function Game.new(gui: ScreenGui, remotes)
 	self.board.BackgroundTransparency = 1
 	self.board.ClipsDescendants = false
 
-	self.lowerLayer = makeFrame(self.board, "LowerPolygon", Vector2.zero, Vector2.zero, Theme.background, 2)
-	self.lowerLayer.BackgroundTransparency = 1
-	self.lowerLayer.ClipsDescendants = false
-
-	self.upperGroup = makeFrame(self.board, "UpperPolygon", Vector2.zero, Vector2.zero, Theme.background, 5)
-	self.upperGroup.BackgroundTransparency = 1
-	self.upperGroup.ClipsDescendants = false
-
-	self.seamLayer = makeFrame(self.board, "PhysicalSeam", Vector2.zero, Vector2.zero, Theme.background, 8)
-	self.seamLayer.BackgroundTransparency = 1
-
-	self.hintLayer = makeFrame(self.board, "Hints", Vector2.zero, Vector2.zero, Theme.background, 10)
-	self.hintLayer.BackgroundTransparency = 1
-	self.hintLayer.ClipsDescendants = false
-
-	self.progressLayer = makeFrame(self.board, "CutProgress", Vector2.zero, Vector2.zero, Theme.background, 12)
-	self.progressLayer.BackgroundTransparency = 1
+	self.pieceLayer = makeLayer(self.board, "PhysicalPieces", 5)
+	self.seamLayer = makeLayer(self.board, "PhysicalSeams", 400)
+	self.hintLayer = makeLayer(self.board, "Hints", 500)
+	self.progressLayer = makeLayer(self.board, "CutProgress", 600)
 
 	self:layout()
 	self:bindInput()
@@ -265,13 +261,14 @@ function Game:layout()
 	self.boardHeight = self.tileHeight * self.recipe.rows
 	self.board.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	self.board.Position = UDim2.fromScale(0.5, Config.Board.positionY)
-	for _, layer in { self.lowerLayer, self.upperGroup, self.seamLayer, self.hintLayer, self.progressLayer } do
+	for _, layer in { self.pieceLayer, self.seamLayer, self.hintLayer, self.progressLayer } do
 		layer.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	end
 
 	self.paths = self:buildPaths()
 	local path = self.paths[1]
 	self.diagonal = { a = path.points[1], b = path.points[#path.points] }
+	self:buildPieces()
 	self:renderChocolate()
 	self:resetRound()
 end
@@ -288,44 +285,100 @@ function Game:buildPaths(): { CutPath }
 	return paths
 end
 
+function Game:buildPieces()
+	clear(self.pieceLayer)
+	self.pieces = {}
+
+	for _, name in self.trick.pieceOrder do
+		local spec = self.trick.pieces[name]
+		local bounds = spec.bounds
+		local origin = Vector2.new(bounds[1] * self.tileWidth, bounds[2] * self.tileHeight)
+		local size = Vector2.new((bounds[3] - bounds[1]) * self.tileWidth, (bounds[4] - bounds[2]) * self.tileHeight)
+		local baseZ = 20 + spec.z * 20
+		local motion = makeFrame(self.pieceLayer, name, origin, size, Theme.background, baseZ)
+		motion.BackgroundTransparency = 1
+		motion.ClipsDescendants = false
+
+		local crop = makeFrame(motion, "Crop", Vector2.zero, size, Theme.background, baseZ)
+		crop.BackgroundTransparency = 1
+		crop.ClipsDescendants = true
+
+		local surface = makeFrame(crop, "Surface", -origin, Vector2.new(self.boardWidth, self.boardHeight), Theme.background, baseZ)
+		surface.BackgroundTransparency = 1
+		surface.ClipsDescendants = false
+
+		self.pieces[name] = {
+			name = name,
+			spec = spec,
+			motion = motion,
+			crop = crop,
+			surface = surface,
+			origin = origin,
+			size = size,
+			offset = Vector2.zero,
+			baseZ = baseZ,
+		}
+	end
+end
+
 function Game:renderPrimitive(
 	name: string,
 	position: Vector2,
 	size: Vector2,
 	radius: number,
 	color: Color3,
-	zIndex: number
+	zOffset: number
 )
 	local columnWidth = math.max(1, self.trick.clipColumnWidth)
-	renderClippedRoundedRect(
-		self.lowerLayer,
-		self.diagonal,
-		false,
-		name,
-		position,
-		size,
-		radius,
-		color,
-		zIndex,
-		columnWidth
-	)
-	renderClippedRoundedRect(
-		self.upperGroup,
-		self.diagonal,
-		true,
-		name,
-		position,
-		size,
-		radius,
-		color,
-		zIndex,
-		columnWidth
-	)
+	for _, pieceName in self.trick.pieceOrder do
+		local piece = self.pieces[pieceName]
+		-- Не создаём невидимые копии долек за пределами прямоугольного crop.
+		-- Это особенно важно для двух верхних частей на слабом ноутбуке.
+		if position.X + size.X <= piece.origin.X
+			or position.X >= piece.origin.X + piece.size.X
+			or position.Y + size.Y <= piece.origin.Y
+			or position.Y >= piece.origin.Y + piece.size.Y
+		then
+			continue
+		end
+		local zIndex = piece.baseZ + zOffset
+		if piece.spec.clip == "upper" then
+			renderClippedRoundedRect(
+				piece.surface,
+				self.diagonal,
+				true,
+				name,
+				position,
+				size,
+				radius,
+				color,
+				zIndex,
+				columnWidth
+			)
+		elseif piece.spec.clip == "lower" then
+			renderClippedRoundedRect(
+				piece.surface,
+				self.diagonal,
+				false,
+				name,
+				position,
+				size,
+				radius,
+				color,
+				zIndex,
+				columnWidth
+			)
+		else
+			makeFrame(piece.surface, name, position, size, color, zIndex, radius)
+		end
+	end
 end
 
 function Game:renderChocolate()
-	clear(self.lowerLayer)
-	clear(self.upperGroup)
+	for _, pieceName in self.trick.pieceOrder do
+		clear(self.pieces[pieceName].surface)
+	end
+
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
 	local gap = math.max(3, round(tileMin * self.trick.tileGapRatio))
 	local bevel = math.max(3, round(tileMin * self.trick.bevelRatio))
@@ -381,18 +434,66 @@ function Game:screenToBoard(position: Vector3 | Vector2): Vector2
 	return screen - self.board.AbsolutePosition
 end
 
-function Game:isMovingRegion(point: Vector2): boolean
-	local source = point - self.wedgeOffset
-	return source.X >= 0
-		and source.X <= self.boardWidth
-		and source.Y >= 0
-		and source.Y <= self.boardHeight
-		and Geom.isUpper(self.diagonal, source, 0.5)
+function Game:definitionOffset(definition): Vector2
+	return Vector2.new(definition.dx * self.tileWidth, definition.dy * self.tileHeight)
 end
 
-function Game:updateUpperPosition(offset: Vector2)
-	self.wedgeOffset = offset
-	self.upperGroup.Position = UDim2.fromOffset(offset.X, offset.Y)
+function Game:setPieceOffset(name: string, offset: Vector2)
+	local piece = self.pieces[name]
+	piece.offset = offset
+	piece.motion.Position = UDim2.fromOffset(piece.origin.X + offset.X, piece.origin.Y + offset.Y)
+end
+
+function Game:cancelTweens()
+	for _, tween in self.tweens do
+		tween:Cancel()
+	end
+	self.tweens = {}
+	self.animationToken += 1
+end
+
+function Game:tweenOffsets(targets, duration: number, callback)
+	self:cancelTweens()
+	local token = self.animationToken
+	for name, target in targets do
+		local piece = self.pieces[name]
+		piece.offset = target
+		local tween = TweenService:Create(
+			piece.motion,
+			TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Position = UDim2.fromOffset(piece.origin.X + target.X, piece.origin.Y + target.Y) }
+		)
+		table.insert(self.tweens, tween)
+		tween:Play()
+	end
+	task.delay(duration + 0.02, function()
+		if self.animationToken == token then
+			self.tweens = {}
+			callback()
+		end
+	end)
+end
+
+function Game:sourcePoint(name: string, point: Vector2): Vector2
+	return point - self.pieces[name].offset
+end
+
+function Game:isInsidePiece(name: string, point: Vector2): boolean
+	local piece = self.pieces[name]
+	local source = self:sourcePoint(name, point)
+	if source.X < piece.origin.X
+		or source.X > piece.origin.X + piece.size.X
+		or source.Y < piece.origin.Y
+		or source.Y > piece.origin.Y + piece.size.Y
+	then
+		return false
+	end
+	if piece.spec.clip == "upper" then
+		return Geom.isUpper(self.diagonal, source, 0.5)
+	elseif piece.spec.clip == "lower" then
+		return not Geom.isUpper(self.diagonal, source, -0.5)
+	end
+	return true
 end
 
 function Game:drawDashed(path: CutPath, parent: Instance, color: Color3)
@@ -406,7 +507,7 @@ function Game:drawDashed(path: CutPath, parent: Instance, color: Color3)
 		while distance < segment.len do
 			local startPoint = segment.a + direction * distance
 			local endPoint = segment.a + direction * math.min(distance + dashLength, segment.len)
-			makeSegment(parent, startPoint, endPoint, thickness, color, 0.04, 11)
+			makeSegment(parent, startPoint, endPoint, thickness, color, 0.04, 510)
 			distance += dashLength + gap
 		end
 	end
@@ -418,7 +519,7 @@ function Game:drawProgress(path: CutPath, progress: number)
 		local covered = math.clamp(progress - segment.start, 0, segment.len)
 		if covered > 0 then
 			local endPoint = segment.a + (segment.b - segment.a) * (covered / segment.len)
-			makeSegment(self.progressLayer, segment.a, endPoint, math.max(4, self.tileWidth * 0.065), Theme.cut, 0, 12)
+			makeSegment(self.progressLayer, segment.a, endPoint, math.max(4, self.tileWidth * 0.065), Theme.cut, 0, 610)
 		end
 	end
 end
@@ -426,20 +527,42 @@ end
 function Game:drawSeam(path: CutPath)
 	clear(self.seamLayer)
 	for _, segment in path.geom.segments do
-		-- Этот шов совпадает с математической границей двух слоёв. Он проявляет
-		-- реальный разрез и остаётся на месте, когда верх скользит вдоль него.
-		makeSegment(self.seamLayer, segment.a, segment.b, math.max(3, self.tileWidth * 0.045), Theme.chocolateShadow, 0.02, 8)
-		makeSegment(self.seamLayer, segment.a, segment.b, 1, Theme.chocolateEdge, 0.12, 9)
+		makeSegment(self.seamLayer, segment.a, segment.b, math.max(3, self.tileWidth * 0.045), Theme.chocolateShadow, 0.02, 410)
+		makeSegment(self.seamLayer, segment.a, segment.b, 1, Theme.chocolateEdge, 0.12, 411)
 	end
+end
+
+function Game:drawCurryGap()
+	clear(self.seamLayer)
+	local leftSlide = self:definitionOffset(self.recipe.slides.upperLeft)
+	local translated = {
+		a = self.diagonal.a + leftSlide,
+		b = self.diagonal.b + leftSlide,
+	}
+	-- После переноса левая часть занимает x=2..5, а правая x=0..2.
+	-- Обе дают одну и ту же бесконечную прямую; для шва восстанавливаем её
+	-- точки на настоящих боковых гранях собранной плитки.
+	local upperA = Vector2.new(0, Geom.lineYAtX(translated, 0))
+	local upperB = Vector2.new(self.boardWidth, Geom.lineYAtX(translated, self.boardWidth))
+	local middleA = (self.diagonal.a + upperA) * 0.5
+	local middleB = (self.diagonal.b + upperB) * 0.5
+	local verticalGap = math.abs(self.diagonal.a.Y - upperA.Y)
+	local direction = upperB - upperA
+	local thickness = verticalGap
+	if math.abs(direction.X) > 1e-6 then
+		thickness = verticalGap * direction.Magnitude / math.abs(direction.X)
+	end
+	-- Это не шоколадная заплатка, а тёмная канавка над пустой полосой площади
+	-- ровно в одну дольку. Она маскирует Curry-разницу так же, как шов ролика.
+	makeSegment(self.seamLayer, middleA, middleB, thickness, Theme.chocolateShadow, 0.02, 405)
+	makeSegment(self.seamLayer, upperA, upperB, 1, Theme.chocolateEdge, 0.18, 406)
+	makeSegment(self.seamLayer, self.diagonal.a, self.diagonal.b, 1, Theme.chocolateEdge, 0.18, 406)
 end
 
 function Game:showCutHint()
 	clear(self.hintLayer)
 	clear(self.progressLayer)
-	local path = self.paths[self.cutIndex]
-	if not path then
-		return
-	end
+	local path = self.paths[1]
 	self:drawDashed(path, self.hintLayer, Theme.accentSoft)
 	local anchor = Geom.pointAt(path.geom, self.cutProgress)
 	local pipSize = math.max(18, math.min(self.tileWidth, self.tileHeight) * 0.32)
@@ -449,22 +572,68 @@ function Game:showCutHint()
 		anchor - Vector2.new(pipSize, pipSize) * 0.5,
 		Vector2.new(pipSize, pipSize),
 		Theme.accent,
-		13,
+		620,
 		math.floor(pipSize / 2)
 	)
 end
 
-function Game:showSlideHint()
+function Game:drawArrow(startPoint: Vector2, finish: Vector2)
 	clear(self.hintLayer)
-	local start = Vector2.new(self.boardWidth * 0.42, self.boardHeight * 0.18)
-	local target = self.slideTarget
-	local finish = start + target
-	self:drawDashed(newPath({ start, finish }), self.hintLayer, Theme.accentSoft)
+	local path = newPath({ startPoint, finish })
+	self:drawDashed(path, self.hintLayer, Theme.accentSoft)
+	local target = finish - startPoint
+	if target.Magnitude < 1 then
+		return
+	end
 	local direction = target.Unit
 	local normal = Vector2.new(-direction.Y, direction.X)
 	local arrowSize = math.max(13, self.tileWidth * 0.22)
-	makeSegment(self.hintLayer, finish, finish - direction * arrowSize + normal * arrowSize * 0.62, 4, Theme.accent, 0, 12)
-	makeSegment(self.hintLayer, finish, finish - direction * arrowSize - normal * arrowSize * 0.62, 4, Theme.accent, 0, 12)
+	makeSegment(self.hintLayer, finish, finish - direction * arrowSize + normal * arrowSize * 0.62, 4, Theme.accent, 0, 520)
+	makeSegment(self.hintLayer, finish, finish - direction * arrowSize - normal * arrowSize * 0.62, 4, Theme.accent, 0, 520)
+end
+
+function Game:pieceCenter(name: string): Vector2
+	local piece = self.pieces[name]
+	return piece.origin + piece.size * 0.5
+end
+
+function Game:showLargeHint()
+	local name = "upperLeft"
+	local exploded = self:definitionOffset(self.trick.exploded[name])
+	local target = self:definitionOffset(self.recipe.slides[name])
+	local anchor = Vector2.new(
+		self.trick.largeHintAnchor.x * self.tileWidth,
+		self.trick.largeHintAnchor.y * self.tileHeight
+	)
+	self:drawArrow(anchor + exploded, anchor + target)
+	self.status.Text = "Сдвинь крупную часть по стрелке — вторая повторит перестановку"
+end
+
+function Game:showStripHint()
+	local name = "stripDouble"
+	local exploded = self:definitionOffset(self.trick.exploded[name])
+	local target = self:definitionOffset(self.recipe.slides[name])
+	local center = self:pieceCenter(name)
+	self:drawArrow(center + exploded, center + target)
+	self.status.Text = "Вставь блок из двух долек в верхнюю нишу"
+end
+
+function Game:setLargeProgress(progress: number)
+	self.largeProgress = math.clamp(progress, 0, 1)
+	for _, name in { "upperLeft", "upperRight" } do
+		local from = self:definitionOffset(self.trick.exploded[name])
+		local target = self:definitionOffset(self.recipe.slides[name])
+		self:setPieceOffset(name, from:Lerp(target, self.largeProgress))
+	end
+end
+
+function Game:setStripProgress(progress: number)
+	self.stripProgress = math.clamp(progress, 0, 1)
+	for _, name in { "stripDouble", "stripSingle" } do
+		local from = self:definitionOffset(self.trick.exploded[name])
+		local target = self:definitionOffset(self.recipe.slides[name])
+		self:setPieceOffset(name, from:Lerp(target, self.stripProgress))
+	end
 end
 
 function Game:bindInput()
@@ -478,21 +647,40 @@ function Game:bindInput()
 
 		local point = self:screenToBoard(input.Position)
 		if self.active == "cut" then
-			local path = self.paths[self.cutIndex]
-			if path then
-				local anchor = Geom.pointAt(path.geom, self.cutProgress)
-				local _, arc = Geom.project(path.geom, point)
-				if (point - anchor).Magnitude <= Config.Cutting.startRadius
-					and math.abs(arc - self.cutProgress) <= Config.Cutting.startRadius
-				then
-					self.drag = { kind = "cut", progress = self.cutProgress }
-					if self.startPip then
-						self.startPip.Visible = false
-					end
+			local path = self.paths[1]
+			local anchor = Geom.pointAt(path.geom, self.cutProgress)
+			local _, arc = Geom.project(path.geom, point)
+			if (point - anchor).Magnitude <= Config.Cutting.startRadius
+				and math.abs(arc - self.cutProgress) <= Config.Cutting.startRadius
+			then
+				self.drag = { kind = "cut", progress = self.cutProgress }
+				if self.startPip then
+					self.startPip.Visible = false
 				end
 			end
-		elseif self.active == "slide" and self:isMovingRegion(point) then
-			self.drag = { kind = "slide", anchor = point - self.wedgeOffset }
+		elseif self.active == "assembleLarge" then
+			for _, name in { "upperLeft", "upperRight" } do
+				if self:isInsidePiece(name, point) then
+					local from = self:definitionOffset(self.trick.exploded[name])
+					local target = self:definitionOffset(self.recipe.slides[name])
+					self.drag = {
+						kind = "large",
+						startPoint = point,
+						startProgress = self.largeProgress,
+						driver = target - from,
+					}
+					break
+				end
+			end
+		elseif self.active == "assembleStrip" and self:isInsidePiece("stripDouble", point) then
+			local from = self:definitionOffset(self.trick.exploded.stripDouble)
+			local target = self:definitionOffset(self.recipe.slides.stripDouble)
+			self.drag = {
+				kind = "strip",
+				startPoint = point,
+				startProgress = self.stripProgress,
+				driver = target - from,
+			}
 		end
 	end)
 
@@ -524,7 +712,7 @@ function Game:updateDrag(point: Vector2)
 	end
 
 	if drag.kind == "cut" then
-		local path = self.paths[self.cutIndex]
+		local path = self.paths[1]
 		local distance, arc = Geom.project(path.geom, point)
 		if distance > Config.Cutting.slipTolerance then
 			drag.progress = 0
@@ -541,8 +729,18 @@ function Game:updateDrag(point: Vector2)
 		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
 			self:finishCut()
 		end
-	elseif drag.kind == "slide" then
-		self:updateUpperPosition(point - drag.anchor)
+	elseif drag.kind == "large" or drag.kind == "strip" then
+		local driver = drag.driver
+		local denominator = driver:Dot(driver)
+		if denominator <= 1e-6 then
+			return
+		end
+		local progress = drag.startProgress + (point - drag.startPoint):Dot(driver) / denominator
+		if drag.kind == "large" then
+			self:setLargeProgress(progress)
+		else
+			self:setStripProgress(progress)
+		end
 	end
 end
 
@@ -555,24 +753,53 @@ function Game:endDrag()
 
 	if drag.kind == "cut" then
 		if self.active == "cut" and self.startPip then
-			local path = self.paths[self.cutIndex]
+			local path = self.paths[1]
 			local anchor = Geom.pointAt(path.geom, self.cutProgress)
-			self.startPip.Position = UDim2.fromOffset(anchor.X - self.startPip.AbsoluteSize.X / 2, anchor.Y - self.startPip.AbsoluteSize.Y / 2)
+			self.startPip.Position = UDim2.fromOffset(
+				anchor.X - self.startPip.AbsoluteSize.X / 2,
+				anchor.Y - self.startPip.AbsoluteSize.Y / 2
+			)
 			self.startPip.Visible = true
 		end
-	elseif drag.kind == "slide" then
-		if (self.wedgeOffset - self.slideTarget).Magnitude <= Config.Sliding.snapRadius then
-			self:updateUpperPosition(self.slideTarget)
+	elseif drag.kind == "large" then
+		if self.largeProgress >= Config.Sliding.completeAt then
+			self:setLargeProgress(1)
+			self:finishLargeAssembly()
+		else
+			self.active = "snappingLarge"
+			local targets = {}
+			for _, name in { "upperLeft", "upperRight" } do
+				targets[name] = self:definitionOffset(self.trick.exploded[name])
+			end
+			self:tweenOffsets(targets, self.trick.snapDuration, function()
+				self.largeProgress = 0
+				self.active = "assembleLarge"
+			end)
+		end
+	elseif drag.kind == "strip" then
+		if self.stripProgress >= Config.Sliding.completeAt then
+			self:setStripProgress(1)
 			self:finishRound()
 		else
-			self:updateUpperPosition(Vector2.zero)
+			self.active = "snappingStrip"
+			local targets = {}
+			for _, name in { "stripDouble", "stripSingle" } do
+				targets[name] = self:definitionOffset(self.trick.exploded[name])
+			end
+			self:tweenOffsets(targets, self.trick.snapDuration, function()
+				self.stripProgress = 0
+				self.active = "assembleStrip"
+			end)
 		end
 	end
 end
 
 function Game:finishCut()
+	if self.active ~= "cut" then
+		return
+	end
 	self.drag = nil
-	local path = self.paths[self.cutIndex]
+	local path = self.paths[1]
 	if self.startPip then
 		self.startPip:Destroy()
 		self.startPip = nil
@@ -580,32 +807,49 @@ function Game:finishCut()
 	clear(self.hintLayer)
 	self:drawProgress(path, path.geom.length)
 	self:drawSeam(path)
-	self.active = "slide"
+	self.active = "exploding"
+	self.status.Text = "Разрез готов — плитка раскрывается на пять исходных частей"
 
-	local slide = self.recipe.slides[self.trick.movingLetter]
-	self.slideTarget = Vector2.new(slide.dx * self.tileWidth, slide.dy * self.tileHeight)
-	self.status.Text = "Схвати верхнюю область в любом месте и сдвинь по стрелке"
-	task.delay(0.12, function()
-		if self.active == "slide" then
-			clear(self.progressLayer)
-			self:showSlideHint()
+	local targets = {}
+	for _, name in self.trick.pieceOrder do
+		targets[name] = self:definitionOffset(self.trick.exploded[name])
+	end
+	task.delay(0.14, function()
+		if self.active ~= "exploding" then
+			return
 		end
+		clear(self.progressLayer)
+		clear(self.seamLayer)
+		self:tweenOffsets(targets, self.trick.explodeDuration, function()
+			self.active = "assembleLarge"
+			self.largeProgress = 0
+			self:showLargeHint()
+		end)
 	end)
+end
+
+function Game:finishLargeAssembly()
+	if self.active ~= "assembleLarge" then
+		return
+	end
+	self.active = "assembleStrip"
+	self.stripProgress = 0
+	self:drawCurryGap()
+	self:showStripHint()
 end
 
 function Game:showRewardMarker()
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 	end
-	local reward = self.trick.rewardCell
-	local gap = math.max(3, round(math.min(self.tileWidth, self.tileHeight) * self.trick.tileGapRatio))
+	local piece = self.pieces[self.trick.rewardPiece]
 	local marker = makeFrame(
-		self.upperGroup,
-		"RedistributedSliceMarker",
-		Vector2.new((reward.column - 1) * self.tileWidth + gap, (reward.row - 1) * self.tileHeight + gap),
-		Vector2.new(self.tileWidth - gap * 2, self.tileHeight - gap * 2),
+		piece.crop,
+		"OriginalExtraSliceMarker",
+		Vector2.zero,
+		piece.size,
 		Theme.accent,
-		20,
+		720,
 		math.max(6, round(math.min(self.tileWidth, self.tileHeight) * self.trick.cornerRatio))
 	)
 	marker.BackgroundTransparency = 1
@@ -618,35 +862,57 @@ function Game:showRewardMarker()
 end
 
 function Game:finishRound()
-	if self.active == "done" then
+	if self.active ~= "assembleStrip" then
 		return
 	end
 	self.active = "done"
 	clear(self.hintLayer)
-	clear(self.seamLayer)
 	self:showRewardMarker()
-	self.status.Text = "Готово: перераспределение площади дало +1 дольку"
+	self.status.Text = "Готово: площадь одной дольки спрятана вдоль диагонального шва"
 	-- В RemoteEvent нет количества: клиент сообщает только завершение жеста.
 	self.remotes.roundComplete:FireServer()
 	task.delay(self.trick.resetDelay, function()
+		if self.active == "done" then
+			self:beginReset()
+		end
+	end)
+end
+
+function Game:beginReset()
+	self.active = "resetting"
+	clear(self.hintLayer)
+	clear(self.seamLayer)
+	if self.rewardMarker then
+		self.rewardMarker:Destroy()
+		self.rewardMarker = nil
+	end
+	self.status.Text = "Возвращаем исходные части для нового раунда"
+	local targets = {}
+	for _, name in self.trick.pieceOrder do
+		targets[name] = Vector2.zero
+	end
+	self:tweenOffsets(targets, self.trick.resetDuration, function()
 		self:resetRound()
 	end)
 end
 
 function Game:resetRound()
+	self:cancelTweens()
 	self.active = "cut"
-	self.cutIndex = 1
 	self.cutProgress = 0
+	self.largeProgress = 0
+	self.stripProgress = 0
 	self.drag = nil
-	self.slideTarget = Vector2.zero
-	self:updateUpperPosition(Vector2.zero)
+	for _, name in self.trick.pieceOrder do
+		self:setPieceOffset(name, Vector2.zero)
+	end
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil
 	end
 	clear(self.seamLayer)
 	clear(self.progressLayer)
-	self.status.Text = "Проведи снизу слева вверх направо по единственной линии"
+	self.status.Text = "Проведи по диагонали: остальные разъёмы уже лежат в бороздках"
 	self:showCutHint()
 end
 
