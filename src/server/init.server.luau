@@ -4,6 +4,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Сейчас игра целиком живёт в ScreenGui: мира, пола и управления персонажем
+-- у неё нет. Отключаем стандартный автоспавн, иначе невидимый за интерфейсом
+-- Humanoid падает в пустоту и каждые несколько секунд запускает новый респавн.
+Players.CharacterAutoLoads = false
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Remotes)
