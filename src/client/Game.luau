@@ -19,6 +19,11 @@ type CutPath = {
 	geom: Geom.Path,
 }
 
+type StretchColumn = {
+	frame: Frame,
+	fullHeight: number,
+}
+
 local function round(value: number): number
 	return math.floor(value + 0.5)
 end
@@ -193,25 +198,53 @@ local function renderUpperExtensionRect(
 	radius: number,
 	color: Color3,
 	zIndex: number,
-	columnWidth: number
+	columnWidth: number,
+	maskZIndex: number,
+	columnsByX: { [number]: StretchColumn },
+	columns: { StretchColumn }
 )
-	-- Это продолжение уже существующего спрайта, а не новая шоколадная часть.
-	-- Для каждой колонки берём только узкую область между настоящей нижней
-	-- границей верхнего полигона и её оптически растянутым положением.
-	local x = position.X
+	-- Цветные слои рассчитываются один раз, но лежат внутри твёрдых масок
+	-- нулевой высоты. Во время жеста растёт именно геометрическая высота масок,
+	-- а не прозрачность шоколада. Одна общая маска на X-колонку обрезает сразу
+	-- основу, рамку и рельеф, поэтому на слабом ноутбуке обновляется лишь узкая
+	-- диагональная кромка.
+	local x = math.floor(position.X / columnWidth) * columnWidth
 	local right = position.X + size.X
 	while x < right - 1e-6 do
-		local width = math.min(columnWidth, right - x)
-		local sampleX = x + width * 0.5
+		local left = math.max(x, position.X)
+		local columnRight = math.min(x + columnWidth, right)
+		local width = columnRight - left
+		local sampleX = left + width * 0.5
 		local top, bottom = roundedVerticalBounds(position, size, radius, sampleX)
-		local boundary = Geom.lineYAtX(line, sampleX)
+		local maskSampleX = x + columnWidth * 0.5
+		local boundary = Geom.lineYAtX(line, maskSampleX)
 		local extensionTop = math.max(top, math.min(bottom, boundary))
 		local extensionBottom = math.min(bottom, boundary + extension)
 		if extensionBottom - extensionTop > 0.05 then
+			local column = columnsByX[x]
+			if not column then
+				local mask = makeFrame(
+					parent,
+					"StretchMask",
+					Vector2.new(x, boundary),
+					Vector2.new(columnWidth + 0.08, 0),
+					color,
+					maskZIndex
+				)
+				mask.BackgroundTransparency = 1
+				mask.ClipsDescendants = true
+				mask.Visible = false
+				column = {
+					frame = mask,
+					fullHeight = extension + 0.08,
+				}
+				columnsByX[x] = column
+				table.insert(columns, column)
+			end
 			makeFrame(
-				parent,
+				column.frame,
 				name .. "Stretch",
-				Vector2.new(x, extensionTop),
+				Vector2.new(left - x, extensionTop - boundary),
 				Vector2.new(width + 0.08, extensionBottom - extensionTop + 0.08),
 				color,
 				zIndex
@@ -356,6 +389,8 @@ function Game:buildPieces()
 			size = size,
 			offset = Vector2.zero,
 			baseZ = baseZ,
+			stretchColumnsByX = {},
+			stretchColumns = {},
 		}
 	end
 end
@@ -394,10 +429,6 @@ function Game:renderPrimitive(
 				zIndex,
 				columnWidth
 			)
-			-- Искажённая кромка существует с первого кадра. Пока плитка целая,
-			-- она пиксель-в-пиксель перекрывает тот же рисунок нижней части и
-			-- потому незаметна. После разреза кусок уже имеет готовую форму:
-			-- при перетаскивании ничего не проявляется и не «дорисовывается».
 			renderUpperExtensionRect(
 				piece.surface,
 				self.diagonal,
@@ -408,7 +439,10 @@ function Game:renderPrimitive(
 				radius,
 				color,
 				zIndex,
-				columnWidth
+				columnWidth,
+				piece.baseZ + 10,
+				piece.stretchColumnsByX,
+				piece.stretchColumns
 			)
 		elseif piece.spec.clip == "lower" then
 			renderClippedRoundedRect(
@@ -433,6 +467,8 @@ function Game:renderChocolate()
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
 		clear(piece.surface)
+		piece.stretchColumnsByX = {}
+		piece.stretchColumns = {}
 	end
 
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
@@ -672,10 +708,25 @@ end
 
 function Game:setLargeProgress(progress: number)
 	self.largeProgress = math.clamp(progress, 0, 1)
+	self:setOpticalGrowth(self.largeProgress)
 	for _, name in { "upperLeft", "upperRight" } do
 		local from = self:definitionOffset(self.trick.exploded[name])
 		local target = self:definitionOffset(self.recipe.slides[name])
 		self:setPieceOffset(name, from:Lerp(target, self.largeProgress))
+	end
+end
+
+function Game:setOpticalGrowth(progress: number)
+	-- Полная высота равна Curry-полосе, но появляется она пропорционально
+	-- реальному движению: четверть жеста открывает четверть кромки. Никакой
+	-- альфа-анимации и внезапно готового прямоугольного продолжения здесь нет.
+	local growth = math.clamp(progress, 0, 1) ^ self.trick.opticalGrowthPower
+	for _, name in { "upperLeft", "upperRight" } do
+		for _, column: StretchColumn in self.pieces[name].stretchColumns do
+			local height = column.fullHeight * growth
+			column.frame.Size = UDim2.fromOffset(column.frame.Size.X.Offset, height)
+			column.frame.Visible = height > 0.05
+		end
 	end
 end
 
@@ -831,6 +882,9 @@ function Game:endDrag()
 			self:finishLargeAssembly()
 		else
 			self.active = "snappingLarge"
+			-- При неудачном жесте кромка исчезает до возврата частей. Это не
+			-- оставляет зависший фрагмент компенсационной полосы на поле.
+			self:setOpticalGrowth(0)
 			local targets = {}
 			for _, name in { "upperLeft", "upperRight" } do
 				targets[name] = self:definitionOffset(self.trick.exploded[name])
@@ -979,6 +1033,7 @@ function Game:resetRound()
 	for _, name in self.trick.pieceOrder do
 		self:setPieceOffset(name, Vector2.zero)
 	end
+	self:setOpticalGrowth(0)
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil

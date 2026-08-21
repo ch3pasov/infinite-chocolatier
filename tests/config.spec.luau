@@ -61,12 +61,12 @@ return function(harness)
 		harness.equals(single[3] + rewardSlide.dx < 0, true)
 	end)
 
-	harness.test("заранее подготовленная кромка полностью скрывает Curry-полосу", function()
+	harness.test("кромка постепенно принимает площадь Curry-полосы", function()
 		harness.near(Config.Trick.opticalStretchRows, Config.Trick.gapRows)
 		harness.equals(Config.Trick.assembledSeamRatio < Config.Trick.gapRows, true)
-		-- Динамический коэффициент проявления означал бы, что шоколад снова
-		-- дорисовывается во время жеста вместо скрытого начального перекрытия.
-		harness.equals(Config.Trick.opticalStretchRevealPower, nil)
+		-- Линейный коэффициент связывает рост с рукой игрока: 25% жеста дают
+		-- 25% высоты, без внезапного появления всей полосы в первом кадре.
+		harness.near(Config.Trick.opticalGrowthPower, 1)
 	end)
 
 	harness.test("сервер выдаёт ровно одну дольку", function()

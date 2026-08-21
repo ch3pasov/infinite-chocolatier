@@ -25,12 +25,15 @@ return function(harness)
 		end)
 	end
 
-	harness.test("оптическая кромка не проявляется во время движения", function()
+	harness.test("оптическая кромка растёт геометрией без альфа-проявления", function()
 		local source = fs.readFile("src/client/Game.luau")
 		-- Регрессия из записи 2026-08-21: прозрачный CanvasGroup выдавал
 		-- фокус, потому что шоколад заметно дорисовывался прямо под курсором.
 		harness.equals(source:find("GroupTransparency", 1, true), nil)
-		harness.equals(source:find("setOpticalStretch", 1, true), nil)
+		harness.equals(source:find("CanvasGroup", 1, true), nil)
+		local movement = assert(source:find("function Game:setLargeProgress", 1, true))
+		local growth = assert(source:find("self:setOpticalGrowth(self.largeProgress)", movement, true))
+		harness.equals(growth > movement, true)
 	end)
 
 	harness.test("следующий разрез начинается только после отпускания", function()
