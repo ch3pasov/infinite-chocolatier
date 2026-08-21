@@ -183,6 +183,44 @@ local function renderClippedRoundedRect(
 	end
 end
 
+local function renderUpperExtensionRect(
+	parent: Instance,
+	line: Geom.Line,
+	extension: number,
+	name: string,
+	position: Vector2,
+	size: Vector2,
+	radius: number,
+	color: Color3,
+	zIndex: number,
+	columnWidth: number
+)
+	-- Это продолжение уже существующего спрайта, а не новая шоколадная часть.
+	-- Для каждой колонки берём только узкую область между настоящей нижней
+	-- границей верхнего полигона и её оптически растянутым положением.
+	local x = position.X
+	local right = position.X + size.X
+	while x < right - 1e-6 do
+		local width = math.min(columnWidth, right - x)
+		local sampleX = x + width * 0.5
+		local top, bottom = roundedVerticalBounds(position, size, radius, sampleX)
+		local boundary = Geom.lineYAtX(line, sampleX)
+		local extensionTop = math.max(top, math.min(bottom, boundary))
+		local extensionBottom = math.min(bottom, boundary + extension)
+		if extensionBottom - extensionTop > 0.05 then
+			makeFrame(
+				parent,
+				name .. "Stretch",
+				Vector2.new(x, extensionTop),
+				Vector2.new(width + 0.08, extensionBottom - extensionTop + 0.08),
+				color,
+				zIndex
+			)
+		end
+		x += width
+	end
+end
+
 function Game.new(gui: ScreenGui, remotes)
 	local self = setmetatable({}, Game)
 	self.gui = gui
@@ -307,12 +345,27 @@ function Game:buildPieces()
 		surface.BackgroundTransparency = 1
 		surface.ClipsDescendants = false
 
+		local opticalSurface = nil
+		if spec.clip == "upper" then
+			local group = Instance.new("CanvasGroup")
+			group.Name = "OpticalStretch"
+			group.Position = UDim2.fromOffset(-origin.X, -origin.Y)
+			group.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
+			group.BackgroundTransparency = 1
+			group.GroupTransparency = 1
+			group.ClipsDescendants = false
+			group.ZIndex = baseZ
+			group.Parent = crop
+			opticalSurface = group
+		end
+
 		self.pieces[name] = {
 			name = name,
 			spec = spec,
 			motion = motion,
 			crop = crop,
 			surface = surface,
+			opticalSurface = opticalSurface,
 			origin = origin,
 			size = size,
 			offset = Vector2.zero,
@@ -355,6 +408,20 @@ function Game:renderPrimitive(
 				zIndex,
 				columnWidth
 			)
+			if piece.opticalSurface then
+				renderUpperExtensionRect(
+					piece.opticalSurface,
+					self.diagonal,
+					self.trick.opticalStretchRows * self.tileHeight,
+					name,
+					position,
+					size,
+					radius,
+					color,
+					zIndex,
+					columnWidth
+				)
+			end
 		elseif piece.spec.clip == "lower" then
 			renderClippedRoundedRect(
 				piece.surface,
@@ -376,7 +443,11 @@ end
 
 function Game:renderChocolate()
 	for _, pieceName in self.trick.pieceOrder do
-		clear(self.pieces[pieceName].surface)
+		local piece = self.pieces[pieceName]
+		clear(piece.surface)
+		if piece.opticalSurface then
+			clear(piece.opticalSurface)
+		end
 	end
 
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
@@ -424,6 +495,16 @@ function Game:renderChocolate()
 				Theme.chocolateRaised,
 				5
 			)
+		end
+	end
+end
+
+function Game:setOpticalStretch(progress: number)
+	local visible = math.pow(math.clamp(progress, 0, 1), self.trick.opticalStretchRevealPower)
+	for _, name in { "upperLeft", "upperRight" } do
+		local surface = self.pieces[name].opticalSurface
+		if surface then
+			surface.GroupTransparency = 1 - visible
 		end
 	end
 end
@@ -546,17 +627,12 @@ function Game:drawCurryGap()
 	local upperB = Vector2.new(self.boardWidth, Geom.lineYAtX(translated, self.boardWidth))
 	local middleA = (self.diagonal.a + upperA) * 0.5
 	local middleB = (self.diagonal.b + upperB) * 0.5
-	local verticalGap = math.abs(self.diagonal.a.Y - upperA.Y)
-	local direction = upperB - upperA
-	local thickness = verticalGap
-	if math.abs(direction.X) > 1e-6 then
-		thickness = verticalGap * direction.Magnitude / math.abs(direction.X)
-	end
-	-- Это не шоколадная заплатка, а тёмная канавка над пустой полосой площади
-	-- ровно в одну дольку. Она маскирует Curry-разницу так же, как шов ролика.
-	makeSegment(self.seamLayer, middleA, middleB, thickness, Theme.chocolateShadow, 0.02, 405)
-	makeSegment(self.seamLayer, upperA, upperB, 1, Theme.chocolateEdge, 0.18, 406)
-	makeSegment(self.seamLayer, self.diagonal.a, self.diagonal.b, 1, Theme.chocolateEdge, 0.18, 406)
+	-- Площадь Curry-полосы скрыта оптическим растяжением спрайтов. Здесь
+	-- остаётся лишь обычный тонкий шов: он объясняет игроку границу частей,
+	-- но больше не выдаёт секрет широкой чёрной лентой.
+	local thickness = math.max(2, self.tileWidth * self.trick.assembledSeamRatio)
+	makeSegment(self.seamLayer, middleA, middleB, thickness, Theme.chocolateShadow, 0.08, 405)
+	makeSegment(self.seamLayer, middleA, middleB, 1, Theme.chocolateEdge, 0.22, 406)
 end
 
 function Game:showCutHint()
@@ -620,6 +696,7 @@ end
 
 function Game:setLargeProgress(progress: number)
 	self.largeProgress = math.clamp(progress, 0, 1)
+	self:setOpticalStretch(self.largeProgress)
 	for _, name in { "upperLeft", "upperRight" } do
 		local from = self:definitionOffset(self.trick.exploded[name])
 		local target = self:definitionOffset(self.recipe.slides[name])
@@ -766,6 +843,7 @@ function Game:endDrag()
 			self:setLargeProgress(1)
 			self:finishLargeAssembly()
 		else
+			self:setOpticalStretch(0)
 			self.active = "snappingLarge"
 			local targets = {}
 			for _, name in { "upperLeft", "upperRight" } do
@@ -868,7 +946,7 @@ function Game:finishRound()
 	self.active = "done"
 	clear(self.hintLayer)
 	self:showRewardMarker()
-	self.status.Text = "Готово: площадь одной дольки спрятана вдоль диагонального шва"
+	self.status.Text = "Готово: плитка снова целая, а исходная долька осталась снаружи"
 	-- В RemoteEvent нет количества: клиент сообщает только завершение жеста.
 	self.remotes.roundComplete:FireServer()
 	task.delay(self.trick.resetDelay, function()
@@ -880,6 +958,7 @@ end
 
 function Game:beginReset()
 	self.active = "resetting"
+	self:setOpticalStretch(0)
 	clear(self.hintLayer)
 	clear(self.seamLayer)
 	if self.rewardMarker then
@@ -903,6 +982,7 @@ function Game:resetRound()
 	self.largeProgress = 0
 	self.stripProgress = 0
 	self.drag = nil
+	self:setOpticalStretch(0)
 	for _, name in self.trick.pieceOrder do
 		self:setPieceOffset(name, Vector2.zero)
 	end

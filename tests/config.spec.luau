@@ -47,6 +47,11 @@ return function(harness)
 		harness.equals(single[3] + rewardSlide.dx < 0, true)
 	end)
 
+	harness.test("оптическое растяжение полностью скрывает Curry-полосу", function()
+		harness.near(Config.Trick.opticalStretchRows, Config.Trick.gapRows)
+		harness.equals(Config.Trick.assembledSeamRatio < Config.Trick.gapRows, true)
+	end)
+
 	harness.test("сервер выдаёт ровно одну дольку", function()
 		harness.equals(Config.Payout.amount, 1)
 	end)
