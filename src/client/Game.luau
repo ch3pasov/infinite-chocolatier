@@ -779,7 +779,13 @@ function Game:updateDrag(point: Vector2)
 		end
 		self:drawProgress(path, drag.progress)
 		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
-			self:finishCut()
+			-- Сам жест ещё не завершён: игрок должен почувствовать конечную точку
+			-- и явно отпустить мышь или палец. Следующий пунктир до отпускания не
+			-- появляется.
+			drag.progress = path.geom.length
+			self.cutProgress = path.geom.length
+			self:drawProgress(path, path.geom.length)
+			self.status.Text = "Отпусти, чтобы завершить разрез"
 		end
 	elseif drag.kind == "large" or drag.kind == "strip" then
 		local driver = drag.driver
@@ -804,14 +810,20 @@ function Game:endDrag()
 	self.drag = nil
 
 	if drag.kind == "cut" then
-		if self.active == "cut" and self.startPip then
+		if self.active == "cut" then
 			local path = self.paths[self.cutIndex]
-			local anchor = Geom.pointAt(path.geom, self.cutProgress)
-			self.startPip.Position = UDim2.fromOffset(
-				anchor.X - self.startPip.AbsoluteSize.X / 2,
-				anchor.Y - self.startPip.AbsoluteSize.Y / 2
-			)
-			self.startPip.Visible = true
+			if self.cutProgress >= path.geom.length * Config.Cutting.completeAt then
+				self:finishCut()
+				return
+			end
+			if self.startPip then
+				local anchor = Geom.pointAt(path.geom, self.cutProgress)
+				self.startPip.Position = UDim2.fromOffset(
+					anchor.X - self.startPip.AbsoluteSize.X / 2,
+					anchor.Y - self.startPip.AbsoluteSize.Y / 2
+				)
+				self.startPip.Visible = true
+			end
 		end
 	elseif drag.kind == "large" then
 		if self.largeProgress >= Config.Sliding.completeAt then

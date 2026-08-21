@@ -73,6 +73,11 @@ return function(harness)
 		harness.equals(Config.Payout.amount, 1)
 	end)
 
+	harness.test("разрез требуется довести почти до физического конца", function()
+		harness.equals(Config.Cutting.completeAt >= 0.99, true)
+		harness.equals(Config.Cutting.completeAt <= 1, true)
+	end)
+
 	harness.test("результат остаётся видимым до автоматического сброса", function()
 		harness.equals(Config.Trick.resetDelay >= 2, true)
 	end)
