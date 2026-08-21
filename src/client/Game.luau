@@ -21,7 +21,10 @@ type CutPath = {
 
 type StretchColumn = {
 	frame: Frame,
+	fill: Frame,
 	fullHeight: number,
+	x: number,
+	topColor: Color3,
 }
 
 local function round(value: number): number
@@ -188,25 +191,55 @@ local function renderClippedRoundedRect(
 	end
 end
 
-local function renderUpperExtensionRect(
-	parent: Instance,
+local function sampleLowerExtensionColor(
 	line: Geom.Line,
 	extension: number,
-	name: string,
 	position: Vector2,
 	size: Vector2,
 	radius: number,
 	color: Color3,
-	zIndex: number,
+	columnWidth: number,
+	colorsByX: { [number]: Color3 },
+	boundarySampleInset: number
+)
+	-- Внизу Curry-полосы запоминаем цвет настоящего шоколада. Примитивы
+	-- вызываются от корпуса к рельефу, поэтому верхний видимый слой естественно
+	-- перезаписывает нижний — ровно как при обычном рендере плитки.
+	local x = math.floor(position.X / columnWidth) * columnWidth
+	local right = position.X + size.X
+	while x < right - 1e-6 do
+		local left = math.max(x, position.X)
+		local columnRight = math.min(x + columnWidth, right)
+		local width = columnRight - left
+		local sampleX = left + width * 0.5
+		local top, bottom = roundedVerticalBounds(position, size, radius, sampleX)
+		local boundary = Geom.lineYAtX(line, x + columnWidth * 0.5)
+		local sourceY = boundary + extension + boundarySampleInset
+		if sourceY >= top - 0.05 and sourceY <= bottom + 0.05 then
+			colorsByX[x] = color
+		end
+		x += width
+	end
+end
+
+local function renderUpperExtensionRect(
+	parent: Instance,
+	line: Geom.Line,
+	extension: number,
+	position: Vector2,
+	size: Vector2,
+	radius: number,
+	color: Color3,
 	columnWidth: number,
 	maskZIndex: number,
 	columnsByX: { [number]: StretchColumn },
 	columns: { StretchColumn },
 	boundarySampleInset: number
 )
-	-- Берём цвет непосредственно над резом и продолжаем его вниз. Это имитирует
-	-- растяжение уже видимого спрайта: в кромке не может внезапно появиться
-	-- скруглённый угол или новая рамка, лежавшая ниже исходной диагонали.
+	-- На каждую экранную колонку существует только один сплошной заполнитель.
+	-- Мы меняем его верхний цвет по правилам обычного наложения примитивов, но
+	-- никогда не копируем внутрь полосы отдельные рамки и скруглённые фигуры.
+	-- Поэтому диагональ не может породить новые углы и вертикальные «хвосты».
 	local x = math.floor(position.X / columnWidth) * columnWidth
 	local right = position.X + size.X
 	while x < right - 1e-6 do
@@ -232,21 +265,27 @@ local function renderUpperExtensionRect(
 				mask.BackgroundTransparency = 1
 				mask.ClipsDescendants = true
 				mask.Visible = false
+				local fill = makeFrame(
+					mask,
+					"StretchFill",
+					Vector2.zero,
+					Vector2.new(columnWidth + 0.08, extension + 0.08),
+					color,
+					maskZIndex
+				)
 				column = {
 					frame = mask,
+					fill = fill,
 					fullHeight = extension + 0.08,
+					x = x,
+					topColor = color,
 				}
 				columnsByX[x] = column
 				table.insert(columns, column)
+			else
+				column.topColor = color
+				column.fill.BackgroundColor3 = color
 			end
-			makeFrame(
-				column.frame,
-				name .. "Stretch",
-				Vector2.new(left - x, 0),
-				Vector2.new(width + 0.08, extension + 0.08),
-				color,
-				zIndex
-			)
 		end
 		x += width
 	end
@@ -402,6 +441,17 @@ function Game:renderPrimitive(
 	zOffset: number
 )
 	local columnWidth = math.max(1, self.trick.clipColumnWidth)
+	sampleLowerExtensionColor(
+		self.diagonal,
+		self.trick.opticalStretchRows * self.tileHeight,
+		position,
+		size,
+		radius,
+		color,
+		columnWidth,
+		self.stretchBottomColorsByX,
+		self.trick.opticalBoundarySampleInset
+	)
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
 		-- Не создаём невидимые копии долек за пределами прямоугольного crop.
@@ -431,12 +481,10 @@ function Game:renderPrimitive(
 				piece.surface,
 				self.diagonal,
 				self.trick.opticalStretchRows * self.tileHeight,
-				name,
 				position,
 				size,
 				radius,
 				color,
-				zIndex,
 				columnWidth,
 				piece.baseZ + 10,
 				piece.stretchColumnsByX,
@@ -463,6 +511,7 @@ function Game:renderPrimitive(
 end
 
 function Game:renderChocolate()
+	self.stretchBottomColorsByX = {}
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
 		clear(piece.surface)
@@ -515,6 +564,22 @@ function Game:renderChocolate()
 				Theme.chocolateRaised,
 				5
 			)
+		end
+	end
+
+	-- Один UIGradient соединяет реальные цвета по обе стороны будущего шва.
+	-- Сам заполнитель остаётся полноразмерным, а маска открывает его постепенно:
+	-- в ходе перетаскивания не возникает ни скачка площади, ни новых фасок.
+	for _, pieceName in { "upperLeft", "upperRight" } do
+		for _, column: StretchColumn in self.pieces[pieceName].stretchColumns do
+			local bottomColor = self.stretchBottomColorsByX[column.x] or column.topColor
+			local gradient = Instance.new("UIGradient")
+			gradient.Rotation = 90
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, column.topColor),
+				ColorSequenceKeypoint.new(1, bottomColor),
+			})
+			gradient.Parent = column.fill
 		end
 	end
 end

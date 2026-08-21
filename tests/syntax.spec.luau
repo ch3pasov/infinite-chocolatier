@@ -36,6 +36,11 @@ return function(harness)
 		harness.equals(growth > movement, true)
 		-- Кромка продолжает пиксель над резом, а не открывает детали снизу.
 		harness.equals(source:find("local sourceY = boundary - boundarySampleInset", 1, true) ~= nil, true)
+		-- В шве существует один цветовой мост, а не отдельные копии
+		-- Bevel/Face/Relief, обрубавшие скругления на диагонали.
+		harness.equals(source:find('\"StretchFill\"', 1, true) ~= nil, true)
+		harness.equals(source:find('name .. \"Stretch\"', 1, true), nil)
+		harness.equals(source:find("ColorSequenceKeypoint.new(1, bottomColor)", 1, true) ~= nil, true)
 	end)
 
 	harness.test("следующий разрез начинается только после отпускания", function()
