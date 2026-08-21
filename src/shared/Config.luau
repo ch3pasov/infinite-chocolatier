@@ -51,16 +51,17 @@ Config.Trick = {
 	maxBoardHeight = 520,
 	minBoardWidth = 250,
 	minBoardHeight = 350,
-	-- В оригинальной рисовке дольки почти соприкасаются: широкая тёмная
-	-- бороздка и круглые углы превращали растяжение кромки в заметный «усик».
-	tileGapRatio = 0.028,
-	tileGapMinimum = 1,
+	-- Дольки остаются объёмными и шоколадными. Убирать заметный уголок нужно
+	-- способом растяжения кромки, а не превращением всего рельефа в плоскую
+	-- прямоугольную сетку.
+	tileGapRatio = 0.055,
+	tileGapMinimum = 3,
 	bevelRatio = 0.075,
-	bevelMinimum = 2,
-	cornerRatio = 0.045,
-	cornerMinimum = 2,
-	faceCornerMinimum = 1,
-	reliefCornerMinimum = 1,
+	bevelMinimum = 3,
+	cornerRatio = 0.12,
+	cornerMinimum = 6,
+	faceCornerMinimum = 4,
+	reliefCornerMinimum = 3,
 	-- Только пересечённые диагональю примитивы раскладываются на колонки.
 	-- Один пиксель убирает ступеньку, а готовая область двигается одним Frame.
 	clipColumnWidth = 1,
