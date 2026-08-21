@@ -34,6 +34,8 @@ return function(harness)
 		local movement = assert(source:find("function Game:setLargeProgress", 1, true))
 		local growth = assert(source:find("self:setOpticalGrowth(self.largeProgress)", movement, true))
 		harness.equals(growth > movement, true)
+		-- Кромка продолжает пиксель над резом, а не открывает детали снизу.
+		harness.equals(source:find("local sourceY = boundary - boundarySampleInset", 1, true) ~= nil, true)
 	end)
 
 	harness.test("следующий разрез начинается только после отпускания", function()

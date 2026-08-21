@@ -67,6 +67,13 @@ return function(harness)
 		-- Линейный коэффициент связывает рост с рукой игрока: 25% жеста дают
 		-- 25% высоты, без внезапного появления всей полосы в первом кадре.
 		harness.near(Config.Trick.opticalGrowthPower, 1)
+		harness.equals(Config.Trick.opticalBoundarySampleInset > 0, true)
+	end)
+
+	harness.test("рисунок близок к тонким прямым границам референса", function()
+		harness.equals(Config.Trick.tileGapRatio < Config.Trick.bevelRatio, true)
+		harness.equals(Config.Trick.cornerRatio < Config.Trick.bevelRatio, true)
+		harness.equals(Config.Trick.tileGapMinimum <= Config.Trick.bevelMinimum, true)
 	end)
 
 	harness.test("сервер выдаёт ровно одну дольку", function()

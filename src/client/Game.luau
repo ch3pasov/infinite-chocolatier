@@ -201,13 +201,12 @@ local function renderUpperExtensionRect(
 	columnWidth: number,
 	maskZIndex: number,
 	columnsByX: { [number]: StretchColumn },
-	columns: { StretchColumn }
+	columns: { StretchColumn },
+	boundarySampleInset: number
 )
-	-- Цветные слои рассчитываются один раз, но лежат внутри твёрдых масок
-	-- нулевой высоты. Во время жеста растёт именно геометрическая высота масок,
-	-- а не прозрачность шоколада. Одна общая маска на X-колонку обрезает сразу
-	-- основу, рамку и рельеф, поэтому на слабом ноутбуке обновляется лишь узкая
-	-- диагональная кромка.
+	-- Берём цвет непосредственно над резом и продолжаем его вниз. Это имитирует
+	-- растяжение уже видимого спрайта: в кромке не может внезапно появиться
+	-- скруглённый угол или новая рамка, лежавшая ниже исходной диагонали.
 	local x = math.floor(position.X / columnWidth) * columnWidth
 	local right = position.X + size.X
 	while x < right - 1e-6 do
@@ -218,9 +217,8 @@ local function renderUpperExtensionRect(
 		local top, bottom = roundedVerticalBounds(position, size, radius, sampleX)
 		local maskSampleX = x + columnWidth * 0.5
 		local boundary = Geom.lineYAtX(line, maskSampleX)
-		local extensionTop = math.max(top, math.min(bottom, boundary))
-		local extensionBottom = math.min(bottom, boundary + extension)
-		if extensionBottom - extensionTop > 0.05 then
+		local sourceY = boundary - boundarySampleInset
+		if sourceY >= top - 0.05 and sourceY <= bottom + 0.05 then
 			local column = columnsByX[x]
 			if not column then
 				local mask = makeFrame(
@@ -244,8 +242,8 @@ local function renderUpperExtensionRect(
 			makeFrame(
 				column.frame,
 				name .. "Stretch",
-				Vector2.new(left - x, extensionTop - boundary),
-				Vector2.new(width + 0.08, extensionBottom - extensionTop + 0.08),
+				Vector2.new(left - x, 0),
+				Vector2.new(width + 0.08, extension + 0.08),
 				color,
 				zIndex
 			)
@@ -442,7 +440,8 @@ function Game:renderPrimitive(
 				columnWidth,
 				piece.baseZ + 10,
 				piece.stretchColumnsByX,
-				piece.stretchColumns
+				piece.stretchColumns,
+				self.trick.opticalBoundarySampleInset
 			)
 		elseif piece.spec.clip == "lower" then
 			renderClippedRoundedRect(
@@ -472,9 +471,9 @@ function Game:renderChocolate()
 	end
 
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
-	local gap = math.max(3, round(tileMin * self.trick.tileGapRatio))
-	local bevel = math.max(3, round(tileMin * self.trick.bevelRatio))
-	local corner = math.max(6, round(tileMin * self.trick.cornerRatio))
+	local gap = math.max(self.trick.tileGapMinimum, round(tileMin * self.trick.tileGapRatio))
+	local bevel = math.max(self.trick.bevelMinimum, round(tileMin * self.trick.bevelRatio))
+	local corner = math.max(self.trick.cornerMinimum, round(tileMin * self.trick.cornerRatio))
 
 	self:renderPrimitive(
 		"BarBody",
@@ -501,7 +500,7 @@ function Game:renderChocolate()
 				`Tile{row + 1}_{column + 1}Face`,
 				tilePosition + Vector2.new(bevel, bevel),
 				tileSize - Vector2.new(bevel * 2, bevel * 2),
-				math.max(4, corner - bevel),
+				math.max(self.trick.faceCornerMinimum, corner - bevel),
 				Theme.chocolate,
 				4
 			)
@@ -512,7 +511,7 @@ function Game:renderChocolate()
 				`Tile{row + 1}_{column + 1}Relief`,
 				tilePosition + Vector2.new(panelInsetX, panelInsetY),
 				tileSize - Vector2.new(panelInsetX * 2, panelInsetY * 2),
-				math.max(3, corner - bevel),
+				math.max(self.trick.reliefCornerMinimum, corner - bevel),
 				Theme.chocolateRaised,
 				5
 			)
