@@ -24,4 +24,12 @@ return function(harness)
 			luau.compile(fs.readFile(path))
 		end)
 	end
+
+	harness.test("оптическая кромка не проявляется во время движения", function()
+		local source = fs.readFile("src/client/Game.luau")
+		-- Регрессия из записи 2026-08-21: прозрачный CanvasGroup выдавал
+		-- фокус, потому что шоколад заметно дорисовывался прямо под курсором.
+		harness.equals(source:find("GroupTransparency", 1, true), nil)
+		harness.equals(source:find("setOpticalStretch", 1, true), nil)
+	end)
 end

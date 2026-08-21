@@ -346,27 +346,12 @@ function Game:buildPieces()
 		surface.BackgroundTransparency = 1
 		surface.ClipsDescendants = false
 
-		local opticalSurface = nil
-		if spec.clip == "upper" then
-			local group = Instance.new("CanvasGroup")
-			group.Name = "OpticalStretch"
-			group.Position = UDim2.fromOffset(-origin.X, -origin.Y)
-			group.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
-			group.BackgroundTransparency = 1
-			group.GroupTransparency = 1
-			group.ClipsDescendants = false
-			group.ZIndex = baseZ
-			group.Parent = crop
-			opticalSurface = group
-		end
-
 		self.pieces[name] = {
 			name = name,
 			spec = spec,
 			motion = motion,
 			crop = crop,
 			surface = surface,
-			opticalSurface = opticalSurface,
 			origin = origin,
 			size = size,
 			offset = Vector2.zero,
@@ -409,20 +394,22 @@ function Game:renderPrimitive(
 				zIndex,
 				columnWidth
 			)
-			if piece.opticalSurface then
-				renderUpperExtensionRect(
-					piece.opticalSurface,
-					self.diagonal,
-					self.trick.opticalStretchRows * self.tileHeight,
-					name,
-					position,
-					size,
-					radius,
-					color,
-					zIndex,
-					columnWidth
-				)
-			end
+			-- Искажённая кромка существует с первого кадра. Пока плитка целая,
+			-- она пиксель-в-пиксель перекрывает тот же рисунок нижней части и
+			-- потому незаметна. После разреза кусок уже имеет готовую форму:
+			-- при перетаскивании ничего не проявляется и не «дорисовывается».
+			renderUpperExtensionRect(
+				piece.surface,
+				self.diagonal,
+				self.trick.opticalStretchRows * self.tileHeight,
+				name,
+				position,
+				size,
+				radius,
+				color,
+				zIndex,
+				columnWidth
+			)
 		elseif piece.spec.clip == "lower" then
 			renderClippedRoundedRect(
 				piece.surface,
@@ -446,9 +433,6 @@ function Game:renderChocolate()
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
 		clear(piece.surface)
-		if piece.opticalSurface then
-			clear(piece.opticalSurface)
-		end
 	end
 
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
@@ -496,16 +480,6 @@ function Game:renderChocolate()
 				Theme.chocolateRaised,
 				5
 			)
-		end
-	end
-end
-
-function Game:setOpticalStretch(progress: number)
-	local visible = math.pow(math.clamp(progress, 0, 1), self.trick.opticalStretchRevealPower)
-	for _, name in { "upperLeft", "upperRight" } do
-		local surface = self.pieces[name].opticalSurface
-		if surface then
-			surface.GroupTransparency = 1 - visible
 		end
 	end
 end
@@ -698,7 +672,6 @@ end
 
 function Game:setLargeProgress(progress: number)
 	self.largeProgress = math.clamp(progress, 0, 1)
-	self:setOpticalStretch(self.largeProgress)
 	for _, name in { "upperLeft", "upperRight" } do
 		local from = self:definitionOffset(self.trick.exploded[name])
 		local target = self:definitionOffset(self.recipe.slides[name])
@@ -845,7 +818,6 @@ function Game:endDrag()
 			self:setLargeProgress(1)
 			self:finishLargeAssembly()
 		else
-			self:setOpticalStretch(0)
 			self.active = "snappingLarge"
 			local targets = {}
 			for _, name in { "upperLeft", "upperRight" } do
@@ -968,7 +940,6 @@ end
 
 function Game:beginReset()
 	self.active = "resetting"
-	self:setOpticalStretch(0)
 	clear(self.hintLayer)
 	clear(self.seamLayer)
 	if self.rewardMarker then
@@ -993,7 +964,6 @@ function Game:resetRound()
 	self.largeProgress = 0
 	self.stripProgress = 0
 	self.drag = nil
-	self:setOpticalStretch(0)
 	for _, name in self.trick.pieceOrder do
 		self:setPieceOffset(name, Vector2.zero)
 	end
