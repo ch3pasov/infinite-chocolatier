@@ -228,6 +228,7 @@ function Game.new(gui: ScreenGui, remotes)
 	self.recipe = Recipe.build(Config.Recipe)
 	self.trick = Config.Trick
 	self.active = "cut"
+	self.cutIndex = 1
 	self.cutProgress = 0
 	self.drag = nil
 	self.pieces = {}
@@ -606,7 +607,6 @@ function Game:drawProgress(path: CutPath, progress: number)
 end
 
 function Game:drawSeam(path: CutPath)
-	clear(self.seamLayer)
 	for _, segment in path.geom.segments do
 		makeSegment(self.seamLayer, segment.a, segment.b, math.max(3, self.tileWidth * 0.045), Theme.chocolateShadow, 0.02, 410)
 		makeSegment(self.seamLayer, segment.a, segment.b, 1, Theme.chocolateEdge, 0.12, 411)
@@ -638,7 +638,7 @@ end
 function Game:showCutHint()
 	clear(self.hintLayer)
 	clear(self.progressLayer)
-	local path = self.paths[1]
+	local path = self.paths[self.cutIndex]
 	self:drawDashed(path, self.hintLayer, Theme.accentSoft)
 	local anchor = Geom.pointAt(path.geom, self.cutProgress)
 	local pipSize = math.max(18, math.min(self.tileWidth, self.tileHeight) * 0.32)
@@ -651,6 +651,8 @@ function Game:showCutHint()
 		620,
 		math.floor(pipSize / 2)
 	)
+	local label = self.trick.cutLabels[self.cutIndex]
+	self.status.Text = `Разрез {self.cutIndex} из {#self.paths}: {label}`
 end
 
 function Game:drawArrow(startPoint: Vector2, finish: Vector2)
@@ -724,7 +726,7 @@ function Game:bindInput()
 
 		local point = self:screenToBoard(input.Position)
 		if self.active == "cut" then
-			local path = self.paths[1]
+			local path = self.paths[self.cutIndex]
 			local anchor = Geom.pointAt(path.geom, self.cutProgress)
 			local _, arc = Geom.project(path.geom, point)
 			if (point - anchor).Magnitude <= Config.Cutting.startRadius
@@ -789,7 +791,7 @@ function Game:updateDrag(point: Vector2)
 	end
 
 	if drag.kind == "cut" then
-		local path = self.paths[1]
+		local path = self.paths[self.cutIndex]
 		local distance, arc = Geom.project(path.geom, point)
 		if distance > Config.Cutting.slipTolerance then
 			drag.progress = 0
@@ -830,7 +832,7 @@ function Game:endDrag()
 
 	if drag.kind == "cut" then
 		if self.active == "cut" and self.startPip then
-			local path = self.paths[1]
+			local path = self.paths[self.cutIndex]
 			local anchor = Geom.pointAt(path.geom, self.cutProgress)
 			self.startPip.Position = UDim2.fromOffset(
 				anchor.X - self.startPip.AbsoluteSize.X / 2,
@@ -877,16 +879,24 @@ function Game:finishCut()
 		return
 	end
 	self.drag = nil
-	local path = self.paths[1]
+	local path = self.paths[self.cutIndex]
 	if self.startPip then
 		self.startPip:Destroy()
 		self.startPip = nil
 	end
 	clear(self.hintLayer)
-	self:drawProgress(path, path.geom.length)
+	clear(self.progressLayer)
 	self:drawSeam(path)
+
+	if self.cutIndex < #self.paths then
+		self.cutIndex += 1
+		self.cutProgress = 0
+		self:showCutHint()
+		return
+	end
+
 	self.active = "exploding"
-	self.status.Text = "Разрез готов — плитка раскрывается на пять исходных частей"
+	self.status.Text = "Все четыре разреза готовы — плитка раскрывается на пять частей"
 
 	local targets = {}
 	for _, name in self.trick.pieceOrder do
@@ -978,6 +988,7 @@ end
 function Game:resetRound()
 	self:cancelTweens()
 	self.active = "cut"
+	self.cutIndex = 1
 	self.cutProgress = 0
 	self.largeProgress = 0
 	self.stripProgress = 0
@@ -992,7 +1003,6 @@ function Game:resetRound()
 	end
 	clear(self.seamLayer)
 	clear(self.progressLayer)
-	self.status.Text = "Проведи по диагонали: остальные разъёмы уже лежат в бороздках"
 	self:showCutHint()
 end
 

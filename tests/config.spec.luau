@@ -3,12 +3,26 @@ return function(harness)
 	local Geom = require("../src/shared/Geom")
 	local V = Vector2
 
-	harness.test("рецепт использует один диагональный рез", function()
-		harness.equals(#Config.Recipe.cuts, 1)
+	harness.test("рецепт требует все четыре разреза пяти частей", function()
+		harness.equals(#Config.Recipe.cuts, 4)
 		harness.equals(#Config.Recipe.cuts[1], 2)
 		harness.equals(Config.Recipe.cuts[1][1][1], 0)
 		harness.equals(Config.Recipe.cuts[1][2][1], Config.Board.columns)
 		harness.equals(Config.Recipe.cuts[1][2][2], 1.5)
+
+		local rightSplit = Config.Recipe.cuts[2]
+		harness.equals(rightSplit[1][1], 3)
+		harness.equals(rightSplit[2][1], 3)
+		harness.near(rightSplit[2][2], 2.3)
+
+		local topSplit = Config.Recipe.cuts[3]
+		harness.equals(topSplit[1][2], 1)
+		harness.equals(topSplit[2][2], 1)
+
+		local sliceSplit = Config.Recipe.cuts[4]
+		harness.equals(sliceSplit[1][1], 1)
+		harness.equals(sliceSplit[2][1], 1)
+		harness.equals(#Config.Trick.cutLabels, #Config.Recipe.cuts)
 	end)
 
 	harness.test("две крупные части образуют общую новую диагональ", function()
