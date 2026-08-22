@@ -57,7 +57,7 @@ jobs:
             --output "$response_file" \
             --write-out "%{http_code}" \
             --request POST \
-            --url "https://apis.roblox.com/universes/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published" \
+            --url "https://apis.roblox.com/universes/v1/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published" \
             --header "x-api-key: ${ROBLOX_API_KEY}" \
             --header "Content-Type: application/xml" \
             --data-binary "@${RELEASE_FILE}")"
