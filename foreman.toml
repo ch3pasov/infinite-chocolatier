@@ -1,0 +1,4 @@
+# CI использует тот же набор инструментов, что и локальная проверка проекта.
+[tools]
+rojo = { github = "rojo-rbx/rojo", version = "7.7.0" }
+lune = { github = "lune-org/lune", version = "0.10.5" }
