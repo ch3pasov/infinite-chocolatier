@@ -50,23 +50,37 @@ jobs:
             exit 1
           fi
 
-          response_file="$(mktemp)"
-          http_code="$(curl \
-            --silent \
-            --show-error \
-            --output "$response_file" \
-            --write-out "%{http_code}" \
-            --request POST \
-            --url "https://apis.roblox.com/universes/v1/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published" \
-            --header "x-api-key: ${ROBLOX_API_KEY}" \
-            --header "Content-Type: application/xml" \
-            --data-binary "@${RELEASE_FILE}")"
+          max_attempts=5
+          http_code=""
+          response_file=""
 
-          if [[ "$http_code" != 2?? ]]; then
-            echo "::error::Roblox Open Cloud вернул HTTP $http_code."
+          for attempt in $(seq 1 "$max_attempts"); do
+            response_file="$(mktemp)"
+            http_code="$(curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              --url "https://apis.roblox.com/universes/v1/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published" \
+              --header "x-api-key: ${ROBLOX_API_KEY}" \
+              --header "Content-Type: application/xml" \
+              --data-binary "@${RELEASE_FILE}")"
+
+            if [[ "$http_code" == 2?? ]]; then
+              break
+            fi
+
+            echo "::warning::Roblox Open Cloud вернул HTTP $http_code (попытка $attempt/$max_attempts)."
             cat "$response_file"
-            exit 1
-          fi
+
+            if [[ "$http_code" != "409" || "$attempt" == "$max_attempts" ]]; then
+              echo "::error::Публикация через Roblox Open Cloud не удалась."
+              exit 1
+            fi
+
+            sleep 30
+          done
 
           version_number="$(jq -er '.versionNumber | numbers' "$response_file")"
           echo "Опубликован Roblox versionNumber=${version_number}"
