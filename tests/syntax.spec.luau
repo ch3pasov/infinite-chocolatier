@@ -31,6 +31,14 @@ return function(harness)
 		-- фокус, потому что шоколад заметно дорисовывался прямо под курсором.
 		harness.equals(source:find("GroupTransparency", 1, true), nil)
 		harness.equals(source:find("setOpticalStretch", 1, true), nil)
+		-- Подложка обязана быть отдельным младшим sibling: иначе заранее
+		-- подготовленные рамки перекрывают обычные дольки до первого разреза.
+		local extensionLayer = assert(source:find('makeLayer(self.board, "OpticalExtensions", 4)', 1, true))
+		local pieceLayer = assert(source:find('makeLayer(self.board, "PhysicalPieces", 5)', extensionLayer, true))
+		harness.equals(extensionLayer < pieceLayer, true)
+		harness.equals(source:find("renderUpperExtensionRect(\n\t\t\t\tpiece.extensionSurface", 1, true) ~= nil, true)
+		harness.equals(source:find("piece.extensionMotion.Position", 1, true) ~= nil, true)
+		harness.equals(source:find("local extensionTween = TweenService:Create", 1, true) ~= nil, true)
 	end)
 
 	harness.test("следующий разрез начинается только после отпускания", function()

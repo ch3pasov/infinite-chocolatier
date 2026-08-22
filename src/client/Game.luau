@@ -273,6 +273,11 @@ function Game.new(gui: ScreenGui, remotes)
 	self.board.BackgroundTransparency = 1
 	self.board.ClipsDescendants = false
 
+	-- Готовая Curry-кромка живёт в отдельной подложке. Если держать её внутри
+	-- верхних частей, Sibling-ZIndex поднимает её над основанием и она уродует
+	-- целые дольки ещё до разреза. Подложка движется вместе с кусками, но видна
+	-- только в реально открывшемся зазоре.
+	self.extensionLayer = makeLayer(self.board, "OpticalExtensions", 4)
 	self.pieceLayer = makeLayer(self.board, "PhysicalPieces", 5)
 	self.seamLayer = makeLayer(self.board, "PhysicalSeams", 400)
 	self.hintLayer = makeLayer(self.board, "Hints", 500)
@@ -300,7 +305,7 @@ function Game:layout()
 	self.boardHeight = self.tileHeight * self.recipe.rows
 	self.board.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	self.board.Position = UDim2.fromScale(0.5, Config.Board.positionY)
-	for _, layer in { self.pieceLayer, self.seamLayer, self.hintLayer, self.progressLayer } do
+	for _, layer in { self.extensionLayer, self.pieceLayer, self.seamLayer, self.hintLayer, self.progressLayer } do
 		layer.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	end
 
@@ -325,6 +330,7 @@ function Game:buildPaths(): { CutPath }
 end
 
 function Game:buildPieces()
+	clear(self.extensionLayer)
 	clear(self.pieceLayer)
 	self.pieces = {}
 
@@ -346,6 +352,29 @@ function Game:buildPieces()
 		surface.BackgroundTransparency = 1
 		surface.ClipsDescendants = false
 
+		local extensionMotion: Frame? = nil
+		local extensionSurface: Frame? = nil
+		if spec.clip == "upper" then
+			extensionMotion = makeFrame(self.extensionLayer, name .. "Extension", origin, size, Theme.background, baseZ)
+			extensionMotion.BackgroundTransparency = 1
+			extensionMotion.ClipsDescendants = false
+
+			local extensionCrop = makeFrame(extensionMotion, "Crop", Vector2.zero, size, Theme.background, baseZ)
+			extensionCrop.BackgroundTransparency = 1
+			extensionCrop.ClipsDescendants = true
+
+			extensionSurface = makeFrame(
+				extensionCrop,
+				"Surface",
+				-origin,
+				Vector2.new(self.boardWidth, self.boardHeight),
+				Theme.background,
+				baseZ
+			)
+			extensionSurface.BackgroundTransparency = 1
+			extensionSurface.ClipsDescendants = false
+		end
+
 		self.pieces[name] = {
 			name = name,
 			spec = spec,
@@ -356,6 +385,8 @@ function Game:buildPieces()
 			size = size,
 			offset = Vector2.zero,
 			baseZ = baseZ,
+			extensionMotion = extensionMotion,
+			extensionSurface = extensionSurface,
 		}
 	end
 end
@@ -394,12 +425,12 @@ function Game:renderPrimitive(
 				zIndex,
 				columnWidth
 			)
-			-- Искажённая кромка существует с первого кадра. Пока плитка целая,
-			-- она пиксель-в-пиксель перекрывает тот же рисунок нижней части и
-			-- потому незаметна. После разреза кусок уже имеет готовую форму:
-			-- при перетаскивании ничего не проявляется и не «дорисовывается».
+			-- Искажённая кромка существует с первого кадра, но лежит в отдельной
+			-- подложке ниже всех настоящих долек. После разделения подложка едет
+			-- вместе с куском и появляется только в открытом зазоре: при жесте
+			-- ничего не проявляется, не создаётся и не «дорисовывается».
 			renderUpperExtensionRect(
-				piece.surface,
+				piece.extensionSurface,
 				self.diagonal,
 				self.trick.opticalStretchRows * self.tileHeight,
 				name,
@@ -433,6 +464,9 @@ function Game:renderChocolate()
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
 		clear(piece.surface)
+		if piece.extensionSurface then
+			clear(piece.extensionSurface)
+		end
 	end
 
 	local tileMin = math.min(self.tileWidth, self.tileHeight)
@@ -498,6 +532,9 @@ function Game:setPieceOffset(name: string, offset: Vector2)
 	local piece = self.pieces[name]
 	piece.offset = offset
 	piece.motion.Position = UDim2.fromOffset(piece.origin.X + offset.X, piece.origin.Y + offset.Y)
+	if piece.extensionMotion then
+		piece.extensionMotion.Position = UDim2.fromOffset(piece.origin.X + offset.X, piece.origin.Y + offset.Y)
+	end
 end
 
 function Game:cancelTweens()
@@ -521,6 +558,15 @@ function Game:tweenOffsets(targets, duration: number, callback)
 		)
 		table.insert(self.tweens, tween)
 		tween:Play()
+		if piece.extensionMotion then
+			local extensionTween = TweenService:Create(
+				piece.extensionMotion,
+				TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Position = UDim2.fromOffset(piece.origin.X + target.X, piece.origin.Y + target.Y) }
+			)
+			table.insert(self.tweens, extensionTween)
+			extensionTween:Play()
+		end
 	end
 	task.delay(duration + 0.02, function()
 		if self.animationToken == token then
