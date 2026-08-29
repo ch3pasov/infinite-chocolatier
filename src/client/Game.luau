@@ -1203,19 +1203,62 @@ function Game:finishRound()
 end
 
 function Game:beginReset()
-	self.active = "resetting"
+	self:cancelTweens()
+	self.active = "collecting"
 	clear(self.hintLayer)
 	clear(self.seamLayer)
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil
 	end
-	self.status.Text = "Возвращаем исходные части для нового раунда"
-	local targets = {}
+
+	-- Никакой обратной перемотки: собранная плитка остаётся на том же месте.
+	-- Канонический слой совпадает с ней пиксель в пиксель и скрывает только
+	-- техническую подготовку полигонов следующего раунда.
+	self.intactLayer.Visible = true
+	local rewardName = self.trick.rewardPiece
 	for _, name in self.trick.pieceOrder do
-		targets[name] = Vector2.zero
+		if name ~= rewardName then
+			self:setPieceOffset(name, Vector2.zero)
+		end
 	end
-	self:tweenOffsets(targets, self.trick.resetDuration, function()
+
+	-- В референсе внешняя долька постепенно исчезает, а не возвращается вместе
+	-- с кусками. Непрозрачное окно растёт от правого края (со стороны плитки)
+	-- и «съедает» только уже начисленную исходную дольку.
+	local piece = self.pieces[rewardName]
+	local wipe = makeFrame(
+		piece.crop,
+		"RewardCollectionWipe",
+		Vector2.new(piece.size.X, 0),
+		Vector2.new(0, piece.size.Y),
+		Theme.background,
+		850
+	)
+	wipe.AnchorPoint = Vector2.new(1, 0)
+	self.rewardWipe = wipe
+	self.status.Text = "Долька собрана — плитка остаётся целой без обратной перемотки"
+
+	local duration = self.trick.collectionDuration
+	local token = self.animationToken
+	local tween = TweenService:Create(
+		wipe,
+		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+		{ Size = UDim2.fromOffset(piece.size.X, piece.size.Y) }
+	)
+	table.insert(self.tweens, tween)
+	tween:Play()
+	task.delay(duration + 0.02, function()
+		if self.animationToken ~= token or self.active ~= "collecting" then
+			return
+		end
+		self.tweens = {}
+		piece.motion.Visible = false
+		self:setPieceOffset(rewardName, Vector2.zero)
+		if self.rewardWipe then
+			self.rewardWipe:Destroy()
+			self.rewardWipe = nil
+		end
 		self:resetRound()
 	end)
 end
@@ -1229,9 +1272,18 @@ function Game:resetRound()
 	self.stripProgress = 0
 	self.drag = nil
 	for _, name in self.trick.pieceOrder do
+		local piece = self.pieces[name]
+		piece.motion.Visible = true
+		if piece.extensionMotion then
+			piece.extensionMotion.Visible = true
+		end
 		self:setPieceOffset(name, Vector2.zero)
 	end
 	self.intactLayer.Visible = true
+	if self.rewardWipe then
+		self.rewardWipe:Destroy()
+		self.rewardWipe = nil
+	end
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil

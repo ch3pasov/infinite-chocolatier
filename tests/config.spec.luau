@@ -78,7 +78,9 @@ return function(harness)
 		harness.equals(Config.Cutting.completeAt <= 1, true)
 	end)
 
-	harness.test("результат остаётся видимым до автоматического сброса", function()
+	harness.test("результат остаётся видимым до сбора внешней дольки", function()
 		harness.equals(Config.Trick.resetDelay >= 2, true)
+		harness.equals(Config.Trick.collectionDuration > 0, true)
+		harness.equals(Config.Trick.resetDuration, nil)
 	end)
 end
