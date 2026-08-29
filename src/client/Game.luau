@@ -121,6 +121,34 @@ local function makeCanonicalTileTemplate(
 	return template
 end
 
+local function offsetZIndices(root: GuiObject, offset: number)
+	root.ZIndex += offset
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("GuiObject") then
+			descendant.ZIndex += offset
+		end
+	end
+end
+
+local function cloneCanonicalTile(
+	parent: Instance,
+	template: Frame,
+	name: string,
+	position: Vector2,
+	zOffset: number
+): Frame
+	-- Во всех состояниях игры существует ровно один рисунок дольки. Даже
+	-- диагональные куски показывают не заново нарисованную фаску, а окно в
+	-- неизменённый клон этого шаблона.
+	local tile = template:Clone()
+	tile.Name = name
+	tile.Position = UDim2.fromOffset(position.X, position.Y)
+	tile.Visible = true
+	offsetZIndices(tile, zOffset)
+	tile.Parent = parent
+	return tile
+end
+
 local function makeSegment(
 	parent: Instance,
 	a: Vector2,
@@ -239,7 +267,7 @@ local function renderClippedRoundedRect(
 	end
 end
 
-local function renderUpperExtensionRect(
+local function renderUpperExtensionBody(
 	parent: Instance,
 	line: Geom.Line,
 	extension: number,
@@ -251,9 +279,8 @@ local function renderUpperExtensionRect(
 	zIndex: number,
 	columnWidth: number
 )
-	-- Это продолжение уже существующего спрайта, а не новая шоколадная часть.
-	-- Для каждой колонки берём только узкую область между настоящей нижней
-	-- границей верхнего полигона и её оптически растянутым положением.
+	-- Тёмная подложка не является рисунком дольки: она лишь закрывает щель под
+	-- клонами шаблона. Сам мотив ниже обрезается отдельной функцией.
 	local x = position.X
 	local right = position.X + size.X
 	while x < right - 1e-6 do
@@ -272,6 +299,69 @@ local function renderUpperExtensionRect(
 				color,
 				zIndex
 			)
+		end
+		x += width
+	end
+end
+
+local function renderClippedCanonicalTile(
+	parent: Instance,
+	template: Frame,
+	line: Geom.Line,
+	mode: string,
+	name: string,
+	position: Vector2,
+	size: Vector2,
+	extension: number,
+	zOffset: number,
+	columnWidth: number
+)
+	local upperCorners = rectCornerCount(line, position, size)
+	if mode == "upper" and upperCorners == 4 then
+		cloneCanonicalTile(parent, template, name, position, zOffset)
+		return
+	elseif mode == "upper" and upperCorners == 0 then
+		return
+	elseif mode == "lower" and upperCorners == 0 then
+		cloneCanonicalTile(parent, template, name, position, zOffset)
+		return
+	elseif mode == "lower" and upperCorners == 4 then
+		return
+	end
+
+	-- Roblox UI не имеет polygon clipping. Только дольки, которых касается
+	-- диагональ, делятся на узкие окна. В каждом окне находится клон ТОГО ЖЕ
+	-- CanonicalTileTemplate со смещением назад в исходную позицию. Поэтому
+	-- фаска и рельеф не могут стать другой формы ни на одном этапе.
+	local x = position.X
+	local right = position.X + size.X
+	while x < right - 1e-6 do
+		local width = math.min(columnWidth, right - x)
+		local sampleX = x + width * 0.5
+		local boundary = Geom.lineYAtX(line, sampleX)
+		local top = position.Y
+		local bottom = position.Y + size.Y
+		if mode == "upper" then
+			bottom = math.min(bottom, boundary)
+		elseif mode == "lower" then
+			top = math.max(top, boundary)
+		else
+			top = math.max(top, boundary)
+			bottom = math.min(bottom, boundary + extension)
+		end
+		if bottom - top > 0.05 then
+			local maskPosition = Vector2.new(x, top)
+			local mask = makeFrame(
+				parent,
+				name .. "Mask",
+				maskPosition,
+				Vector2.new(width + 0.08, bottom - top + 0.08),
+				Theme.background,
+				1 + zOffset
+			)
+			mask.BackgroundTransparency = 1
+			mask.ClipsDescendants = true
+			cloneCanonicalTile(mask, template, name .. "Slice", position - maskPosition, zOffset)
 		end
 		x += width
 	end
@@ -459,53 +549,33 @@ function Game:buildPieces()
 	end
 end
 
-function Game:renderPrimitive(
-	name: string,
-	position: Vector2,
-	size: Vector2,
-	radius: number,
-	color: Color3,
-	zOffset: number
-)
+function Game:renderBarBody(corner: number)
 	local columnWidth = math.max(1, self.trick.clipColumnWidth)
 	for _, pieceName in self.trick.pieceOrder do
 		local piece = self.pieces[pieceName]
-		-- Не создаём невидимые копии долек за пределами прямоугольного crop.
-		-- Это особенно важно для двух верхних частей на слабом ноутбуке.
-		if position.X + size.X <= piece.origin.X
-			or position.X >= piece.origin.X + piece.size.X
-			or position.Y + size.Y <= piece.origin.Y
-			or position.Y >= piece.origin.Y + piece.size.Y
-		then
-			continue
-		end
-		local zIndex = piece.baseZ + zOffset
+		local zIndex = piece.baseZ + 1
 		if piece.spec.clip == "upper" then
 			renderClippedRoundedRect(
 				piece.surface,
 				self.diagonal,
 				true,
-				name,
-				position,
-				size,
-				radius,
-				color,
+				"BarBody",
+				Vector2.zero,
+				Vector2.new(self.boardWidth, self.boardHeight),
+				corner,
+				Theme.chocolateDark,
 				zIndex,
 				columnWidth
 			)
-			-- Искажённая кромка существует с первого кадра, но лежит в отдельной
-			-- подложке ниже всех настоящих долек. После разделения подложка едет
-			-- вместе с куском и появляется только в открытом зазоре: при жесте
-			-- ничего не проявляется, не создаётся и не «дорисовывается».
-			renderUpperExtensionRect(
+			renderUpperExtensionBody(
 				piece.extensionSurface,
 				self.diagonal,
 				self.trick.opticalStretchRows * self.tileHeight,
-				name,
-				position,
-				size,
-				radius,
-				color,
+				"BarBody",
+				Vector2.zero,
+				Vector2.new(self.boardWidth, self.boardHeight),
+				corner,
+				Theme.chocolateDark,
 				zIndex,
 				columnWidth
 			)
@@ -514,18 +584,116 @@ function Game:renderPrimitive(
 				piece.surface,
 				self.diagonal,
 				false,
-				name,
-				position,
-				size,
-				radius,
-				color,
+				"BarBody",
+				Vector2.zero,
+				Vector2.new(self.boardWidth, self.boardHeight),
+				corner,
+				Theme.chocolateDark,
 				zIndex,
 				columnWidth
 			)
 		else
-			makeFrame(piece.surface, name, position, size, color, zIndex, radius)
+			makeFrame(
+				piece.surface,
+				"BarBody",
+				Vector2.zero,
+				Vector2.new(self.boardWidth, self.boardHeight),
+				Theme.chocolateDark,
+				zIndex,
+				corner
+			)
 		end
 	end
+end
+
+function Game:renderCanonicalTilesForPieces(template: Frame)
+	local columnWidth = math.max(1, self.trick.clipColumnWidth)
+	local tileSize = Vector2.new(self.tileWidth, self.tileHeight)
+	local extension = self.trick.opticalStretchRows * self.tileHeight
+	for row = 0, self.recipe.rows - 1 do
+		for column = 0, self.recipe.cols - 1 do
+			local tilePosition = Vector2.new(column * self.tileWidth, row * self.tileHeight)
+			local tileName = `Tile{row + 1}_{column + 1}`
+			for _, pieceName in self.trick.pieceOrder do
+				local piece = self.pieces[pieceName]
+				-- Прямоугольный crop части сам обрежет крайние клоны. Здесь не
+				-- создаём клетки, которые с crop вообще не пересекаются.
+				if tilePosition.X + tileSize.X <= piece.origin.X
+					or tilePosition.X >= piece.origin.X + piece.size.X
+					or tilePosition.Y + tileSize.Y <= piece.origin.Y
+					or tilePosition.Y >= piece.origin.Y + piece.size.Y
+				then
+					continue
+				end
+
+				if piece.spec.clip == "upper" then
+					renderClippedCanonicalTile(
+						piece.surface,
+						template,
+						self.diagonal,
+						"upper",
+						tileName,
+						tilePosition,
+						tileSize,
+						0,
+						piece.baseZ,
+						columnWidth
+					)
+					renderClippedCanonicalTile(
+						piece.extensionSurface,
+						template,
+						self.diagonal,
+						"extension",
+						tileName .. "Extension",
+						tilePosition,
+						tileSize,
+						extension,
+						piece.baseZ,
+						columnWidth
+					)
+				elseif piece.spec.clip == "lower" then
+					renderClippedCanonicalTile(
+						piece.surface,
+						template,
+						self.diagonal,
+						"lower",
+						tileName,
+						tilePosition,
+						tileSize,
+						0,
+						piece.baseZ,
+						columnWidth
+					)
+				else
+					cloneCanonicalTile(piece.surface, template, tileName, tilePosition, piece.baseZ)
+				end
+			end
+		end
+	end
+end
+
+function Game:renderIntactChocolate(template: Frame, corner: number)
+	makeFrame(
+		self.intactLayer,
+		"BarBody",
+		Vector2.zero,
+		Vector2.new(self.boardWidth, self.boardHeight),
+		Theme.chocolateDark,
+		1,
+		corner
+	)
+	for row = 0, self.recipe.rows - 1 do
+		for column = 0, self.recipe.cols - 1 do
+			cloneCanonicalTile(
+				self.intactLayer,
+				template,
+				`Tile{row + 1}_{column + 1}`,
+				Vector2.new(column * self.tileWidth, row * self.tileHeight),
+				0
+			)
+		end
+	end
+	self.intactLayer.Visible = true
 end
 
 function Game:renderChocolate()
@@ -536,68 +704,9 @@ function Game:renderChocolate()
 			clear(piece.extensionSurface)
 		end
 	end
-
-	local gap, bevel, corner = tileVisualMetrics(self.tileWidth, self.tileHeight, self.trick)
-
-	self:renderPrimitive(
-		"BarBody",
-		Vector2.zero,
-		Vector2.new(self.boardWidth, self.boardHeight),
-		corner + gap,
-		Theme.chocolateDark,
-		2
-	)
-
-	for row = 0, self.recipe.rows - 1 do
-		for column = 0, self.recipe.cols - 1 do
-			local tilePosition = Vector2.new(column * self.tileWidth + gap, row * self.tileHeight + gap)
-			local tileSize = Vector2.new(self.tileWidth - gap * 2, self.tileHeight - gap * 2)
-			self:renderPrimitive(
-				`Tile{row + 1}_{column + 1}Bevel`,
-				tilePosition,
-				tileSize,
-				corner,
-				Theme.chocolateEdge,
-				3
-			)
-			self:renderPrimitive(
-				`Tile{row + 1}_{column + 1}Face`,
-				tilePosition + Vector2.new(bevel, bevel),
-				tileSize - Vector2.new(bevel * 2, bevel * 2),
-				math.max(4, corner - bevel),
-				Theme.chocolate,
-				4
-			)
-
-			local panelInsetX = bevel * 2.0
-			local panelInsetY = bevel * 2.5
-			self:renderPrimitive(
-				`Tile{row + 1}_{column + 1}Relief`,
-				tilePosition + Vector2.new(panelInsetX, panelInsetY),
-				tileSize - Vector2.new(panelInsetX * 2, panelInsetY * 2),
-				math.max(3, corner - bevel),
-				Theme.chocolateRaised,
-				5
-			)
-		end
-	end
-
-	self:renderIntactChocolate()
-end
-
-function Game:renderIntactChocolate()
 	clear(self.intactLayer)
-	local gap, bevel, corner = tileVisualMetrics(self.tileWidth, self.tileHeight, self.trick)
-	makeFrame(
-		self.intactLayer,
-		"BarBody",
-		Vector2.zero,
-		Vector2.new(self.boardWidth, self.boardHeight),
-		Theme.chocolateDark,
-		1,
-		corner + gap
-	)
 
+	local gap, bevel, corner = tileVisualMetrics(self.tileWidth, self.tileHeight, self.trick)
 	local template = makeCanonicalTileTemplate(
 		self.intactLayer,
 		self.tileWidth,
@@ -606,16 +715,9 @@ function Game:renderIntactChocolate()
 		bevel,
 		corner
 	)
-	for row = 0, self.recipe.rows - 1 do
-		for column = 0, self.recipe.cols - 1 do
-			local tile = template:Clone()
-			tile.Name = `Tile{row + 1}_{column + 1}`
-			tile.Position = UDim2.fromOffset(column * self.tileWidth, row * self.tileHeight)
-			tile.Visible = true
-			tile.Parent = self.intactLayer
-		end
-	end
-	self.intactLayer.Visible = true
+	self:renderBarBody(corner + gap)
+	self:renderCanonicalTilesForPieces(template)
+	self:renderIntactChocolate(template, corner + gap)
 end
 
 function Game:screenToBoard(position: Vector3 | Vector2): Vector2
