@@ -4,6 +4,7 @@
 *.rbxl.lock
 *.rbxlx.lock
 sourcemap.json
+local-recovery-backups/
 
 # Rokit
 .rokit/

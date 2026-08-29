@@ -65,6 +65,62 @@ local function makeLayer(parent: Instance, name: string, zIndex: number): Frame
 	return frame
 end
 
+local function tileVisualMetrics(tileWidth: number, tileHeight: number, trick)
+	local tileMin = math.min(tileWidth, tileHeight)
+	local gap = math.max(3, round(tileMin * trick.tileGapRatio))
+	local bevel = math.max(3, round(tileMin * trick.bevelRatio))
+	local corner = math.max(6, round(tileMin * trick.cornerRatio))
+	return gap, bevel, corner
+end
+
+local function makeCanonicalTileTemplate(
+	parent: Instance,
+	tileWidth: number,
+	tileHeight: number,
+	gap: number,
+	bevel: number,
+	corner: number
+): Frame
+	-- Исходная плитка не собирается из отдельно обрезанных фасок. Один
+	-- неизменяемый мотив дольки клонируется во все 25 ячеек, поэтому у
+	-- диагонали физически нет возможности изменить её рамку или рельеф.
+	local template = makeFrame(
+		parent,
+		"CanonicalTileTemplate",
+		Vector2.zero,
+		Vector2.new(tileWidth, tileHeight),
+		Theme.background,
+		1
+	)
+	template.BackgroundTransparency = 1
+	template.Visible = false
+
+	local tileSize = Vector2.new(tileWidth - gap * 2, tileHeight - gap * 2)
+	makeFrame(template, "Bevel", Vector2.new(gap, gap), tileSize, Theme.chocolateEdge, 2, corner)
+	makeFrame(
+		template,
+		"Face",
+		Vector2.new(gap + bevel, gap + bevel),
+		tileSize - Vector2.new(bevel * 2, bevel * 2),
+		Theme.chocolate,
+		3,
+		math.max(4, corner - bevel)
+	)
+
+	local panelInsetX = bevel * 2.0
+	local panelInsetY = bevel * 2.5
+	makeFrame(
+		template,
+		"Relief",
+		Vector2.new(gap + panelInsetX, gap + panelInsetY),
+		tileSize - Vector2.new(panelInsetX * 2, panelInsetY * 2),
+		Theme.chocolateRaised,
+		4,
+		math.max(3, corner - bevel)
+	)
+	return template
+end
+
 local function makeSegment(
 	parent: Instance,
 	a: Vector2,
@@ -279,6 +335,11 @@ function Game.new(gui: ScreenGui, remotes)
 	-- только в реально открывшемся зазоре.
 	self.extensionLayer = makeLayer(self.board, "OpticalExtensions", 4)
 	self.pieceLayer = makeLayer(self.board, "PhysicalPieces", 5)
+	-- Пока части не расходятся, игрок видит одну каноническую плитку. Она
+	-- скрывает техническую попиксельную маску физических полигонов, но лежит
+	-- ниже настоящих линий реза. В момент разделения слой убирается, и его
+	-- полностью совпадающее изображение продолжают уже готовые части.
+	self.intactLayer = makeLayer(self.board, "CanonicalIntactBoard", 6)
 	self.seamLayer = makeLayer(self.board, "PhysicalSeams", 400)
 	self.hintLayer = makeLayer(self.board, "Hints", 500)
 	self.progressLayer = makeLayer(self.board, "CutProgress", 600)
@@ -305,7 +366,14 @@ function Game:layout()
 	self.boardHeight = self.tileHeight * self.recipe.rows
 	self.board.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	self.board.Position = UDim2.fromScale(0.5, Config.Board.positionY)
-	for _, layer in { self.extensionLayer, self.pieceLayer, self.seamLayer, self.hintLayer, self.progressLayer } do
+	for _, layer in {
+		self.extensionLayer,
+		self.pieceLayer,
+		self.intactLayer,
+		self.seamLayer,
+		self.hintLayer,
+		self.progressLayer,
+	} do
 		layer.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
 	end
 
@@ -469,10 +537,7 @@ function Game:renderChocolate()
 		end
 	end
 
-	local tileMin = math.min(self.tileWidth, self.tileHeight)
-	local gap = math.max(3, round(tileMin * self.trick.tileGapRatio))
-	local bevel = math.max(3, round(tileMin * self.trick.bevelRatio))
-	local corner = math.max(6, round(tileMin * self.trick.cornerRatio))
+	local gap, bevel, corner = tileVisualMetrics(self.tileWidth, self.tileHeight, self.trick)
 
 	self:renderPrimitive(
 		"BarBody",
@@ -516,6 +581,41 @@ function Game:renderChocolate()
 			)
 		end
 	end
+
+	self:renderIntactChocolate()
+end
+
+function Game:renderIntactChocolate()
+	clear(self.intactLayer)
+	local gap, bevel, corner = tileVisualMetrics(self.tileWidth, self.tileHeight, self.trick)
+	makeFrame(
+		self.intactLayer,
+		"BarBody",
+		Vector2.zero,
+		Vector2.new(self.boardWidth, self.boardHeight),
+		Theme.chocolateDark,
+		1,
+		corner + gap
+	)
+
+	local template = makeCanonicalTileTemplate(
+		self.intactLayer,
+		self.tileWidth,
+		self.tileHeight,
+		gap,
+		bevel,
+		corner
+	)
+	for row = 0, self.recipe.rows - 1 do
+		for column = 0, self.recipe.cols - 1 do
+			local tile = template:Clone()
+			tile.Name = `Tile{row + 1}_{column + 1}`
+			tile.Position = UDim2.fromOffset(column * self.tileWidth, row * self.tileHeight)
+			tile.Visible = true
+			tile.Parent = self.intactLayer
+		end
+	end
+	self.intactLayer.Visible = true
 end
 
 function Game:screenToBoard(position: Vector3 | Vector2): Vector2
@@ -936,6 +1036,10 @@ function Game:finishCut()
 		if self.active ~= "exploding" then
 			return
 		end
+		-- До этого кадра все 25 дольки были клонами одного шаблона. Теперь
+		-- части действительно расходятся, и становится видна их диагональная
+		-- граница вместо технической маски на цельной плитке.
+		self.intactLayer.Visible = false
 		clear(self.progressLayer)
 		clear(self.seamLayer)
 		self:tweenOffsets(targets, self.trick.explodeDuration, function()
@@ -1025,6 +1129,7 @@ function Game:resetRound()
 	for _, name in self.trick.pieceOrder do
 		self:setPieceOffset(name, Vector2.zero)
 	end
+	self.intactLayer.Visible = true
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil
