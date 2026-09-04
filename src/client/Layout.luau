@@ -1,0 +1,52 @@
+--!strict
+-- Расчёт области всей перестановки отдельно от UI: смена размера окна
+-- должна менять только масштаб сцены, не геометрию и не прогресс раунда.
+local Layout = {}
+
+function Layout.bounds(recipe, trick, tileWidth: number, tileHeight: number, geom)
+	local minX, minY, maxX, maxY = 0, 0, recipe.cols, recipe.rows
+	local cut = recipe.cuts[1]
+	local line = { a = Vector2.new(cut[1].x, cut[1].y), b = Vector2.new(cut[#cut].x, cut[#cut].y) }
+	for _, name in trick.pieceOrder do
+		local spec = trick.pieces[name]
+		local bounds = spec.bounds
+		local polygon = {
+			Vector2.new(bounds[1], bounds[2]), Vector2.new(bounds[3], bounds[2]),
+			Vector2.new(bounds[3], bounds[4]), Vector2.new(bounds[1], bounds[4]),
+		}
+		-- У диагональных частей большая часть прямоугольника прозрачна.
+		-- Учитываем настоящий полигон, чтобы не уменьшать шоколадку из-за пустоты.
+		if spec.clip ~= "rect" then
+			polygon = geom.clipPolygon(polygon, line, spec.clip == "upper")
+		end
+		for _, offset in { { dx = 0, dy = 0 }, trick.exploded[name], recipe.slides[name] } do
+			if offset then
+				for _, point in polygon do
+					minX = math.min(minX, point.X + offset.dx)
+					minY = math.min(minY, point.Y + offset.dy)
+					maxX = math.max(maxX, point.X + offset.dx)
+					maxY = math.max(maxY, point.Y + offset.dy)
+				end
+			end
+		end
+	end
+	return { minX = minX * tileWidth, minY = minY * tileHeight, maxX = maxX * tileWidth, maxY = maxY * tileHeight }
+end
+
+function Layout.fit(width: number, height: number, bounds, padding)
+	if width <= 0 or height <= 0 then
+		return nil
+	end
+	local availableWidth = math.max(1, width - 2 * padding.side)
+	local availableHeight = math.max(1, height - padding.top - padding.bottom)
+	local spanX = bounds.maxX - bounds.minX
+	local spanY = bounds.maxY - bounds.minY
+	local scale = math.min(1, availableWidth / spanX, availableHeight / spanY)
+	return {
+		scale = scale,
+		x = padding.side + (availableWidth - spanX * scale) / 2 - bounds.minX * scale,
+		y = padding.top + (availableHeight - spanY * scale) / 2 - bounds.minY * scale,
+	}
+end
+
+return Layout

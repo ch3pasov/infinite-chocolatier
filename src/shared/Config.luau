@@ -8,8 +8,8 @@ Config.Board = {
 	rows = 5,
 	-- Высокая плитка и вытянутые дольки повторяют форму настоящей шоколадки,
 	-- а не квадратную таблицу из прототипа.
-	positionY = 0.50,
-	statusPositionY = 0.96,
+	-- Поля оставляют место счётчику и многострочной подсказке даже на телефоне.
+	viewportPadding = { side = 18, top = 76, bottom = 100 },
 }
 
 Config.Recipe = {
@@ -49,8 +49,6 @@ Config.Trick = {
 	baseTileHeight = 92,
 	maxBoardWidth = 360,
 	maxBoardHeight = 520,
-	minBoardWidth = 250,
-	minBoardHeight = 350,
 	tileGapRatio = 0.055,
 	bevelRatio = 0.075,
 	cornerRatio = 0.12,
@@ -78,8 +76,8 @@ Config.Trick = {
 	exploded = {
 		base = { dx = 0, dy = 0 },
 		upperLeft = { dx = 1, dy = -0.55 },
-		-- В кадрах верхний правый кусок частично уходит за верх экрана и не
-		-- перекрывает центральный трапециевидный кусок.
+		-- Верхний правый кусок уходит вверх, не перекрывая центральный.
+		-- Адаптивная сцена резервирует место и для этой крайней позиции.
 		upperRight = { dx = -1.5, dy = -1.8 },
 		stripDouble = { dx = -1.8, dy = -0.65 },
 		stripSingle = { dx = -1.95, dy = -0.65 },

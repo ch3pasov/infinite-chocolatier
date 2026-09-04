@@ -3,6 +3,15 @@ return function(harness)
 	local Geom = require("../src/shared/Geom")
 	local V = Vector2
 
+	harness.test("place разрешает поворот телефона в портретный режим", function()
+		-- Одного адаптивного UI недостаточно: без настройки самого place
+		-- Roblox блокирует портретную ориентацию ещё до изменения размера Root.
+		local fs = require("@lune/fs")
+		local serde = require("@lune/serde")
+		local project = serde.decode("json", fs.readFile("default.project.json"))
+		harness.equals(project.tree.StarterGui["$properties"].ScreenOrientation, "Sensor")
+	end)
+
 	harness.test("рецепт требует все четыре разреза пяти частей", function()
 		harness.equals(#Config.Recipe.cuts, 4)
 		harness.equals(#Config.Recipe.cuts[1], 2)

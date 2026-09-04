@@ -10,6 +10,7 @@ local Config = require(Shared.Config)
 local Geom = require(Shared.Geom)
 local Recipe = require(Shared.Recipe)
 local Theme = require(script.Parent.Theme)
+local Layout = require(script.Parent.Layout)
 
 local Game = {}
 Game.__index = Game
@@ -401,23 +402,27 @@ function Game.new(gui: ScreenGui, remotes)
 	self.status = Instance.new("TextLabel")
 	self.status.Name = "Status"
 	self.status.AnchorPoint = Vector2.new(0.5, 1)
-	self.status.Position = UDim2.fromScale(0.5, Config.Board.statusPositionY)
-	self.status.Size = UDim2.fromScale(0.94, 0.08)
+	self.status.Position = UDim2.new(0.5, 0, 1, -12)
+	self.status.Size = UDim2.new(0.94, 0, 0, Config.Board.viewportPadding.bottom - 24)
 	self.status.BackgroundTransparency = 1
 	self.status.Font = Enum.Font.GothamMedium
 	self.status.TextColor3 = Theme.accentSoft
 	self.status.TextScaled = true
+	self.status.TextWrapped = true
 	self.status.ZIndex = 900
 	local textConstraint = Instance.new("UITextSizeConstraint")
-	textConstraint.MinTextSize = 17
+	textConstraint.MinTextSize = 14
 	textConstraint.MaxTextSize = 28
 	textConstraint.Parent = self.status
 	self.status.Parent = self.root
 
 	self.board = makeFrame(self.root, "ChocolateBoard", Vector2.zero, Vector2.zero, Theme.background, 2)
-	self.board.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.board.AnchorPoint = Vector2.zero
 	self.board.BackgroundTransparency = 1
 	self.board.ClipsDescendants = false
+	self.boardScale = Instance.new("UIScale")
+	self.boardScale.Name = "ViewportScale"
+	self.boardScale.Parent = self.board
 
 	-- Готовая Curry-кромка живёт в отдельной подложке. Если держать её внутри
 	-- верхних частей, Sibling-ZIndex поднимает её над основанием и она уродует
@@ -436,18 +441,16 @@ function Game.new(gui: ScreenGui, remotes)
 
 	self:layout()
 	self:bindInput()
+	self:bindViewport()
 	return self
 end
 
 function Game:layout()
-	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-	local availableWidth = math.max(220, viewport.X - 110)
-	local availableHeight = math.max(300, viewport.Y - 170)
-	local widthLimit = math.min(self.trick.maxBoardWidth, math.max(self.trick.minBoardWidth, availableWidth))
-	local heightLimit = math.min(self.trick.maxBoardHeight, math.max(self.trick.minBoardHeight, availableHeight))
+	-- Канонические окна клиппинга строятся один раз в максимальном размере.
+	-- UIScale вписывает готовую сцену; повторный layout сбросил бы раунд.
 	local scale = math.min(
-		widthLimit / (self.recipe.cols * self.trick.baseTileWidth),
-		heightLimit / (self.recipe.rows * self.trick.baseTileHeight)
+		self.trick.maxBoardWidth / (self.recipe.cols * self.trick.baseTileWidth),
+		self.trick.maxBoardHeight / (self.recipe.rows * self.trick.baseTileHeight)
 	)
 
 	self.tileWidth = round(self.trick.baseTileWidth * scale)
@@ -455,7 +458,7 @@ function Game:layout()
 	self.boardWidth = self.tileWidth * self.recipe.cols
 	self.boardHeight = self.tileHeight * self.recipe.rows
 	self.board.Size = UDim2.fromOffset(self.boardWidth, self.boardHeight)
-	self.board.Position = UDim2.fromScale(0.5, Config.Board.positionY)
+	self.layoutBounds = Layout.bounds(self.recipe, self.trick, self.tileWidth, self.tileHeight, Geom)
 	for _, layer in {
 		self.extensionLayer,
 		self.pieceLayer,
@@ -473,6 +476,32 @@ function Game:layout()
 	self:buildPieces()
 	self:renderChocolate()
 	self:resetRound()
+end
+
+function Game:bindViewport()
+	-- Размер Root уже учитывает фактическую область ScreenGui и не зависит
+	-- от смены CurrentCamera или времени её появления на клиенте.
+	self.viewportChanged = self.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		self:fitViewport()
+	end)
+	self:fitViewport()
+end
+
+function Game:fitViewport()
+	local viewport = self.root.AbsoluteSize
+	if viewport == self.viewportSize then
+		return
+	end
+	local fit = Layout.fit(viewport.X, viewport.Y, self.layoutBounds, Config.Board.viewportPadding)
+	if not fit then
+		return
+	end
+	-- При смене координат отпускаем текущий захват: старые экранные точки
+	-- иначе вызвали бы скачок. Уже пройденный разрез и текущий этап сохраняются.
+	self:endDrag(true)
+	self.viewportSize = viewport
+	self.boardScale.Scale = fit.scale
+	self.board.Position = UDim2.fromOffset(fit.x, fit.y)
 end
 
 function Game:buildPaths(): { CutPath }
@@ -723,7 +752,7 @@ end
 function Game:screenToBoard(position: Vector3 | Vector2): Vector2
 	local inset = self.gui.IgnoreGuiInset and Vector2.zero or GuiService:GetGuiInset()
 	local screen = Vector2.new(position.X, position.Y) - inset
-	return screen - self.board.AbsolutePosition
+	return (screen - self.board.AbsolutePosition) / self.boardScale.Scale
 end
 
 function Game:definitionOffset(definition): Vector2
@@ -938,7 +967,7 @@ end
 
 function Game:bindInput()
 	self.began = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
+		if processed or self.drag then
 			return
 		end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
@@ -950,10 +979,11 @@ function Game:bindInput()
 			local path = self.paths[self.cutIndex]
 			local anchor = Geom.pointAt(path.geom, self.cutProgress)
 			local _, arc = Geom.project(path.geom, point)
-			if (point - anchor).Magnitude <= Config.Cutting.startRadius
-				and math.abs(arc - self.cutProgress) <= Config.Cutting.startRadius
+			local startRadius = Config.Cutting.startRadius / self.boardScale.Scale
+			if (point - anchor).Magnitude <= startRadius
+				and math.abs(arc - self.cutProgress) <= startRadius
 			then
-				self.drag = { kind = "cut", progress = self.cutProgress }
+				self.drag = { kind = "cut", progress = self.cutProgress, input = input }
 				if self.startPip then
 					self.startPip.Visible = false
 				end
@@ -965,6 +995,7 @@ function Game:bindInput()
 					local target = self:definitionOffset(self.recipe.slides[name])
 					self.drag = {
 						kind = "large",
+						input = input,
 						startPoint = point,
 						startProgress = self.largeProgress,
 						driver = target - from,
@@ -977,6 +1008,7 @@ function Game:bindInput()
 			local target = self:definitionOffset(self.recipe.slides.stripDouble)
 			self.drag = {
 				kind = "strip",
+				input = input,
 				startPoint = point,
 				startProgress = self.stripProgress,
 				driver = target - from,
@@ -985,24 +1017,44 @@ function Game:bindInput()
 	end)
 
 	self.changed = UserInputService.InputChanged:Connect(function(input)
-		if not self.drag then
-			return
-		end
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+		if not self:ownsDragInput(input, true) then
 			return
 		end
 		self:updateDrag(self:screenToBoard(input.Position))
 	end)
 
 	self.ended = UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+		if not self:ownsDragInput(input, false) then
 			return
 		end
-		if self.drag then
+		local cancelled = input.UserInputState == Enum.UserInputState.Cancel
+		if not cancelled then
 			self:updateDrag(self:screenToBoard(input.Position))
 		end
-		self:endDrag()
+		self:endDrag(cancelled)
 	end)
+
+	-- При переключении окна или открытии меню отпускание может не прийти.
+	-- Прерывание освобождает захват, но не засчитывает разрез или награду.
+	self.focusReleased = UserInputService.WindowFocusReleased:Connect(function()
+		self:endDrag(true)
+	end)
+	self.menuOpened = GuiService.MenuOpened:Connect(function()
+		self:endDrag(true)
+	end)
+end
+
+function Game:ownsDragInput(input: InputObject, movement: boolean): boolean
+	local drag = self.drag
+	if not drag then
+		return false
+	end
+	-- У каждого пальца свой InputObject; мышь присылает движение отдельно
+	-- от нажатой кнопки. Другой палец не должен двигать или отпускать этот жест.
+	if drag.input.UserInputType == Enum.UserInputType.Touch then
+		return input == drag.input
+	end
+	return input.UserInputType == (if movement then Enum.UserInputType.MouseMovement else Enum.UserInputType.MouseButton1)
 end
 
 function Game:updateDrag(point: Vector2)
@@ -1014,14 +1066,17 @@ function Game:updateDrag(point: Vector2)
 	if drag.kind == "cut" then
 		local path = self.paths[self.cutIndex]
 		local distance, arc = Geom.project(path.geom, point)
-		if distance > Config.Cutting.slipTolerance then
+		-- Допуски заданы в экранных пикселях: уменьшение сцены не должно
+		-- требовать от пальца большей точности или более частых событий ввода.
+		local scale = self.boardScale.Scale
+		if distance > Config.Cutting.slipTolerance / scale then
 			drag.progress = 0
 			self.cutProgress = 0
 			self:drawProgress(path, 0)
-			self.status.Text = "Срыв — начни диагональ заново"
+			self.status.Text = "Срыв — начни текущий разрез заново"
 			return
 		end
-		if arc <= drag.progress + Config.Cutting.maxJump and arc >= drag.progress - Config.Cutting.backtrack then
+		if arc <= drag.progress + Config.Cutting.maxJump / scale and arc >= drag.progress - Config.Cutting.backtrack / scale then
 			drag.progress = math.max(drag.progress, arc)
 			self.cutProgress = drag.progress
 		end
@@ -1050,7 +1105,7 @@ function Game:updateDrag(point: Vector2)
 	end
 end
 
-function Game:endDrag()
+function Game:endDrag(cancelled: boolean?)
 	local drag = self.drag
 	if not drag then
 		return
@@ -1060,21 +1115,22 @@ function Game:endDrag()
 	if drag.kind == "cut" then
 		if self.active == "cut" then
 			local path = self.paths[self.cutIndex]
-			if self.cutProgress >= path.geom.length * Config.Cutting.completeAt then
+			if not cancelled and self.cutProgress >= path.geom.length * Config.Cutting.completeAt then
 				self:finishCut()
 				return
 			end
 			if self.startPip then
 				local anchor = Geom.pointAt(path.geom, self.cutProgress)
 				self.startPip.Position = UDim2.fromOffset(
-					anchor.X - self.startPip.AbsoluteSize.X / 2,
-					anchor.Y - self.startPip.AbsoluteSize.Y / 2
+					anchor.X - self.startPip.Size.X.Offset / 2,
+					anchor.Y - self.startPip.Size.Y.Offset / 2
 				)
 				self.startPip.Visible = true
 			end
+			self.status.Text = `Разрез {self.cutIndex} из {#self.paths}: продолжи с подсвеченной точки`
 		end
 	elseif drag.kind == "large" then
-		if self.largeProgress >= Config.Sliding.completeAt then
+		if not cancelled and self.largeProgress >= Config.Sliding.completeAt then
 			self:setLargeProgress(1)
 			self:finishLargeAssembly()
 		else
@@ -1089,7 +1145,7 @@ function Game:endDrag()
 			end)
 		end
 	elseif drag.kind == "strip" then
-		if self.stripProgress >= Config.Sliding.completeAt then
+		if not cancelled and self.stripProgress >= Config.Sliding.completeAt then
 			self:setStripProgress(1)
 			self:finishRound()
 		else
