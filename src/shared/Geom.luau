@@ -63,6 +63,22 @@ function Geom.project(path: Path, point: Vector2): (number, number)
 	return nearestDistance, nearestArc
 end
 
+function Geom.projectLine(a: Vector2, b: Vector2, point: Vector2): (number, number)
+	-- В отличие от project, эта проекция не зажимает дугу концами отрезка.
+	-- Она нужна для быстрого жеста: редкое событие ввода может сразу оказаться
+	-- уже за финишем, хотя палец прошёл вдоль всей линии.
+	local delta = b - a
+	local length = delta.Magnitude
+	if length < 1e-9 then
+		return (point - a).Magnitude, 0
+	end
+	local direction = delta / length
+	local offset = point - a
+	local arc = offset:Dot(direction)
+	local perpendicular = math.abs(Geom.cross(direction, offset))
+	return perpendicular, arc
+end
+
 function Geom.pointAt(path: Path, arc: number): Vector2
 	if #path.segments == 0 then
 		return Vector2.zero

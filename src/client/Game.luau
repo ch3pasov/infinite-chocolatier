@@ -864,26 +864,13 @@ function Game:drawSeam(path: CutPath)
 	end
 end
 
-function Game:drawCurryGap()
+function Game:drawAssembledSeam()
 	clear(self.seamLayer)
-	local leftSlide = self:definitionOffset(self.recipe.slides.upperLeft)
-	local translated = {
-		a = self.diagonal.a + leftSlide,
-		b = self.diagonal.b + leftSlide,
-	}
-	-- После переноса левая часть занимает x=2..5, а правая x=0..2.
-	-- Обе дают одну и ту же бесконечную прямую; для шва восстанавливаем её
-	-- точки на настоящих боковых гранях собранной плитки.
-	local upperA = Vector2.new(0, Geom.lineYAtX(translated, 0))
-	local upperB = Vector2.new(self.boardWidth, Geom.lineYAtX(translated, self.boardWidth))
-	local middleA = (self.diagonal.a + upperA) * 0.5
-	local middleB = (self.diagonal.b + upperB) * 0.5
-	-- Площадь Curry-полосы скрыта оптическим растяжением спрайтов. Здесь
-	-- остаётся лишь обычный тонкий шов: он объясняет игроку границу частей,
-	-- но больше не выдаёт секрет широкой чёрной лентой.
-	local thickness = math.max(2, self.tileWidth * self.trick.assembledSeamRatio)
-	makeSegment(self.seamLayer, middleA, middleB, thickness, Theme.chocolateShadow, 0.08, 405)
-	makeSegment(self.seamLayer, middleA, middleB, 1, Theme.chocolateEdge, 0.22, 406)
+	-- Раньше декоративный шов рисовался посередине скрытой Curry-полосы. В
+	-- собранном состоянии он выглядел второй параллельной полосой и буквально
+	-- обводил цену лишней дольки. Единственная линия теперь лежит на настоящей
+	-- границе основания и оптически продолжённых верхних частей.
+	self:drawSeam(self.paths[1])
 end
 
 function Game:showCutHint()
@@ -983,7 +970,12 @@ function Game:bindInput()
 			if (point - anchor).Magnitude <= startRadius
 				and math.abs(arc - self.cutProgress) <= startRadius
 			then
-				self.drag = { kind = "cut", progress = self.cutProgress, input = input }
+				self.drag = {
+					kind = "cut",
+					progress = self.cutProgress,
+					ready = self.cutProgress >= path.geom.length * Config.Cutting.completeAt,
+					input = input,
+				}
 				if self.startPip then
 					self.startPip.Visible = false
 				end
@@ -1065,21 +1057,46 @@ function Game:updateDrag(point: Vector2)
 
 	if drag.kind == "cut" then
 		local path = self.paths[self.cutIndex]
+		-- Все четыре игровые линии прямые. Незажатая проекция позволяет одному
+		-- быстрому событию ввода оказаться за финишем и всё равно засчитать
+		-- реальный взмах вдоль линии, вместо прежнего ограничения maxJump.
+		local first = path.geom.segments[1]
+		local last = path.geom.segments[#path.geom.segments]
 		local distance, arc = Geom.project(path.geom, point)
+		if first and last then
+			local lineDistance, lineArc = Geom.projectLine(first.a, last.b, point)
+			if lineArc >= 0 then
+				distance = lineDistance
+				arc = math.min(lineArc, path.geom.length)
+			end
+		end
 		-- Допуски заданы в экранных пикселях: уменьшение сцены не должно
 		-- требовать от пальца большей точности или более частых событий ввода.
 		local scale = self.boardScale.Scale
-		if distance > Config.Cutting.slipTolerance / scale then
-			drag.progress = 0
-			self.cutProgress = 0
-			self:drawProgress(path, 0)
-			self.status.Text = "Срыв — начни текущий разрез заново"
+		if drag.ready then
+			-- Конец защёлкнут до отпускания. Последующее движение или координата
+			-- InputEnded не могут внезапно отменить уже завершённый взмах.
 			return
 		end
-		if arc <= drag.progress + Config.Cutting.maxJump / scale and arc >= drag.progress - Config.Cutting.backtrack / scale then
-			drag.progress = math.max(drag.progress, arc)
-			self.cutProgress = drag.progress
+		if distance > Config.Cutting.slipTolerance / scale then
+			-- Нет наказания за дрогнувший палец: сохраняем сделанную часть и ждём,
+			-- пока указатель вернётся к подсвеченной точке на линии.
+			if self.startPip then
+				local anchor = Geom.pointAt(path.geom, drag.progress)
+				self.startPip.Position = UDim2.fromOffset(
+					anchor.X - self.startPip.Size.X.Offset / 2,
+					anchor.Y - self.startPip.Size.Y.Offset / 2
+				)
+				self.startPip.Visible = true
+			end
+			self.status.Text = "Вернись к подсвеченной точке — прогресс сохранён"
+			return
 		end
+		if self.startPip then
+			self.startPip.Visible = false
+		end
+		drag.progress = math.max(drag.progress, arc)
+		self.cutProgress = drag.progress
 		self:drawProgress(path, drag.progress)
 		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
 			-- Сам жест ещё не завершён: игрок должен почувствовать конечную точку
@@ -1087,6 +1104,7 @@ function Game:updateDrag(point: Vector2)
 			-- появляется.
 			drag.progress = path.geom.length
 			self.cutProgress = path.geom.length
+			drag.ready = true
 			self:drawProgress(path, path.geom.length)
 			self.status.Text = "Отпусти, чтобы завершить разрез"
 		end
@@ -1115,7 +1133,7 @@ function Game:endDrag(cancelled: boolean?)
 	if drag.kind == "cut" then
 		if self.active == "cut" then
 			local path = self.paths[self.cutIndex]
-			if not cancelled and self.cutProgress >= path.geom.length * Config.Cutting.completeAt then
+			if not cancelled and (drag.ready or self.cutProgress >= path.geom.length * Config.Cutting.completeAt) then
 				self:finishCut()
 				return
 			end
@@ -1214,7 +1232,7 @@ function Game:finishLargeAssembly()
 	end
 	self.active = "assembleStrip"
 	self.stripProgress = 0
-	self:drawCurryGap()
+	self:drawAssembledSeam()
 	self:showStripHint()
 end
 

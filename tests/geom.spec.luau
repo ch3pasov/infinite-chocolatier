@@ -14,6 +14,12 @@ return function(harness)
 		harness.near(arc, 4)
 	end)
 
+	harness.test("проекция прямой видит быстрый жест за финишем", function()
+		local distance, arc = Geom.projectLine(V.new(0, 0), V.new(100, 0), V.new(180, 12))
+		harness.near(distance, 12)
+		harness.near(arc, 180)
+	end)
+
 	harness.test("вырожденные звенья не ломают путь", function()
 		local path = Geom.path({ V.new(0, 0), V.new(0, 0), V.new(5, 0) })
 		harness.equals(#path.segments, 1)
