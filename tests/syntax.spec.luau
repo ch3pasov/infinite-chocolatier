@@ -82,6 +82,8 @@ return function(harness)
 		harness.equals(seamBody:find("middleA", 1, true), nil)
 		harness.equals(seamBody:find("middleB", 1, true), nil)
 		harness.equals(source:find("drawCurryGap", 1, true), nil)
+		harness.equals(source:find("extensionMotion.Visible = false", 1, true) ~= nil, true)
+		harness.equals(source:find("extensionMotion.Visible = true", 1, true) ~= nil, true)
 	end)
 
 	harness.test("следующий цикл начинается без видимого возврата частей", function()
