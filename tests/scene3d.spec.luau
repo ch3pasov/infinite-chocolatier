@@ -37,6 +37,22 @@ return function(h)
 	local settings=Config.Scene3D
 	local recipe=Recipe.build(Config.Recipe)
 	local bounds=Layout.bounds(recipe,Config.Trick,66,104,Geom)
+	h.test('3D: след разреза повторяет вершины, фаски и канавки долек',function()
+		local scene=setmetatable({view={tileWidth=66,tileHeight=104}},Scene)
+		assert(math.abs(scene:surfaceAt(R.Vector2.new(33,52))-settings.surfaceHeight)<1e-6)
+		assert(math.abs(scene:surfaceAt(R.Vector2.new(66,52))-settings.baseHeight)<1e-6)
+		local levels={}
+		for x=0,330 do
+			local height=scene:surfaceAt(R.Vector2.new(x,360-x*0.6))
+			assert(height>=settings.baseHeight and height<=settings.surfaceHeight)
+			levels[math.floor(height*1000)]=true
+			assert(math.abs(height-scene:surfaceAt(R.Vector2.new(x+66,464-x*0.6)))<1e-6)
+		end
+		local count=0
+		for _ in levels do count+=1 end
+		assert(count>4,'След должен проходить наклонные фаски, а не только два уровня')
+	end)
+
 	h.test('3D: перспектива и обратный луч совпадают на телефоне и компьютере',function()
 		for _,size in {R.Vector2.new(304,340),R.Vector2.new(604,366),R.Vector2.new(740,776),R.Vector2.new(1356,1056)} do
 			local camera=Projection.fit(size,bounds,settings)

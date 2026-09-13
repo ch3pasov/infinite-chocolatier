@@ -277,11 +277,78 @@ function Scene:boardToScreen(p)
 	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+project(self.camera.CFrame,self.size,settings.fieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
 end
 
+-- След ножа лежит на том же профиле, из которого построены дольки.
+-- Высота меняется на фасках и в канавках, поэтому проекция не прямая.
+function Scene:surfaceAt(p)
+	local v=self.view
+	local gap=math.max(3,math.floor(math.min(v.tileWidth,v.tileHeight)*Config.Trick.tileGapRatio+0.5))
+	local bevel=math.max(3,math.floor(math.min(v.tileWidth,v.tileHeight)*Config.Trick.bevelRatio+0.5))
+	local col,row=math.floor(p.X/v.tileWidth),math.floor(p.Y/v.tileHeight)
+	local function outline(dx,dy,corner)
+		return Solid.outline(col*v.tileWidth+dx,row*v.tileHeight+dy,v.tileWidth-2*dx,v.tileHeight-2*dy,corner)
+	end
+	local function inside(poly)
+		for i,a in poly do
+			if Geom.cross(poly[i%#poly+1]-a,p-a)<-1e-7 then return false end
+		end
+		return true
+	end
+	local outer=outline(gap,gap,5)
+	if not inside(outer) then return settings.baseHeight end
+	local inner=outline(gap+bevel,gap+bevel,4)
+	if not inside(inner) then
+		for i,a in outer do
+			local j=i%#outer+1
+			if inside({a,outer[j],inner[j],inner[i]}) then
+				local edge=outer[j]-a
+				local t=Geom.cross(edge,p-a)/Geom.cross(edge,inner[i]-a)
+				return 0.29+0.11*math.clamp(t,0,1)
+			end
+		end
+		return 0.29
+	end
+	if inside(outline(gap+bevel*2,gap+bevel*2.5,3)) then return settings.surfaceHeight end
+	return 0.40
+end
+
+function Scene:reliefSeam(gui)
+	local m=model('ReliefSeam')
+	m.Parent=self.overlay.world
+	local size=Vector2.new(gui.Size.X.Offset,gui.Size.Y.Offset)
+	local center=Vector2.new(gui.Position.X.Offset,gui.Position.Y.Offset)+size*(Vector2.new(0.5,0.5)-gui.AnchorPoint)
+	local angle=math.rad(gui.Rotation)
+	local delta=Vector2.new(math.cos(angle),math.sin(angle))*size.X
+	local start=center-delta/2
+	local count=math.max(1,math.ceil(size.X))
+	-- Одна тонкая кромка вместо пары широких полос, парящих над плиткой.
+	local function point(t)
+		local p=start+delta*t
+		return Vector3.new(p.X*unit,self:surfaceAt(p)+0.008,p.Y*unit)
+	end
+	local a=point(0)
+	for i=1,count do
+		local b=point(i/count)
+		local line=part(m,'CutEdge',Vector3.new(0.012,0.012,(b-a).Magnitude),CFrame.lookAt((a+b)/2,b),gui.BackgroundColor3)
+		line.Transparency=gui.BackgroundTransparency
+		line:SetAttribute("RestTransparency",line.Transparency)
+		a=b
+	end
+	return m
+end
+
 function Scene:syncHints()
 	for _, layer in {self.view.hintLayer,self.view.progressLayer,self.view.seamLayer} do
 		for _, gui in layer:GetChildren() do
 			if gui:IsA("Frame") then
 				local p = self.hints[gui]
+				if layer==self.view.seamLayer then
+					-- Тёмная подложка 2D не нужна: глубину уже даёт рельеф.
+					if gui.ZIndex==411 then
+						if not p then p=self:reliefSeam(gui); self.hints[gui]=p end
+						present(p,self.overlay.world,gui.Visible)
+					end
+					continue
+				end
 				if not p then
 					p=part(self.overlay.world,"Guide",Vector3.one,CFrame.identity,gui.BackgroundColor3)
 					self.hints[gui]=p
