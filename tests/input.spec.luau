@@ -78,6 +78,39 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
+	harness.test("автодоводка заканчивает последние пиксели, но ждёт отпускания", function()
+		for _, scale in { 0.5, 1, 2 } do
+			local view, events = fixture()
+			view.boardScale.Scale = scale
+			view.paths = { { geom = Geom.path({ V.zero, V.new(1000, 0) }) } }
+			local pointer = input("Touch")
+			events.InputBegan:Fire(pointer, false)
+			move(events, pointer, 1000 - 29 / scale)
+			harness.equals(view.drag.ready, false)
+			move(events, pointer, 1000 - 27 / scale)
+			harness.equals(view.cutProgress, 1000)
+			harness.equals(view.drawnProgress, 1000)
+			harness.equals(view.completed, 0)
+			move(events, pointer, 0, 1000)
+			events.InputEnded:Fire(pointer)
+			harness.equals(view.completed, 1)
+		end
+	end)
+
+	harness.test("короткий разрез доводится только после 90 процентов", function()
+		local view, events = fixture()
+		view.paths = { { geom = Geom.path({ V.zero, V.new(10, 0) }) } }
+		local pointer = input("MouseButton1")
+		events.InputBegan:Fire(pointer, false)
+		view:updateDrag(V.new(8, 0))
+		harness.equals(view.cutProgress, 8)
+		view:updateDrag(V.new(9, 0))
+		harness.equals(view.cutProgress, 10)
+		harness.equals(view.completed, 0)
+		events.InputEnded:Fire(pointer)
+		harness.equals(view.completed, 1)
+	end)
+
 	harness.test("открытое ателье блокирует новые жесты, закрытие позволяет продолжить", function()
 		local view, events = fixture()
 		view.inputBlocked = true

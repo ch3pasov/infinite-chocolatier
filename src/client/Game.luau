@@ -1103,7 +1103,9 @@ function Game:updateDrag(point: Vector2)
 		drag.progress = math.max(drag.progress, arc)
 		self.cutProgress = drag.progress
 		self:drawProgress(path, drag.progress)
-		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
+		local snapDistance = math.min(Config.Cutting.finishSnapRadius / scale,
+			path.geom.length * (1 - Config.Cutting.finishSnapMinProgress))
+		if drag.progress >= path.geom.length - snapDistance then
 			-- Сам жест ещё не завершён: игрок должен почувствовать конечную точку
 			-- и явно отпустить мышь или палец. Следующий пунктир до отпускания не
 			-- появляется.
