@@ -32,7 +32,9 @@ function Layout.bounds(recipe, trick, tileWidth: number, tileHeight: number, geo
 		if spec.clip ~= "rect" then
 			polygon = geom.clipPolygon(polygon, line, spec.clip == "upper")
 		end
-		for _, offset in { { dx = 0, dy = 0 }, trick.exploded[name], recipe.slides[name] } do
+		local offsets={ {dx=0,dy=0},trick.exploded[name],recipe.slides[name] }
+		for _,p in (trick.waypoints and trick.waypoints[name]) or {} do table.insert(offsets,p) end
+		for _, offset in offsets do
 			if offset then
 				for _, point in polygon do
 					minX = math.min(minX, point.X + offset.dx)

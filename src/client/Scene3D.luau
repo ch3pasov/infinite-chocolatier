@@ -120,16 +120,19 @@ function Scene:chocolate(name, spec)
 end
 
 function Scene:makeTable()
+	if self.tableModel then self.tableModel:Destroy() end
+	self.tableModel=Instance.new('Model')
+	self.tableModel.Parent=self.world
 	local b = self.view.layoutBounds
 	local x,z = (b.minX+b.maxX)*unit/2,(b.minY+b.maxY)*unit/2
 	local w,h = (b.maxX-b.minX)*unit+1.5,(b.maxY-b.minY)*unit+1.5
-	part(self.world,"SageWorktop",Vector3.new(180,0.4,180),CFrame.new(x,-0.85,z),color("table"))
-	prism(self.world,"BoardEdge",Solid.outline((x-w/2)/unit,(z-h/2)/unit,w/unit,h/unit,18),-0.52,-0.12,color("woodEdge"))
-	prism(self.world,"MapleBoard",Solid.outline((x-w/2)/unit,(z-h/2)/unit,w/unit,h/unit,18),-0.12,-0.035,color("wood"))
+	part(self.tableModel,"SageWorktop",Vector3.new(180,0.4,180),CFrame.new(x,-0.85,z),color("table"))
+	prism(self.tableModel,"BoardEdge",Solid.outline((x-w/2)/unit,(z-h/2)/unit,w/unit,h/unit,18),-0.52,-0.12,color("woodEdge"))
+	prism(self.tableModel,"MapleBoard",Solid.outline((x-w/2)/unit,(z-h/2)/unit,w/unit,h/unit,18),-0.12,-0.035,color("wood"))
 	-- Тонкие волокна древесины лежат вне шоколадки и не напоминают разрезы.
 	for i=1,12 do
 		local px = x-w/2+0.2+i*(w-0.4)/13
-		part(self.world,"WoodGrain",Vector3.new(0.012,0.004,h-0.35),CFrame.new(px,-0.026,z),color("wood"):Lerp(color("grain"),0.42))
+		part(self.tableModel,"WoodGrain",Vector3.new(0.012,0.004,h-0.35),CFrame.new(px,-0.026,z),color("wood"):Lerp(color("grain"),0.42))
 	end
 end
 

@@ -37,7 +37,7 @@ local function fixture(phase)
 		InputBegan = signal(), InputChanged = signal(), InputEnded = signal(),
 		WindowFocusReleased = signal(), MenuOpened = signal(),
 	}
-	local modules = { Config = Config, Geom = Geom, Recipe = Recipe, Theme = {}, Layout = Layout }
+	local modules = { Config = Config, Geom = Geom, Recipe = Recipe, Theme = {}, Layout = Layout, Motion3D = {} }
 	local services = {
 		UserInputService = events, GuiService = events, TweenService = {},
 		ReplicatedStorage = { WaitForChild = function() return { Config = "Config", Geom = "Geom", Recipe = "Recipe" } end },
@@ -45,7 +45,7 @@ local function fixture(phase)
 	local Game = luau.load(source, {
 		environment = {
 			game = { GetService = function(_, name) return assert(services[name]) end },
-			script = { Parent = { Theme = "Theme", Layout = "Layout" } },
+			script = { Parent = { Theme = "Theme", Motion3D = "Motion3D", Layout = "Layout" } },
 			require = function(name) return assert(modules[name]) end,
 			Enum = E, Vector2 = V, UDim2 = Roblox.UDim2,
 			task = { delay = function(_, callback) table.insert(pending, callback) end },

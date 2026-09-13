@@ -128,7 +128,7 @@ return function(h)
 		for _,m in self.pieces do m:Destroy() end
 	end)
 
-	h.test('3D: лежащие и переносимые части не пересекаются в объёме',function()
+	h.test('3D: обе раскладки обходятся без подъёма и пересечений при переносе',function()
 		local self=setmetatable({view={tileWidth=66,tileHeight=104,diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)}}},Scene)
 		local polygons={}
 		for _,name in Config.Trick.pieceOrder do
@@ -139,26 +139,72 @@ return function(h)
 			for i,p in b do result=Geom.clipPolygon(result,{a=p,b=b[i%#b+1]},false) end
 			return Geom.polygonArea(result)>0.01
 		end
-		for _,phase in {'assembleLarge','assembleStrip'} do
+		for mode,layout in settings.layouts do
+		for _,phase in {'explode','large','join','strip'} do
 			for tick=0,200 do
-				local t=tick/200
 				local posed={}
 				for _,name in Config.Trick.pieceOrder do
-					local start=Config.Scene3D.exploded[name]
-					local finish=recipe.slides[name] or {dx=0,dy=0}
-					local progress=if name=='upperLeft' or name=='upperRight' then (if phase=='assembleLarge' then t else 1)
-						elseif name=='stripDouble' or name=='stripSingle' then (if phase=='assembleStrip' then t else 0) else 0
-					local raw=R.Vector2.new((start.dx+(finish.dx-start.dx)*progress)*66,(start.dy+(finish.dy-start.dy)*progress)*104)
+					local p=Motion.pose(name,phase,tick/200,layout,recipe.slides,settings.passageY)
+					local raw=R.Vector2.new(p.X*66,p.Y*104)
 					local offset=Motion.offset(name,raw,phase,settings,recipe.slides,66,104)
+					h.near(offset.Y,0)
 					local poly={}
-					for _,p in polygons[name] do table.insert(poly,p+R.Vector2.new(offset.X,offset.Z)/settings.unitsPerPixel) end
-					posed[name]={poly=poly,height=offset.Y}
+					for _,v in polygons[name] do table.insert(poly,v+raw) end
+					posed[name]=poly
 				end
 				for i,a in Config.Trick.pieceOrder do
 					for j=i+1,#Config.Trick.pieceOrder do
 						local b=Config.Trick.pieceOrder[j]
-						if math.abs(posed[a].height-posed[b].height)<settings.surfaceHeight then
-							assert(not intersects(posed[a].poly,posed[b].poly),`{phase} {tick}: {a} пересекает {b}`)
+						-- В исходной нарезке постоянная оптическая кромка скрыта под основанием.
+						local sourceSeam=phase=='explode' and tick<60 and a=='base' and (b=='upperLeft' or b=='upperRight')
+						if not sourceSeam then
+							assert(not intersects(posed[a],posed[b]),`{mode} {phase} {tick}: {a} пересекает {b}`)
+						end
+					end
+				end
+			end
+		end
+		end
+	end)
+
+	h.test('3D: переходы маршрута непрерывны, размеры и обратный путь неизменны',function()
+		for _,layout in settings.layouts do
+			for _,name in Config.Trick.pieceOrder do
+				local function pose(phase,t) return Motion.pose(name,phase,t,layout,recipe.slides,settings.passageY) end
+				for _,pair in {{'explode','large'},{'large','join'},{'join','strip'}} do
+					assert((pose(pair[1],1)-pose(pair[2],0)).Magnitude<0.00001)
+				end
+				local target=recipe.slides[name] or {dx=0,dy=0}
+				assert((pose('strip',1)-R.Vector2.new(target.dx,target.dy)).Magnitude<0.00001)
+				for _,phase in {'explode','large','join','strip'} do
+					local previous=pose(phase,1)
+					for tick=999,0,-1 do
+						local current=pose(phase,tick/1000)
+						assert((current-previous).Magnitude<0.025,'скачок при отмене')
+						previous=current
+					end
+				end
+			end
+		end
+	end)
+	h.test('3D: камера вмещает весь обход в обеих ориентациях',function()
+		for mode,layout in settings.layouts do
+			local trick=table.clone(Config.Trick)
+			trick.exploded=layout
+			trick.waypoints={upperRight={{dx=layout.upperRight.dx,dy=settings.passageY},{dx=-3,dy=settings.passageY}}}
+			local b=Layout.bounds(recipe,trick,66,104,Geom)
+			local size=if mode=='portrait' then R.Vector2.new(304,340) else R.Vector2.new(604,366)
+			local camera=Projection.fit(size,b,settings)
+			for _,phase in {'explode','large','join','strip'} do
+				for tick=0,50 do
+					for _,name in Config.Trick.pieceOrder do
+						local offset=Motion.pose(name,phase,tick/50,layout,recipe.slides,settings.passageY)
+						local spec=Config.Trick.pieces[name]
+						local fake=setmetatable({view={tileWidth=66,tileHeight=104,diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)}}},Scene)
+						for _,p in fake:clip(Solid.outline(0,0,330,520,0),spec) do
+							local world=R.Vector3.new((p.X+offset.X*66)*settings.unitsPerPixel,settings.surfaceHeight,(p.Y+offset.Y*104)*settings.unitsPerPixel)
+							local screen=Projection.project(camera,size,settings.fieldOfView,world)
+							assert(screen.X>=0 and screen.X<=size.X and screen.Y>=0 and screen.Y<=size.Y)
 						end
 					end
 				end

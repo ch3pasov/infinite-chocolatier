@@ -7,18 +7,24 @@ local Config = {}
 Config.Scene3D = {
 	enabled = true,
 	unitsPerPixel = 0.02,
-	fieldOfView = 18,
+	fieldOfView = 5,
 	cameraTilt = 34,
 	surfaceHeight = 0.48,
 	baseHeight = 0.23,
-	-- В 3D между лежащими частями нужен зазор, включая оптическую кромку.
-	exploded = {
-		base = {dx=0,dy=0}, upperLeft = {dx=-1,dy=-1.5},
-		upperRight = {dx=0.8,dy=-1.8}, stripDouble = {dx=-1,dy=-3},
-		stripSingle = {dx=-1.5,dy=-3},
+	-- Запасной проход над плиткой позволяет менять части местами на столе.
+	layouts = {
+		portrait = {
+			base={dx=0,dy=0}, upperLeft={dx=-0.35,dy=-0.65},
+			upperRight={dx=0.35,dy=-3.1}, stripDouble={dx=-1.7,dy=-4.5},
+			stripSingle={dx=-2.3,dy=-4.5},
+		},
+		landscape = {
+			base={dx=0,dy=0}, upperLeft={dx=-0.35,dy=-0.65},
+			upperRight={dx=3.5,dy=-1}, stripDouble={dx=-4,dy=-1.2},
+			stripSingle={dx=-4.4,dy=-1.2},
+		},
 	},
-	carryHeight = 0.8,
-	carryBow = 8,
+	passageY = -3.1,
 	colors = {
 		body = {65, 30, 20}, bevel = {112, 58, 34}, face = {86, 40, 24},
 		relief = {104, 51, 29}, table = {80, 106, 99}, wood = {194, 151, 103},

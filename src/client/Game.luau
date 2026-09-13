@@ -11,6 +11,7 @@ local Geom = require(Shared.Geom)
 local Recipe = require(Shared.Recipe)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
+local Motion3D = require(script.Parent.Motion3D)
 
 local Game = {}
 Game.__index = Game
@@ -380,7 +381,7 @@ function Game.new(gui: ScreenGui, remotes)
 	self.trick = Config.Trick
 	if Config.Scene3D.enabled then
 		self.trick = table.clone(Config.Trick)
-		self.trick.exploded = Config.Scene3D.exploded
+		self.trick.exploded = Config.Scene3D.layouts.portrait
 	end
 	self.active = "cut"
 	self.cutIndex = 1
@@ -447,10 +448,53 @@ function Game.new(gui: ScreenGui, remotes)
 	self.hintLayer = makeLayer(self.board, "Hints", 500)
 	self.progressLayer = makeLayer(self.board, "CutProgress", 600)
 
+	self:choosePieceLayout()
 	self:layout()
 	self:bindInput()
 	self:bindViewport()
 	return self
+end
+
+-- Раскладку фиксируем на раунд: поворот телефона не перемещает куски под пальцем.
+function Game:choosePieceLayout()
+	if not Config.Scene3D.enabled then return end
+	local v=self.root.AbsoluteSize
+	local mode=Layout.presentation(v.X,v.Y,Config.Board.viewportPadding)
+	local name=if mode.landscape then 'landscape' else 'portrait'
+	if self.planarLayout==name then return false end
+	self.planarLayout=name
+	self.trick.exploded=Config.Scene3D.layouts[name]
+	self.trick.waypoints={upperRight={
+		{dx=self.trick.exploded.upperRight.dx,dy=Config.Scene3D.passageY},
+		{dx=self.recipe.slides.upperRight.dx,dy=Config.Scene3D.passageY},
+	}}
+	return true
+end
+
+function Game:setPlanarProgress(phase,progress)
+	for _,name in self.trick.pieceOrder do
+		local p=Motion3D.pose(name,phase,progress,self.trick.exploded,self.recipe.slides,Config.Scene3D.passageY)
+		self:setPieceOffset(name,Vector2.new(p.X*self.tileWidth,p.Y*self.tileHeight))
+	end
+end
+
+function Game:tweenPlanar(phase,from,to,duration,callback)
+	self:cancelTweens()
+	local token=self.animationToken
+	local value=Instance.new('NumberValue')
+	value.Value=from
+	local connection=value.Changed:Connect(function(t)
+		if self.animationToken==token then self:setPlanarProgress(phase,t) end
+	end)
+	local tween=TweenService:Create(value,TweenInfo.new(duration,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Value=to})
+	table.insert(self.tweens,tween)
+	tween:Play()
+	task.delay(duration+0.02,function()
+		connection:Disconnect(); value:Destroy()
+		if self.animationToken==token then
+			self.tweens={}; self:setPlanarProgress(phase,to); callback()
+		end
+	end)
 end
 
 function Game:layout()
@@ -501,6 +545,10 @@ function Game:fitViewport()
 		return
 	end
 	local presentation = Layout.presentation(viewport.X, viewport.Y, Config.Board.viewportPadding)
+	if self.planarLayout and self.active=='cut' and self:choosePieceLayout() then
+		self.layoutBounds=Layout.bounds(self.recipe,self.trick,self.tileWidth,self.tileHeight,Geom)
+		if self.scene3D then self.scene3D:makeTable() end
+	end
 	local fit = Layout.fit(viewport.X, viewport.Y, self.layoutBounds, presentation.padding)
 	if not fit then
 		return
@@ -948,6 +996,7 @@ end
 
 function Game:setLargeProgress(progress: number)
 	self.largeProgress = math.clamp(progress, 0, 1)
+	if self.planarLayout then self:setPlanarProgress("large",self.largeProgress); return end
 	for _, name in { "upperLeft", "upperRight" } do
 		local from = self:definitionOffset(self.trick.exploded[name])
 		local target = self:definitionOffset(self.recipe.slides[name])
@@ -957,6 +1006,7 @@ end
 
 function Game:setStripProgress(progress: number)
 	self.stripProgress = math.clamp(progress, 0, 1)
+	if self.planarLayout then self:setPlanarProgress("strip",self.stripProgress); return end
 	for _, name in { "stripDouble", "stripSingle" } do
 		local from = self:definitionOffset(self.trick.exploded[name])
 		local target = self:definitionOffset(self.recipe.slides[name])
@@ -994,7 +1044,7 @@ function Game:bindInput()
 			end
 		elseif self.active == "assembleLarge" then
 			for _, name in { "upperLeft", "upperRight" } do
-				if self:isInsidePiece(name, point) then
+				if (not self.planarLayout or name=="upperLeft") and self:isInsidePiece(name, point) then
 					local from = self:definitionOffset(self.trick.exploded[name])
 					local target = self:definitionOffset(self.recipe.slides[name])
 					self.drag = {
@@ -1197,10 +1247,12 @@ function Game:endDrag(cancelled: boolean?)
 			for _, name in { "upperLeft", "upperRight" } do
 				targets[name] = self:definitionOffset(self.trick.exploded[name])
 			end
-			self:tweenOffsets(targets, self.trick.snapDuration, function()
-				self.largeProgress = 0
-				self.active = "assembleLarge"
-			end)
+			local function returned()
+				self.largeProgress=0; self.active="assembleLarge"
+			end
+			if self.planarLayout then
+				self:tweenPlanar('large',self.largeProgress,0,self.trick.snapDuration,returned)
+			else self:tweenOffsets(targets,self.trick.snapDuration,returned) end
 		end
 	elseif drag.kind == "strip" then
 		if not cancelled and self.stripProgress >= Config.Sliding.completeAt then
@@ -1260,11 +1312,12 @@ function Game:finishCut()
 		-- Включение только на финише выдаёт фокус мгновенным заполнением щели.
 		clear(self.progressLayer)
 		clear(self.seamLayer)
-		self:tweenOffsets(targets, self.trick.explodeDuration, function()
-			self.active = "assembleLarge"
-			self.largeProgress = 0
-			self:showLargeHint()
-		end)
+		local function opened()
+			self.active="assembleLarge"; self.largeProgress=0; self:showLargeHint()
+		end
+		if self.planarLayout then
+			self:tweenPlanar('explode',0,1,self.trick.explodeDuration,opened)
+		else self:tweenOffsets(targets,self.trick.explodeDuration,opened) end
 	end)
 end
 
@@ -1272,10 +1325,14 @@ function Game:finishLargeAssembly()
 	if self.active ~= "assembleLarge" then
 		return
 	end
-	self.active = "assembleStrip"
-	self.stripProgress = 0
-	self:drawAssembledSeam()
-	self:showStripHint()
+	local function joined()
+		self.active="assembleStrip"; self.stripProgress=0
+		self:drawAssembledSeam(); self:showStripHint()
+	end
+	if self.planarLayout then
+		self.active='joiningLarge'; clear(self.hintLayer)
+		self:tweenPlanar('join',0,1,0.24,joined)
+	else joined() end
 end
 
 function Game:showRewardMarker()
@@ -1429,6 +1486,11 @@ end
 
 function Game:resetRound()
 	self:cancelTweens()
+	if self.planarLayout and self:choosePieceLayout() then
+		self.layoutBounds=Layout.bounds(self.recipe,self.trick,self.tileWidth,self.tileHeight,Geom)
+		if self.scene3D then self.scene3D:makeTable() end
+		self.viewportSize=nil
+	end
 	self.active = "cut"
 	self.cutIndex = 1
 	self.cutProgress = 0
@@ -1455,6 +1517,7 @@ function Game:resetRound()
 	clear(self.seamLayer)
 	clear(self.progressLayer)
 	self:showCutHint()
+	if self.planarLayout then self:fitViewport() end
 end
 
 return Game
