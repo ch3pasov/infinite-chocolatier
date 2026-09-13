@@ -1,46 +1,186 @@
 --!strict
--- Сервер хранит число долек и принимает только факт завершения раунда.
-
+-- Доход, цены и сохранения принадлежат серверу; клиент передаёт только намерение.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Сейчас игра целиком живёт в ScreenGui: мира, пола и управления персонажем
--- у неё нет. Отключаем стандартный автоспавн, иначе невидимый за интерфейсом
--- Humanoid падает в пустоту и каждые несколько секунд запускает новый респавн.
+local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 Players.CharacterAutoLoads = false
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Economy = require(Shared.Economy)
 local Remotes = require(Shared.Remotes)
+local ProfileStore = require(script.ProfileStore)
 local remotes = Remotes.ensure(ReplicatedStorage)
+local studio = RunService:IsStudio()
+local storage = if studio then nil else ProfileStore.new(DataStoreService:GetDataStore("ChocolateAtelier_v1"), Economy,
+	Config.Economy, HttpService:GenerateGUID(false), os.time)
+local sessions = {}
+local loading = {}
+local requests = {}
+local closing = false
 
-local slices: { [Player]: number } = {}
-local lastPayout: { [Player]: number } = {}
-
-local function sendState(player: Player)
-	remotes.stateSync:FireClient(player, {
-		slices = slices[player] or 0,
-	})
+local function send(player, notice)
+	local session = sessions[player]
+	if not session then
+		remotes.stateSync:FireClient(player, { ready = false })
+		return
+	end
+	local state = Economy.snapshot(session.data)
+	state.ready = true
+	state.offline = session.offline
+	state.notice = notice
+	state.saveStatus = if studio then "Тестовая сессия · без сохранения" else session.saveStatus
+	remotes.stateSync:FireClient(player, state)
 end
 
-Players.PlayerAdded:Connect(function(player)
-	slices[player] = 0
-	lastPayout[player] = 0
-	sendState(player)
-end)
+local function accrue(session)
+	local now = os.clock()
+	Economy.tick(session.data, now - session.tick)
+	session.tick = now
+end
 
+local function save(player, release)
+	local session = sessions[player]
+	if not session then return end
+	if release then session.closing = true end
+	while session.saving do task.wait(0.1) end
+	if sessions[player] ~= session then return end
+	accrue(session)
+	if studio then
+		session.nextSave = os.clock() + Config.Economy.saveInterval
+		if release then sessions[player] = nil end
+		return
+	end
+	session.saving = true
+	local ok, written = pcall(function()
+		return storage:save(tostring(player.UserId), session.data, release)
+	end)
+	session.saving = false
+	if ok and written then
+		session.lastSave = os.clock()
+		session.nextSave = os.clock() + Config.Economy.saveInterval
+		session.saveStatus = "Прогресс сохранён"
+	else
+		session.nextSave = os.clock() + 10
+		session.saveStatus = "Сохранение задерживается · повторяем"
+		warn("Chocolate profile save failed", player.UserId)
+	end
+	if release then
+		-- Выход повторяется без снятия блокировки чужого сервера.
+		if not ok then
+			for _ = 1, 2 do
+				task.wait(1)
+				local retryOK, retryWritten = pcall(function() return storage:save(tostring(player.UserId), session.data, true) end)
+				if retryOK and retryWritten then break end
+			end
+		end
+		sessions[player] = nil
+	elseif (ok and not written) or os.clock() - session.lastSave > Config.Economy.leaseSeconds - 30 then
+		session.closing = true
+		player:Kick("Не удалось продлить сохранение. Перезайди, чтобы безопасно продолжить.")
+	elseif player.Parent then
+		send(player)
+	end
+end
+
+local function join(player)
+	if loading[player] or sessions[player] or closing then return end
+	loading[player] = true
+	local data, offline
+	if studio then
+		data, offline = Economy.load(nil), 0
+	else
+		for _ = 1, 3 do
+			local ok, loaded, away = pcall(function() return storage:claim(tostring(player.UserId)) end)
+			if ok and loaded then data, offline = loaded, away; break end
+			task.wait(2)
+		end
+	end
+	if not data then
+		loading[player] = nil
+		if player.Parent then player:Kick("Не удалось загрузить прогресс. Подожди немного и зайди снова: сохранение не изменено.") end
+		return
+	end
+	sessions[player] = { data = data, offline = offline, tick = os.clock(), lastRound = -math.huge,
+		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Прогресс сохранён" }
+	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
+	loading[player] = nil
+	send(player)
+end
+
+Players.PlayerAdded:Connect(join)
 Players.PlayerRemoving:Connect(function(player)
-	slices[player] = nil
-	lastPayout[player] = nil
+	requests[player] = nil
+	save(player, true)
+end)
+for _, player in Players:GetPlayers() do task.spawn(join, player) end
+
+remotes.requestState.OnServerEvent:Connect(function(player)
+	local now = os.clock()
+	if now - (requests[player] or -math.huge) < 0.5 then return end
+	requests[player] = now
+	send(player)
 end)
 
 remotes.roundComplete.OnServerEvent:Connect(function(player)
+	local session = sessions[player]
+	if not session or session.closing then return end
 	local now = os.clock()
-	if now - (lastPayout[player] or 0) < Config.Payout.minInterval then
-		return
-	end
+	if now - session.lastRound < Config.Payout.minInterval then return end
+	session.lastRound = now
+	accrue(session)
+	local amount = Economy.round(session.data)
+	send(player, "Фокус удался! +" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", "")) .. " долек")
+end)
 
-	lastPayout[player] = now
-	slices[player] = (slices[player] or 0) + Config.Payout.amount
-	sendState(player)
+remotes.purchase.OnServerEvent:Connect(function(player, id)
+	local session = sessions[player]
+	if not session or session.closing or type(id) ~= "string" then return end
+	local now = os.clock()
+	if now - session.lastAction < 0.2 then return end
+	session.lastAction = now
+	accrue(session)
+	local bought = Economy.buy(session.data, id)
+	send(player, if bought then "Улучшение куплено" else "Покупка недоступна: проверь баланс и уровень")
+end)
+
+remotes.prestige.OnServerEvent:Connect(function(player)
+	local session = sessions[player]
+	if not session or session.closing then return end
+	local now = os.clock()
+	if now - session.lastAction < 0.2 then return end
+	session.lastAction = now
+	accrue(session)
+	local gained = Economy.prestigeGain(session.data)
+	local success = Economy.prestige(session.data)
+	send(player, if success then `Новое ателье! +{gained} какао-звёзд` else "Для нового ателье пока мало заработано")
+	if success then task.spawn(save, player, false) end
+end)
+
+task.spawn(function()
+	while not closing do
+		task.wait(1)
+		for player, session in sessions do
+			if not session.closing then
+				accrue(session)
+				send(player)
+				if not session.saving and os.clock() >= session.nextSave then
+					task.spawn(save, player, false)
+				end
+			end
+		end
+	end
+end)
+
+game:BindToClose(function()
+	closing = true
+	local remaining = 0
+	for player in sessions do
+		remaining += 1
+		task.spawn(function() save(player, true); remaining -= 1 end)
+	end
+	local deadline = os.clock() + 25
+	while (remaining > 0 or next(loading) ~= nil) and os.clock() < deadline do task.wait(0.1) end
 end)

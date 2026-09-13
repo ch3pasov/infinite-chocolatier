@@ -7,7 +7,7 @@ local StarterGui = game:GetService("StarterGui")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
-local Theme = require(script.Theme)
+local Atelier = require(script.Atelier)
 local Game = require(script.Game)
 
 local player = Players.LocalPlayer
@@ -39,12 +39,16 @@ local remotesFolder = ReplicatedStorage:WaitForChild(Remotes.Names.Folder)
 local remotes = {
 	stateSync = remotesFolder:WaitForChild(Remotes.Names.StateSync) :: RemoteEvent,
 	roundComplete = remotesFolder:WaitForChild(Remotes.Names.RoundComplete) :: RemoteEvent,
+	requestState = remotesFolder:WaitForChild(Remotes.Names.RequestState) :: RemoteEvent,
+	purchase = remotesFolder:WaitForChild(Remotes.Names.Purchase) :: RemoteEvent,
+	prestige = remotesFolder:WaitForChild(Remotes.Names.Prestige) :: RemoteEvent,
 }
 
 local gameView = Game.new(gui, remotes)
-local counter = gameView.counter
-
+local atelier = Atelier.new(gui, gameView, remotes)
 remotes.stateSync.OnClientEvent:Connect(function(state)
-	local slices = tonumber(state.slices) or 0
-	counter.Text = `ДОЛЬКИ  {slices}`
+    atelier:update(state)
 end)
+-- PlayerAdded может сработать раньше подписки клиента, поэтому состояние
+-- запрашивается явно уже после создания интерфейса и обработчика.
+remotes.requestState:FireServer()

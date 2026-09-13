@@ -78,7 +78,7 @@ return function(harness)
 		harness.equals(Config.Trick.opticalStretchRevealPower, nil)
 	end)
 
-	harness.test("сервер выдаёт ровно одну дольку", function()
+	harness.test("базовый фокус без улучшений даёт одну дольку", function()
 		harness.equals(Config.Payout.amount, 1)
 	end)
 

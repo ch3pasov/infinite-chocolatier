@@ -1,5 +1,5 @@
 --!strict
--- Единая схема связи: клиент сообщает только о завершённом раунде.
+-- Клиент передаёт завершение фокуса и намерение купить, но не цену или доход.
 
 local Remotes = {}
 
@@ -7,6 +7,9 @@ Remotes.Names = {
 	Folder = "InfiniteChocolateRemotes",
 	StateSync = "StateSync",
 	RoundComplete = "RoundComplete",
+	RequestState = "RequestState",
+	Purchase = "Purchase",
+	Prestige = "Prestige",
 }
 
 function Remotes.ensure(parent: Instance)
@@ -30,6 +33,9 @@ function Remotes.ensure(parent: Instance)
 	return {
 		stateSync = getEvent(Remotes.Names.StateSync),
 		roundComplete = getEvent(Remotes.Names.RoundComplete),
+		requestState = getEvent(Remotes.Names.RequestState),
+		purchase = getEvent(Remotes.Names.Purchase),
+		prestige = getEvent(Remotes.Names.Prestige),
 	}
 end
 

@@ -11,6 +11,8 @@ require("./recipe.spec")(harness)
 require("./input.spec")(harness)
 require("./layout.spec")(harness)
 require("./render.spec")(harness)
+require("./economy.spec")(harness)
+require("./server-economy.spec")(harness)
 
 print(`\n{harness.passed} прошло, {harness.failed} упало`)
 process.exit(if harness.failed > 0 then 1 else 0)

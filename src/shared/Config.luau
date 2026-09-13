@@ -9,7 +9,7 @@ Config.Board = {
 	-- Высокая плитка и вытянутые дольки повторяют форму настоящей шоколадки,
 	-- а не квадратную таблицу из прототипа.
 	-- Поля оставляют место счётчику и многострочной подсказке даже на телефоне.
-	viewportPadding = { side = 18, top = 76, bottom = 100 },
+	viewportPadding = { side = 18, top = 140, bottom = 100 },
 }
 
 Config.Recipe = {
@@ -129,6 +129,24 @@ Config.Payout = {
 	-- Клиент отправляет только RoundComplete; это число читает только серверная
 	-- логика начисления и оно не приходит аргументом RemoteEvent.
 	amount = 1,
+}
+
+-- Первое улучшение доступно после трёх фокусов; автоматизация появляется
+-- вскоре после него, но ручное действие продолжает ускорять развитие.
+Config.Economy = {
+    upgrades = {
+        { id = "craft", name = "Мастерство", description = "+1 долька за каждый фокус", baseCost = 3, growth = 1.55, maxLevel = 50 },
+        { id = "workers", name = "Шоколатье", description = "+0,2 дольки/с · офлайн до 4 часов", baseCost = 12, growth = 1.4, maxLevel = 100 },
+        { id = "recipe", name = "Рецептура", description = "+25% к ручному и автоматическому доходу", baseCost = 40, growth = 1.7, maxLevel = 40 },
+    },
+    workerRate = 0.2,
+    recipeBonus = 0.25,
+    starBonus = 0.25,
+    prestigeTarget = 5000,
+    offlineLimit = 4 * 60 * 60,
+    maxValue = 1e15,
+    saveInterval = 30,
+    leaseSeconds = 180,
 }
 
 return Config

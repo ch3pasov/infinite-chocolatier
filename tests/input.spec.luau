@@ -78,6 +78,18 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
+	harness.test("открытое ателье блокирует новые жесты, закрытие позволяет продолжить", function()
+		local view, events = fixture()
+		view.inputBlocked = true
+		local pointer = input("Touch")
+		events.InputBegan:Fire(pointer, false)
+		harness.equals(view.drag, nil)
+		view.inputBlocked = false
+		events.InputBegan:Fire(pointer, false)
+		move(events, pointer, 50)
+		harness.equals(view.cutProgress, 50)
+	end)
+
 	harness.test("второй палец не перехватывает и не отпускает разрез", function()
 		local view, events = fixture()
 		local first, second = input("Touch"), input("Touch", 10)
