@@ -16,7 +16,7 @@ local tweenService = {
 		}
 	end,
 }
-local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Theme = { background = R.Color3.new() } }
+local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new() } }
 local shared = { Config = "Config", Geom = "Geom", Recipe = "Recipe" }
 local source = fs.readFile("src/client/Game.luau"):gsub("return Game%s*$", "return { render = renderClippedCanonicalTile, Game = Game }")
 local exports = luau.load(source, {
@@ -46,6 +46,31 @@ local function render(mode)
 end
 
 return function(harness)
+	harness.test("бывший внешний угол верхней части заполняет внутренний стык", function()
+		local surface = R.Instance.new("Frame")
+		local extension = R.Instance.new("Frame")
+		local view = setmetatable({
+			trick = { clipColumnWidth = 1, opticalStretchRows = 0.2, pieceOrder = { "upperRight" } },
+			boardWidth = 290, boardHeight = 460, tileHeight = 92,
+			diagonal = { a = V.new(0, 322), b = V.new(290, 138) },
+			pieces = { upperRight = { spec = { clip = "upper" }, surface = surface,
+				extensionSurface = extension, baseZ = 20 } },
+		}, exports.Game)
+		view:renderBarBody(10)
+		-- После сдвига (-3, +1) правый верхний угол оказывается между
+		-- дольками: даже последние полпикселя подложки должны быть заполнены.
+		local covered = false
+		for _, column in surface:GetChildren() do
+			local p, size = column.Position, column.Size
+			if p.X.Offset <= 289.5 and p.X.Offset + size.X.Offset >= 289.5
+				and p.Y.Offset <= 0.5 and p.Y.Offset + size.Y.Offset >= 0.5 then
+				covered = true
+			end
+		end
+		harness.equals(covered, true)
+		surface:Destroy(); extension:Destroy()
+	end)
+
 	harness.test("кромка непрерывна от разлёта до отпускания и отмены сдвига", function()
 		local root = R.Instance.new("Frame")
 		local function frame()

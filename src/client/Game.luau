@@ -588,6 +588,9 @@ function Game:renderBarBody(corner: number)
 		local piece = self.pieces[pieceName]
 		local zIndex = piece.baseZ + 1
 		if piece.spec.clip == "upper" then
+			-- Исходный верхний правый угол после перестановки становится
+			-- внутренним стыком. Скругление подложки оставляло там выемку.
+			-- Рельеф долек сохраняет свои скругления в каноническом шаблоне.
 			renderClippedRoundedRect(
 				piece.surface,
 				self.diagonal,
@@ -595,7 +598,7 @@ function Game:renderBarBody(corner: number)
 				"BarBody",
 				Vector2.zero,
 				Vector2.new(self.boardWidth, self.boardHeight),
-				corner,
+				0,
 				Theme.chocolateDark,
 				zIndex,
 				columnWidth
@@ -607,7 +610,7 @@ function Game:renderBarBody(corner: number)
 				"BarBody",
 				Vector2.zero,
 				Vector2.new(self.boardWidth, self.boardHeight),
-				corner,
+				0,
 				Theme.chocolateDark,
 				zIndex,
 				columnWidth
