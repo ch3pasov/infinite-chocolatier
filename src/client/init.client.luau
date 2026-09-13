@@ -47,12 +47,15 @@ local remotes = {
 
 local gameView = Game.new(gui, remotes)
 local atelier = Atelier.new(gui, gameView, remotes)
+local kitchen
 if Config.Scene3D.enabled then
 	local Scene3D = require(script.Scene3D)
 	Scene3D.new(gameView)
+	if Config.Kitchen.enabled then kitchen = require(script.Kitchen).new(gameView, atelier) end
 end
 remotes.stateSync.OnClientEvent:Connect(function(state)
     atelier:update(state)
+	if kitchen then kitchen:update(state) end
     if state.reward then gameView:playRewardEffect(state.reward) end
 end)
 -- PlayerAdded может сработать раньше подписки клиента, поэтому состояние

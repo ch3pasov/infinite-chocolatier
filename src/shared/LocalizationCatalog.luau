@@ -2,6 +2,12 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+	["Chocolate kitchen"] = "Шоколадная кухня",
+	["View kitchen"] = "Посмотреть кухню",
+	["Back to my chocolate"] = "К моей шоколадке",
+	["Watch apprentice"] = "Смотреть ученика",
+	["Apprentices: {count} · {seconds}s per trick"] = "Ученики: {count} · {seconds} с за фокус",
+	["Hire your first apprentice in the workshop"] = "Найми первого ученика в мастерской",
 	["+1 piece per manual trick and apprentice cycle"] = "+1 долька за ручной фокус и цикл каждого ученика",
 	["+25% manual and automatic income"] = "+25% к ручному и автоматическому доходу",
 	["+{manual} per trick  ·  {rate}/s  ·  ★ {stars}"] = "+{manual} за фокус  ·  {rate}/с  ·  ★ {stars}",
