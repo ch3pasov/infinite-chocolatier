@@ -342,13 +342,17 @@ local function renderClippedCanonicalTile(
 		local boundary = Geom.lineYAtX(line, sampleX)
 		local top = position.Y
 		local bottom = position.Y + size.Y
+		local bleed = Config.Trick.clipBleed
+		-- Соседние окна показывают один и тот же мотив в тех же координатах.
+		-- Перекрытие закрывает погрешность округления границ, не растягивая
+		-- рисунок. Оно ограничено ячейкой, чтобы не залезать на соседние дольки.
 		if mode == "upper" then
-			bottom = math.min(bottom, boundary)
+			bottom = math.min(bottom, boundary + bleed)
 		elseif mode == "lower" then
-			top = math.max(top, boundary)
+			top = math.max(top, boundary - bleed)
 		else
-			top = math.max(top, boundary)
-			bottom = math.min(bottom, boundary + extension)
+			top = math.max(top, boundary - bleed)
+			bottom = math.min(bottom, boundary + extension + bleed)
 		end
 		if bottom - top > 0.05 then
 			local maskPosition = Vector2.new(x, top)
@@ -356,7 +360,7 @@ local function renderClippedCanonicalTile(
 				parent,
 				name .. "Mask",
 				maskPosition,
-				Vector2.new(width + 0.08, bottom - top + 0.08),
+				Vector2.new(math.min(width + bleed, right - x), bottom - top),
 				Theme.background,
 				1 + zOffset
 			)
@@ -866,11 +870,9 @@ end
 
 function Game:drawAssembledSeam()
 	clear(self.seamLayer)
-	-- Раньше декоративный шов рисовался посередине скрытой Curry-полосы. В
-	-- собранном состоянии он выглядел второй параллельной полосой и буквально
-	-- обводил цену лишней дольки. Единственная линия теперь лежит на настоящей
-	-- границе основания и оптически продолжённых верхних частей.
-	self:drawSeam(self.paths[1])
+	-- Швы нужны во время нарезки, но после соединения даже одна обводка
+	-- раскрывает устройство фокуса. Здесь остаётся только непрерывный рисунок
+	-- настоящих частей и их заранее подготовленной кромки.
 end
 
 function Game:showCutHint()
