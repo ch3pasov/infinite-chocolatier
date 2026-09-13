@@ -507,6 +507,7 @@ function Game:fitViewport()
 	self.viewportSize = viewport
 	self.boardScale.Scale = fit.scale
 	self.board.Position = UDim2.fromOffset(fit.x, fit.y)
+	if self.scene3D then self.scene3D:fit() end
 end
 
 function Game:buildPaths(): { CutPath }
@@ -758,6 +759,7 @@ function Game:renderChocolate()
 end
 
 function Game:screenToBoard(position: Vector3 | Vector2): Vector2
+	if self.scene3D then return self.scene3D:screenToBoard(position) end
 	local inset = self.gui.IgnoreGuiInset and Vector2.zero or GuiService:GetGuiInset()
 	local screen = Vector2.new(position.X, position.Y) - inset
 	return (screen - self.board.AbsolutePosition) / self.boardScale.Scale
@@ -1303,6 +1305,7 @@ function Game:playRewardEffect(amount: number)
 	if size.X <= 0 or size.Y <= 0 then return end
 	local point = self.board.AbsolutePosition - self.root.AbsolutePosition
 		+ (piece.origin + piece.offset + piece.size / 2) * self.boardScale.Scale
+	if self.scene3D then point = self.scene3D:boardToScreen(piece.origin + piece.offset + piece.size / 2) end
 	-- Число остаётся внутри экрана даже у внешней левой дольки. Эффект
 	-- отдельный от полигонов: сброс раунда не обрывает его и не задерживает ввод.
 	point = Vector2.new(math.clamp(point.X, 80, math.max(80, size.X - 80)),

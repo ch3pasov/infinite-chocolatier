@@ -3,6 +3,21 @@
 
 local Config = {}
 
+-- Экспериментальный рендер отделён от правил игры; false возвращает 2D.
+Config.Scene3D = {
+	enabled = true,
+	unitsPerPixel = 0.02,
+	fieldOfView = 18,
+	cameraTilt = 34,
+	surfaceHeight = 0.48,
+	baseHeight = 0.23,
+	colors = {
+		body = {65, 30, 20}, bevel = {112, 58, 34}, face = {86, 40, 24},
+		relief = {104, 51, 29}, table = {80, 106, 99}, wood = {194, 151, 103},
+		woodEdge = {115, 73, 44}, grain = {178, 130, 85}, knife = {199, 215, 216}, handle = {39, 72, 70},
+	},
+}
+
 Config.Board = {
 	columns = 5,
 	rows = 5,

@@ -9,6 +9,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
 local Atelier = require(script.Atelier)
 local Game = require(script.Game)
+local Config = require(Shared.Config)
 
 local player = Players.LocalPlayer
 
@@ -46,6 +47,10 @@ local remotes = {
 
 local gameView = Game.new(gui, remotes)
 local atelier = Atelier.new(gui, gameView, remotes)
+if Config.Scene3D.enabled then
+	local Scene3D = require(script.Scene3D)
+	Scene3D.new(gameView)
+end
 remotes.stateSync.OnClientEvent:Connect(function(state)
     atelier:update(state)
     if state.reward then gameView:playRewardEffect(state.reward) end
