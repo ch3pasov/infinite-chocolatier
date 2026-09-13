@@ -11,6 +11,14 @@ Config.Scene3D = {
 	cameraTilt = 34,
 	surfaceHeight = 0.48,
 	baseHeight = 0.23,
+	-- В 3D между лежащими частями нужен зазор, включая оптическую кромку.
+	exploded = {
+		base = {dx=0,dy=0}, upperLeft = {dx=-1,dy=-1.5},
+		upperRight = {dx=0.8,dy=-1.8}, stripDouble = {dx=-1,dy=-3},
+		stripSingle = {dx=-1.5,dy=-3},
+	},
+	carryHeight = 0.8,
+	carryBow = 8,
 	colors = {
 		body = {65, 30, 20}, bevel = {112, 58, 34}, face = {86, 40, 24},
 		relief = {104, 51, 29}, table = {80, 106, 99}, wood = {194, 151, 103},

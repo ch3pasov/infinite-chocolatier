@@ -378,6 +378,10 @@ function Game.new(gui: ScreenGui, remotes)
 	self.remotes = remotes
 	self.recipe = Recipe.build(Config.Recipe)
 	self.trick = Config.Trick
+	if Config.Scene3D.enabled then
+		self.trick = table.clone(Config.Trick)
+		self.trick.exploded = Config.Scene3D.exploded
+	end
 	self.active = "cut"
 	self.cutIndex = 1
 	self.cutProgress = 0

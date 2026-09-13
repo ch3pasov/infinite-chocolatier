@@ -20,7 +20,8 @@ local function module(path)
 end
 local Projection=module('src/client/Projection3D.luau')
 local Solid=module('src/client/SolidGeometry.luau')
-local deps={Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid}
+local Motion=module('src/client/Motion3D.luau')
+local deps={Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
 local modules=setmetatable({},{__index=function(_,k)return k end})
 local sceneEnv=table.clone(env)
 sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' then {WaitForChild=function()return modules end} else {} end}
@@ -109,11 +110,60 @@ return function(h)
 		self:step(0.016); self:step(0.15)
 		assert(self.pieces.stripSingle:GetChildren()[2].Transparency>0)
 		v.active='exploding'; self:step(0.016)
-		for _,p in self.pieces.stripSingle:GetChildren() do h.near(p.Transparency,p:GetAttribute('RestTransparency')) end
-		for _=1,60 do self:step(0.016) end
+		for _,p in self.pieces.stripSingle:GetChildren() do h.near(p.Transparency,1) end
+		for _=1,60 do
+			self:step(0.016)
+			assert(self.intact.Parent==self.world)
+			for _,m in self.pieces do
+				assert(m.Parent==self.world,'модель удалена из сцены')
+				for _,p in m:GetChildren() do h.near(p.Transparency,1) end
+			end
+		end
+		v.intactLayer.Visible=false; self:step(0.016)
+		for _,m in self.pieces do
+			for _,p in m:GetChildren() do h.near(p.Transparency,p:GetAttribute('RestTransparency')) end
+		end
 		h.equals(#self.effects,0)
 		self.world:Destroy(); self.intact:Destroy(); self.knife:Destroy()
 		for _,m in self.pieces do m:Destroy() end
+	end)
+
+	h.test('3D: лежащие и переносимые части не пересекаются в объёме',function()
+		local self=setmetatable({view={tileWidth=66,tileHeight=104,diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)}}},Scene)
+		local polygons={}
+		for _,name in Config.Trick.pieceOrder do
+			polygons[name]=self:clip(Solid.outline(0,0,330,520,0),Config.Trick.pieces[name])
+		end
+		local function intersects(a,b)
+			local result=a
+			for i,p in b do result=Geom.clipPolygon(result,{a=p,b=b[i%#b+1]},false) end
+			return Geom.polygonArea(result)>0.01
+		end
+		for _,phase in {'assembleLarge','assembleStrip'} do
+			for tick=0,200 do
+				local t=tick/200
+				local posed={}
+				for _,name in Config.Trick.pieceOrder do
+					local start=Config.Scene3D.exploded[name]
+					local finish=recipe.slides[name] or {dx=0,dy=0}
+					local progress=if name=='upperLeft' or name=='upperRight' then (if phase=='assembleLarge' then t else 1)
+						elseif name=='stripDouble' or name=='stripSingle' then (if phase=='assembleStrip' then t else 0) else 0
+					local raw=R.Vector2.new((start.dx+(finish.dx-start.dx)*progress)*66,(start.dy+(finish.dy-start.dy)*progress)*104)
+					local offset=Motion.offset(name,raw,phase,settings,recipe.slides,66,104)
+					local poly={}
+					for _,p in polygons[name] do table.insert(poly,p+R.Vector2.new(offset.X,offset.Z)/settings.unitsPerPixel) end
+					posed[name]={poly=poly,height=offset.Y}
+				end
+				for i,a in Config.Trick.pieceOrder do
+					for j=i+1,#Config.Trick.pieceOrder do
+						local b=Config.Trick.pieceOrder[j]
+						if math.abs(posed[a].height-posed[b].height)<settings.surfaceHeight then
+							assert(not intersects(posed[a].poly,posed[b].poly),`{phase} {tick}: {a} пересекает {b}`)
+						end
+					end
+				end
+			end
+		end
 	end)
 
 end

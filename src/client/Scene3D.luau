@@ -8,6 +8,7 @@ local Geom = require(Shared.Geom)
 local Layout = require(script.Parent.Layout)
 local Projection = require(script.Parent.Projection3D)
 local Solid = require(script.Parent.SolidGeometry)
+local Motion = require(script.Parent.Motion3D)
 local Scene = {}
 Scene.__index = Scene
 local settings = Config.Scene3D
@@ -49,7 +50,7 @@ local function chamfer(parent, outer, inner, bottom, top, tint, clipper)
 				return Vector3.new(p.X*unit,bottom+(top-bottom)*t,p.Y*unit)
 			end
 			for k=2,#polygon-1 do
-				for _, w in Solid.wedges(world(polygon[1]),world(polygon[k]),world(polygon[k+1]),0.001) do
+				for _, w in Solid.wedges(world(polygon[1]),world(polygon[k]),world(polygon[k+1]),0.012) do
 					part(parent,"SlopedBevel",w.size,w.frame,tint,"WedgePart")
 				end
 			end
@@ -57,8 +58,14 @@ local function chamfer(parent, outer, inner, bottom, top, tint, clipper)
 	end
 end
 local function present(m, parent, visible)
-	local target = if visible then parent else nil
-	if m.Parent ~= target then m.Parent = target end
+	-- ViewportFrame не должен заново включать модель в рендер при каждом
+	-- переходе: её дерево и геометрия остаются в WorldModel весь раунд.
+	if m.Parent ~= parent then m.Parent = parent end
+	if m:GetAttribute("Shown") == visible then return end
+	m:SetAttribute("Shown",visible)
+	for _,p in m:GetDescendants() do
+		if p:IsA("BasePart") then p.Transparency=if visible then (p:GetAttribute("RestTransparency") or 0) else 1 end
+	end
 end
 
 function Scene:clip(polygon, spec)
@@ -84,8 +91,9 @@ function Scene:chocolate(name, spec)
 	local v = self.view
 	local shadow=self:clip(Solid.outline(0,0,v.boardWidth,v.boardHeight,0),spec)
 	for i,p in shadow do shadow[i]=p+Vector2.new(4,6) end
-	prism(m,"ContactShadow",shadow,-0.028,-0.023,Color3.fromRGB(51,30,18))
-	for _,p in m:GetChildren() do p.Transparency=0.62 end
+	-- Непрозрачный смешанный цвет вместо сортировки наложенных прозрачных
+	-- треугольников: такая контактная тень не вспыхивает при перемещении.
+	prism(m,"ContactShadow",shadow,-0.025,-0.015,color("wood"):Lerp(Color3.fromRGB(51,30,18),0.38))
 	prism(m,"ChocolateBody",self:clip(Solid.outline(0,0,v.boardWidth,v.boardHeight,0),spec),0,settings.baseHeight,color("body"))
 	local gap = math.max(3,math.floor(math.min(v.tileWidth,v.tileHeight)*Config.Trick.tileGapRatio+0.5))
 	local bevel = math.max(3,math.floor(math.min(v.tileWidth,v.tileHeight)*Config.Trick.bevelRatio+0.5))
@@ -121,8 +129,7 @@ function Scene:makeTable()
 	-- Тонкие волокна древесины лежат вне шоколадки и не напоминают разрезы.
 	for i=1,12 do
 		local px = x-w/2+0.2+i*(w-0.4)/13
-		local grain = part(self.world,"WoodGrain",Vector3.new(0.012,0.004,h-0.35),CFrame.new(px,-0.031,z),color("grain"))
-		grain.Transparency = 0.58
+		part(self.world,"WoodGrain",Vector3.new(0.012,0.004,h-0.35),CFrame.new(px,-0.026,z),color("wood"):Lerp(color("grain"),0.42))
 	end
 end
 
@@ -207,7 +214,11 @@ function Scene:syncHints()
 				local size = Vector2.new(gui.Size.X.Offset,gui.Size.Y.Offset)
 				local center = Vector2.new(gui.Position.X.Offset,gui.Position.Y.Offset)+size*(Vector2.new(0.5,0.5)-gui.AnchorPoint)
 				p.Size = Vector3.new(math.max(0.015,size.X*unit),0.018,math.max(0.015,size.Y*unit))
-				p.CFrame = CFrame.new(center.X*unit,settings.surfaceHeight+0.025,center.Y*unit)*CFrame.Angles(0,-math.rad(gui.Rotation),0)
+				-- Тёмная линия и её тонкая кромка раньше лежали в одной
+				-- плоскости. UI ZIndex сам по себе в 3D глубину не разделяет.
+				local height=if layer==self.view.seamLayer then 0.025+math.clamp(gui.ZIndex-410,0,1)*0.012
+					elseif layer==self.view.progressLayer then 0.055 else 0.08
+				p.CFrame = CFrame.new(center.X*unit,settings.surfaceHeight+height,center.Y*unit)*CFrame.Angles(0,-math.rad(gui.Rotation),0)
 				p.Color = gui.BackgroundColor3
 				p.Transparency = if gui.Visible then gui.BackgroundTransparency else 1
 				if gui.Name == "Start" then p.Shape=Enum.PartType.Ball; p.Size=Vector3.new(size.X*unit,0.07,size.Y*unit) end
@@ -240,7 +251,8 @@ function Scene:step(dt)
 		local reward = name==Config.Trick.rewardPiece and (v.active=="done" or v.active=="collecting")
 		present(m,self.world,p.motion.Visible and (not intact or reward))
 		local position = p.motion.Position
-		local offset=Vector3.new((position.X.Offset-p.origin.X)*unit,0,(position.Y.Offset-p.origin.Y)*unit)
+		local raw=Vector2.new(position.X.Offset-p.origin.X,position.Y.Offset-p.origin.Y)
+		local offset=Motion.offset(name,raw,v.active,settings,v.recipe.slides,v.tileWidth,v.tileHeight)
 		if reward and v.active=="collecting" then
 			local elapsed=math.clamp((self.time-(self.collectStarted or self.time))/Config.Trick.collectionDuration,0,1)
 			offset += Vector3.new(-elapsed*0.3,elapsed*0.8,0)
@@ -248,7 +260,7 @@ function Scene:step(dt)
 				local rest=child:GetAttribute("RestTransparency") or 0
 				child.Transparency=rest+(1-rest)*elapsed
 			end
-		elseif self.previousActive=="collecting" then
+		elseif self.previousActive=="collecting" and m:GetAttribute("Shown") then
 			for _, child in m:GetChildren() do child.Transparency=child:GetAttribute("RestTransparency") or 0 end
 		end
 		-- Неподвижные сотни граней не пересылаются движку каждый кадр.
