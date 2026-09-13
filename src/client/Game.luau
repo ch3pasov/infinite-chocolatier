@@ -1103,9 +1103,7 @@ function Game:updateDrag(point: Vector2)
 		drag.progress = math.max(drag.progress, arc)
 		self.cutProgress = drag.progress
 		self:drawProgress(path, drag.progress)
-		local snapDistance = math.min(Config.Cutting.finishSnapRadius / scale,
-			path.geom.length * (1 - Config.Cutting.finishSnapMinProgress))
-		if drag.progress >= path.geom.length - snapDistance then
+		if drag.progress >= path.geom.length * Config.Cutting.completeAt then
 			-- Сам жест ещё не завершён: игрок должен почувствовать конечную точку
 			-- и явно отпустить мышь или палец. Следующий пунктир до отпускания не
 			-- появляется.
@@ -1130,6 +1128,28 @@ function Game:updateDrag(point: Vector2)
 	end
 end
 
+function Game:finishCutSmoothly(path)
+	local start = self.cutProgress
+	local index, token = self.cutIndex, self.animationToken
+	self.active = "finishingCut"
+	if self.startPip then self.startPip.Visible = false end
+	-- Доводка начинается только после отпускания. Пока кнопка удерживается,
+	-- отрисованный прогресс ни на пиксель не опережает выполненный жест.
+	local steps = Config.Cutting.finishSnapSteps
+	for step = 1, steps do
+		task.delay(Config.Cutting.finishSnapDuration * step / steps, function()
+			if self.active ~= "finishingCut" or self.cutIndex ~= index or self.animationToken ~= token then return end
+			local t = step / steps
+			self.cutProgress = math.max(self.cutProgress, start + (path.geom.length - start) * (1 - (1 - t) ^ 2))
+			self:drawProgress(path, self.cutProgress)
+			if step == steps then
+				self.active = "cut"
+				self:finishCut()
+			end
+		end)
+	end
+end
+
 function Game:endDrag(cancelled: boolean?)
 	local drag = self.drag
 	if not drag then
@@ -1142,6 +1162,12 @@ function Game:endDrag(cancelled: boolean?)
 			local path = self.paths[self.cutIndex]
 			if not cancelled and (drag.ready or self.cutProgress >= path.geom.length * Config.Cutting.completeAt) then
 				self:finishCut()
+				return
+			end
+			local snapDistance = math.min(Config.Cutting.finishSnapRadius / self.boardScale.Scale,
+				path.geom.length * (1 - Config.Cutting.finishSnapMinProgress))
+			if not cancelled and self.cutProgress >= path.geom.length - snapDistance then
+				self:finishCutSmoothly(path)
 				return
 			end
 			if self.startPip then

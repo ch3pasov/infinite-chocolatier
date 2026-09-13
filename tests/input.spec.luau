@@ -32,6 +32,7 @@ local function input(kind, x, y)
 end
 
 local function fixture(phase)
+	local pending = {}
 	local events = {
 		InputBegan = signal(), InputChanged = signal(), InputEnded = signal(),
 		WindowFocusReleased = signal(), MenuOpened = signal(),
@@ -47,6 +48,7 @@ local function fixture(phase)
 			script = { Parent = { Theme = "Theme", Layout = "Layout" } },
 			require = function(name) return assert(modules[name]) end,
 			Enum = E, Vector2 = V, UDim2 = Roblox.UDim2,
+			task = { delay = function(_, callback) table.insert(pending, callback) end },
 		},
 		injectGlobals = true,
 	})()
@@ -69,6 +71,8 @@ local function fixture(phase)
 	function view:finishLargeAssembly() self.completed += 1 end
 	function view:finishRound() self.completed += 1 end
 	view:bindInput()
+	function events:stepAnimation() if #pending > 0 then table.remove(pending, 1)() end end
+	function events:finishAnimation() while #pending > 0 do self:stepAnimation() end end
 	return view, events
 end
 
@@ -78,7 +82,19 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
-	harness.test("автодоводка заканчивает последние пиксели, но ждёт отпускания", function()
+	harness.test("отмена почти готового разреза не запускает доводку", function()
+		local view, events = fixture()
+		local pointer = input("Touch")
+		events.InputBegan:Fire(pointer, false)
+		move(events, pointer, 95)
+		events.WindowFocusReleased:Fire()
+		events:finishAnimation()
+		harness.equals(view.cutProgress, 95)
+		harness.equals(view.completed, 0)
+		harness.equals(view.active, "cut")
+	end)
+
+	harness.test("автодоводка начинается только после отпускания и дорисовывает плавно", function()
 		for _, scale in { 0.5, 1, 2 } do
 			local view, events = fixture()
 			view.boardScale.Scale = scale
@@ -88,11 +104,16 @@ return function(harness)
 			move(events, pointer, 1000 - 29 / scale)
 			harness.equals(view.drag.ready, false)
 			move(events, pointer, 1000 - 27 / scale)
-			harness.equals(view.cutProgress, 1000)
-			harness.equals(view.drawnProgress, 1000)
-			harness.equals(view.completed, 0)
-			move(events, pointer, 0, 1000)
+			local before = 1000 - 27 / scale
+			harness.near(view.cutProgress, before)
+			harness.near(view.drawnProgress, before)
 			events.InputEnded:Fire(pointer)
+			harness.equals(view.completed, 0)
+			harness.equals(view.active, "finishingCut")
+			events:stepAnimation()
+			assert(view.cutProgress > before and view.cutProgress < 1000)
+			events:finishAnimation()
+			harness.equals(view.cutProgress, 1000)
 			harness.equals(view.completed, 1)
 		end
 	end)
@@ -105,9 +126,10 @@ return function(harness)
 		view:updateDrag(V.new(8, 0))
 		harness.equals(view.cutProgress, 8)
 		view:updateDrag(V.new(9, 0))
-		harness.equals(view.cutProgress, 10)
+		harness.equals(view.cutProgress, 9)
 		harness.equals(view.completed, 0)
 		events.InputEnded:Fire(pointer)
+		events:finishAnimation()
 		harness.equals(view.completed, 1)
 	end)
 
