@@ -20,10 +20,21 @@ function Economy.load(raw)
 		lifetime = number(raw.lifetime, 0, E.maxValue),
 		stars = math.floor(number(raw.stars, 0, 1000000)),
 		rounds = math.floor(number(raw.rounds, 0, E.maxValue)),
+		productionRemainder = number(raw.productionRemainder, 0, 0.999999999),
 		levels = {},
 	}
 	for _, spec in E.upgrades do
 		data.levels[spec.id] = math.floor(number(levels[spec.id], 0, spec.maxLevel))
+	end
+	-- Старый таймер оставлял случайные сотые даже без множителей. Один раз
+	-- доводим такой баланс вверх до десятой, не отнимая уже заработанное.
+	-- При рецептуре или звёздах сотые могут быть настоящей частью дохода.
+	if raw.productionRemainder == nil and data.stars == 0 and data.levels.recipe == 0 then
+		local corrected = math.ceil(data.slices * 10 - 1e-9) / 10
+		local bonus = math.max(0, corrected - data.slices)
+		data.slices = math.min(E.maxValue, data.slices + bonus)
+		data.earned = math.min(E.maxValue, data.earned + bonus)
+		data.lifetime = math.min(E.maxValue, data.lifetime + bonus)
 	end
 	return data
 end
@@ -64,7 +75,17 @@ function Economy.round(data)
 end
 
 function Economy.tick(data, elapsed)
-	return Economy.credit(data, Economy.rate(data) * number(elapsed, 0, E.offlineLimit))
+	local rate = Economy.rate(data)
+	if rate <= 0 then
+		data.productionRemainder = 0
+		return 0
+	end
+	-- task.wait не гарантирует ровно секунду. Дробь времени переносим,
+	-- а деньги выдаём только за завершённые секундные циклы производства.
+	local total = data.productionRemainder + number(elapsed, 0, E.offlineLimit)
+	local seconds = math.floor(total + 1e-9)
+	data.productionRemainder = math.max(0, total - seconds)
+	return Economy.credit(data, rate * seconds)
 end
 
 function Economy.buy(data, id)
@@ -86,6 +107,7 @@ function Economy.prestige(data)
 	data.stars += gain
 	data.slices = 0
 	data.earned = 0
+	data.productionRemainder = 0
 	for id in data.levels do data.levels[id] = 0 end
 	return true
 end
