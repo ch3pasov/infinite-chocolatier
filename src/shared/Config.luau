@@ -175,11 +175,14 @@ Config.Payout = {
 -- вскоре после него, но ручное действие продолжает ускорять развитие.
 Config.Economy = {
     upgrades = {
-        { id = "craft", name = "Craftsmanship", description = "+1 piece per trick", baseCost = 3, growth = 1.55, maxLevel = 50 },
-        { id = "workers", name = "Chocolatiers", description = "+0.2 pieces/s · up to 4 hours offline", baseCost = 12, growth = 1.4, maxLevel = 100 },
+        { id = "craft", name = "Craftsmanship", description = "+1 piece per manual trick and apprentice cycle", baseCost = 3, growth = 1.55, maxLevel = 50 },
+        { id = "workers", name = "Apprentice Chocolatiers", description = "+1 apprentice · same reward as your manual trick", baseCost = 25, growth = 1.4, maxLevel = 100 },
+        { id = "speed", name = "Practiced Hands", description = "+20% apprentice cycle speed", baseCost = 40, growth = 1.55, maxLevel = 50 },
         { id = "recipe", name = "Recipe", description = "+25% manual and automatic income", baseCost = 40, growth = 1.7, maxLevel = 40 },
     },
-    workerRate = 0.2,
+    -- Один ученик выполняет полный фокус; мастерство усиливает его награду.
+    apprenticeCycleSeconds = 10,
+    apprenticeSpeedBonus = 0.2,
     recipeBonus = 0.25,
     starBonus = 0.25,
     prestigeTarget = 5000,

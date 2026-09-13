@@ -20,6 +20,8 @@ function Economy.load(raw)
 		lifetime = number(raw.lifetime, 0, E.maxValue),
 		stars = math.floor(number(raw.stars, 0, 1000000)),
 		rounds = math.floor(number(raw.rounds, 0, E.maxValue)),
+		-- Старые workers сохраняются; остаток старого секундного цикла
+		-- становится той же долей нового полного фокуса. Деньги не списываются.
 		productionRemainder = number(raw.productionRemainder, 0, 0.999999999),
 		levels = {},
 	}
@@ -47,8 +49,12 @@ function Economy.manual(data)
 	return (Config.Payout.amount + data.levels.craft) * Economy.multiplier(data)
 end
 
+function Economy.cycleSeconds(data)
+	return E.apprenticeCycleSeconds / (1 + data.levels.speed * E.apprenticeSpeedBonus)
+end
+
 function Economy.rate(data)
-	return data.levels.workers * E.workerRate * Economy.multiplier(data)
+	return data.levels.workers * Economy.manual(data) / Economy.cycleSeconds(data)
 end
 
 function Economy.price(data, id)
@@ -80,12 +86,12 @@ function Economy.tick(data, elapsed)
 		data.productionRemainder = 0
 		return 0
 	end
-	-- task.wait не гарантирует ровно секунду. Дробь времени переносим,
-	-- а деньги выдаём только за завершённые секундные циклы производства.
-	local total = data.productionRemainder + number(elapsed, 0, E.offlineLimit)
-	local seconds = math.floor(total + 1e-9)
-	data.productionRemainder = math.max(0, total - seconds)
-	return Economy.credit(data, rate * seconds)
+	-- Храним долю готового фокуса: ускорение не стирает прогресс и не
+	-- начисляет задним числом ускоренные циклы. Оплата только за целые циклы.
+	local total = data.productionRemainder + number(elapsed, 0, E.offlineLimit) / Economy.cycleSeconds(data)
+	local cycles = math.floor(total + 1e-9)
+	data.productionRemainder = math.max(0, total - cycles)
+	return Economy.credit(data, data.levels.workers * Economy.manual(data) * cycles)
 end
 
 function Economy.buy(data, id)
@@ -116,6 +122,8 @@ function Economy.snapshot(data)
 	local state = Economy.load(data)
 	state.manual = Economy.manual(data)
 	state.rate = Economy.rate(data)
+	state.cycleSeconds = Economy.cycleSeconds(data)
+	state.cycleReward = Economy.manual(data)
 	state.prestigeGain = Economy.prestigeGain(data)
 	state.prices = {}
 	for _, spec in E.upgrades do state.prices[spec.id] = Economy.price(data, spec.id) end

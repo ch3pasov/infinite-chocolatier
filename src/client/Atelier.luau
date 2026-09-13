@@ -77,14 +77,14 @@ function Atelier.new(gui, gameView, remotes)
 	counterLimit.MinTextSize = 12
 	counterLimit.MaxTextSize = 25
 	counterLimit.Parent = gameView.counter
-	L.set(gameView.counter, "LOADING ATELIER…")
+	L.set(gameView.counter, "LOADING CHOCOLATE…")
 	self.metrics = text(gameView.root, "Production", 14, Theme.muted)
 	self.metrics.Position = UDim2.new(0.04, 0, 0, 57)
 	self.metrics.Size = UDim2.new(0.92, 0, 0, 26)
 	self.metrics.TextXAlignment = Enum.TextXAlignment.Center
 	self.metrics.ZIndex = 910
 	L.set(self.metrics, "Loading your progress")
-	self.open = button(gameView.root, "OpenAtelier", "ATELIER")
+	self.open = button(gameView.root, "OpenAtelier", "WORKSHOP")
 	self.open.AnchorPoint = Vector2.new(0.5, 0)
 	self.open.Position = UDim2.new(0.5, 0, 0, 90)
 	self.open.Size = UDim2.fromOffset(260, 38)
@@ -110,7 +110,7 @@ function Atelier.new(gui, gameView, remotes)
 	bounds.Parent = panel
 	self.panelBounds = bounds
 	local title = text(panel, "Title", 23, Theme.accent)
-	L.set(title, "Chocolate Atelier")
+	L.set(title, "Infinite Chocolatier")
 	title.Position = UDim2.fromOffset(16, 12)
 	title.Size = UDim2.new(1, -80, 0, 56)
 	local close = button(panel, "Close", "×")
@@ -156,13 +156,13 @@ function Atelier.new(gui, gameView, remotes)
 				remotes.purchase:FireServer(spec.id)
 			end
 		end)
-		self.cards[spec.id] = { heading = heading, buy = buy, spec = spec }
+		self.cards[spec.id] = { heading = heading, description = description, buy = buy, spec = spec }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	prestige.Size = UDim2.new(1, -8, 0, 242)
 	prestige.LayoutOrder = 10
 	local heading = text(prestige, "Title", 19, Theme.accent)
-	L.set(heading, "New Atelier")
+	L.set(heading, "New Workshop")
 	heading.Position = UDim2.fromOffset(12, 8)
 	heading.Size = UDim2.new(1, -24, 0, 28)
 	self.prestigeInfo = text(prestige, "Progress", 14, Theme.muted)
@@ -173,7 +173,7 @@ function Atelier.new(gui, gameView, remotes)
 	track.Size = UDim2.new(1, -24, 0, 8)
 	self.fill = box(track, "Fill", Theme.accent)
 	self.fill.Size = UDim2.fromScale(0, 1)
-	self.ascend = button(prestige, "Ascend", "Earn 5K pieces to start a new atelier")
+	self.ascend = button(prestige, "Ascend", "Earn 5K pieces to start a new workshop")
 	self.ascend.Position = UDim2.new(0, 12, 1, -92)
 	self.ascend.Size = UDim2.new(1, -24, 0, 40)
 	self.cancel = button(prestige, "CancelReset", "Cancel")
@@ -298,6 +298,11 @@ function Atelier:update(state)
 	local affordable = 0
 	for id, card in self.cards do
 		local level = state.levels[id]
+		if id=="workers" then
+			L.set(card.description,"Each apprentice: +{reward} per {seconds}s cycle · offline up to 4h",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})
+		elseif id=="speed" then
+			L.set(card.description,"+20% cycle speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
+		end
 		L.set(card.heading, "{upgrade} · {level}", {upgrade=L.token(card.spec.name),level=level})
 		local price = state.prices[id]
 		local canBuy = price and state.slices >= price
@@ -309,14 +314,14 @@ function Atelier:update(state)
 		elseif canBuy then L.set(card.buy,"Buy · {price} pieces",{price=format(price)})
 		else L.set(card.buy,"Price {price} · need {missing} more",{price=format(price),missing=format(price-state.slices)}) end
 	end
-	if affordable>0 then L.set(self.open,"ATELIER · {count} available",{count=affordable}) else L.set(self.open,"ATELIER · upgrades") end
+	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
 	local gain = state.prestigeGain
 	if gain < 1 then self.confirmed = false end
 	if self.confirmed then L.set(self.prestigeInfo,"Reset your pieces and all upgrades? Your stars stay. Gain {stars} more; each permanently adds +25% income.",{stars=gain})
-	else L.set(self.prestigeInfo,"Earned in this atelier: {earned}. The first star costs 5K, two cost 20K. Each adds +25% income permanently. Pieces and upgrades will reset.",{earned=format(state.earned)}) end
+	else L.set(self.prestigeInfo,"Earned in this workshop: {earned}. The first star costs 5K, two cost 20K. Each adds +25% income permanently. Pieces and upgrades will reset.",{earned=format(state.earned)}) end
 	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
 	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
-	elseif gain>0 then L.set(self.ascend,"Open a new atelier · +{stars} ★",{stars=gain})
+	elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})
 	else L.set(self.ascend,"Goal · earn 5K pieces") end
 	self.ascend.BackgroundColor3 = if gain > 0 then Theme.accent else Theme.chocolateEdge
 	self.cancel.Visible = self.confirmed

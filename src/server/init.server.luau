@@ -157,7 +157,7 @@ remotes.prestige.OnServerEvent:Connect(function(player)
 	accrue(session)
 	local gained = Economy.prestigeGain(session.data)
 	local success = Economy.prestige(session.data)
-	send(player, if success then {key="New atelier! +{stars} cocoa stars",args={stars=gained}} else "Earn more pieces to start a new atelier")
+	send(player, if success then {key="New workshop! +{stars} cocoa stars",args={stars=gained}} else "Earn more pieces to start a new workshop")
 	if success then task.spawn(save, player, false) end
 end)
 
