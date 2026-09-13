@@ -28,6 +28,7 @@ sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' t
 sceneEnv.Instance=R.Instance
 sceneEnv.Color3=R.Color3
 sceneEnv.Enum=R.Enum
+sceneEnv.UDim2=R.UDim2
 sceneEnv.script={Parent=modules}
 sceneEnv.require=function(name)return assert(deps[name],name) end
 local Scene=luau.load(fs.readFile('src/client/Scene3D.luau'),{environment=sceneEnv,injectGlobals=true})()
@@ -94,8 +95,10 @@ return function(h)
 			diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)},pieces={},active='done'}
 		for _,key in {'intactLayer','hintLayer','progressLayer','seamLayer'} do v[key]=R.Instance.new('Frame') end
 		v.intactLayer.Visible=false
-		local self=setmetatable({view=v,world=R.Instance.new('WorldModel'),pieces={},lastOffsets={},hints={},effects={},time=0},Scene)
+		local self=setmetatable({view=v,world=R.Instance.new('WorldModel'),pieces={},layers={},frame=R.Instance.new('ViewportFrame'),camera=R.Instance.new('Camera'),hints={},effects={},time=0},Scene)
 		self.intact=self:chocolate('WholeBar')
+		self:attachPiece('WholeBar',self.intact)
+		self.overlay=self:layer('Overlay',8)
 		self.knife=R.Instance.new('Model')
 		local count=#self.intact:GetDescendants()
 		for _,name in Config.Trick.pieceOrder do
@@ -105,31 +108,51 @@ return function(h)
 			motion.Position=R.UDim2.fromOffset(origin.X,origin.Y)
 			v.pieces[name]={motion=motion,origin=origin}
 			self.pieces[name]=self:chocolate(name,spec)
+			self:attachPiece(name,self.pieces[name])
 			count+=#self.pieces[name]:GetDescendants()
 		end
 		assert(count<5000,`слишком много граней: {count}`)
-		self:step(0.016)
-		assert(self.pieces.stripSingle.Parent==self.world)
-		v.active='collecting'; v.intactLayer.Visible=true
-		self:step(0.016); self:step(0.15)
-		assert(self.pieces.stripSingle:GetChildren()[2].Transparency>0)
-		v.active='exploding'; self:step(0.016)
-		for _,p in self.pieces.stripSingle:GetChildren() do h.near(p.Transparency,1) end
-		for _=1,60 do
-			self:step(0.016)
-			assert(self.intact.Parent==self.world)
-			for _,m in self.pieces do
-				assert(m.Parent==self.world,'модель удалена из сцены')
-				for _,p in m:GetChildren() do h.near(p.Transparency,1) end
+		assert(self.layers.base.frame.ZIndex>self.layers.upperLeft.frame.ZIndex,'передняя часть должна скрывать торец диагонали')
+		assert(self.layers.upperRight.frame.ZIndex>self.layers.stripDouble.frame.ZIndex,'ниша должна скрывать торец верхней полоски')
+		for _,layer in self.layers do assert(layer.shadow.frame.ZIndex<self.layers.stripDouble.frame.ZIndex) end
+		local frozen={}
+		for _,m in self.pieces do for _,p in m:GetChildren() do frozen[p]={p.CFrame,p.Size,p.Transparency,p.Parent} end end
+		for _,phase in {'large','join','strip'} do
+			v.active=if phase=='strip' then 'assembleStrip' else 'assembleLarge'
+			for tick=0,40 do
+				for name,p in v.pieces do
+					local at=Motion.pose(name,phase,tick/40,settings.layouts.landscape,recipe.slides,settings.passageY)
+					p.motion.Position=R.UDim2.fromOffset(p.origin.X+at.X*66,p.origin.Y+at.Y*104)
+				end
+				self:step(0.016)
+				for name in v.pieces do
+					assert(self.layers[name].frame.Visible,`{name} исчез на этапе {phase}`)
+					h.near(self.layers[name].frame.ImageTransparency,0)
+				end
+				for p,before in frozen do
+					h.equals(p.CFrame,before[1]); h.equals(p.Size,before[2])
+					h.equals(p.Transparency,before[3]); h.equals(p.Parent,before[4])
+				end
 			end
 		end
+		v.active='done'; self:step(0.016)
+		assert(self.layers.stripSingle.frame.Visible)
+		v.active='collecting'; v.intactLayer.Visible=true
+		self:step(0.016); self:step(0.15)
+		assert(self.layers.stripSingle.frame.ImageTransparency>0)
+		assert(self.layers.WholeBar.frame.Visible)
+		assert(not self.layers.stripDouble.frame.Visible)
+		v.active='exploding'
+		for _=1,60 do self:step(0.016) end
+		assert(not self.layers.stripSingle.frame.Visible)
 		v.intactLayer.Visible=false; self:step(0.016)
-		for _,m in self.pieces do
-			for _,p in m:GetChildren() do h.near(p.Transparency,p:GetAttribute('RestTransparency')) end
+		for name,m in self.pieces do
+			assert(m.Parent==self.layers[name].world)
+			assert(self.layers[name].frame.Visible)
+			h.near(self.layers[name].frame.ImageTransparency,0)
 		end
 		h.equals(#self.effects,0)
-		self.world:Destroy(); self.intact:Destroy(); self.knife:Destroy()
-		for _,m in self.pieces do m:Destroy() end
+		self.frame:Destroy(); self.world:Destroy(); self.camera:Destroy(); self.knife:Destroy()
 	end)
 
 	h.test('3D: обе раскладки обходятся без подъёма и пересечений при переносе',function()
@@ -270,6 +293,27 @@ return function(h)
 					for k,p in profiles[j] do intersection=Geom.clipPolygon(intersection,{a=p,b=profiles[j][k%#profiles[j]+1]},false) end
 					assert(Geom.polygonArea(intersection)<0.015,'совпадающие плоские грани')
 				end end
+			end end
+		end
+	end)
+
+	h.test('3D: неподвижный кусок с обратной камерой совпадает с переносом в общей сцене',function()
+		for mode,layout in settings.layouts do
+			local trick=table.clone(Config.Trick); trick.exploded=layout
+			local size=if mode=='portrait' then R.Vector2.new(304,340) else R.Vector2.new(1356,1056)
+			local reference=Projection.fit(size,Layout.bounds(recipe,trick,66,104,Geom),settings)
+			local camera=reference.Rotation+reference.Position*settings.renderScale
+			for _,phase in {'explode','large','join','strip'} do for tick=0,100 do
+				for _,name in Config.Trick.pieceOrder do
+					local offset=Motion.pose(name,phase,tick/100,layout,recipe.slides,settings.passageY)
+					local shift=R.Vector3.new(offset.X*66,0,offset.Y*104)*settings.unitsPerPixel*settings.renderScale
+					local inverse=R.CFrame.new(-shift)*camera
+					for _,point in {R.Vector3.new(0,settings.surfaceHeight,0),R.Vector3.new(330*settings.unitsPerPixel,0,520*settings.unitsPerPixel)} do
+						local a=Projection.project(camera,size,settings.fieldOfView,point*settings.renderScale+shift)
+						local b=Projection.project(inverse,size,settings.fieldOfView,point*settings.renderScale)
+						assert((a-b).Magnitude<0.005,'изменился видимый перенос')
+					end
+				end
 			end end
 		end
 	end)

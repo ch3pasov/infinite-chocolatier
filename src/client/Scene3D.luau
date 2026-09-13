@@ -146,8 +146,61 @@ function Scene:makeTable()
 	end
 end
 
+-- Каждый кусок имеет неподвижную геометрию. Общая проекция сохраняется
+-- обратным переносом камеры; движок не перегруппировывает его Part при жесте.
+function Scene:layer(name,z)
+	local frame=Instance.new('ViewportFrame')
+	frame.Name=name
+	frame.Size=UDim2.fromScale(1,1)
+	frame.BackgroundTransparency=1
+	frame.BorderSizePixel=0
+	frame.ZIndex=z
+	frame.Active=false
+	frame.Ambient=self.frame.Ambient
+	frame.LightColor=self.frame.LightColor
+	frame.LightDirection=self.frame.LightDirection
+	frame.Parent=self.frame
+	local world=Instance.new('WorldModel')
+	world.Parent=frame
+	local camera=Instance.new('Camera')
+	camera.FieldOfView=settings.fieldOfView
+	camera.Parent=frame
+	frame.CurrentCamera=camera
+	return {frame=frame,world=world,camera=camera}
+end
+
+function Scene:attachPiece(name,m)
+	-- Камера смотрит с нижнего края доски: передние части закрывают
+	-- торцы задних при стыковке. Иначе появляется тёмная диагональ.
+	local depth=if name=='base' or name=='WholeBar' then 7
+		elseif name=='upperLeft' or name=='upperRight' then 6 else 5
+	local layer=self:layer(name,depth)
+	local shadow=self:layer(name..'Shadow',4)
+	-- Все тени ниже всех шоколадных поверхностей, иначе при стыковке
+	-- тень верхнего слоя закрасит уже собранный соседний кусок.
+	for _,p in m:GetChildren() do
+		if p.Name=='ContactShadow' then p.Parent=shadow.world end
+	end
+	m.Parent=layer.world
+	shadow.frame.CurrentCamera=layer.camera
+	shadow.camera:Destroy()
+	layer.shadow=shadow
+	self.layers[name]=layer
+end
+
+function Scene:posePiece(name,visible,offset,fade)
+	local layer=self.layers[name]
+	local inverse=CFrame.new(-offset*renderScale)
+	layer.camera.CFrame=inverse*self.camera.CFrame
+	layer.camera.Focus=inverse*self.camera.Focus
+	layer.frame.ImageTransparency=fade or 0
+	layer.shadow.frame.ImageTransparency=fade or 0
+	layer.frame.Visible=visible
+	layer.shadow.frame.Visible=visible
+end
+
 function Scene.new(view)
-	local self = setmetatable({view=view,pieces={},lastOffsets={},effects={},hints={},time=0,lastCrumb=-1},Scene)
+	local self = setmetatable({view=view,pieces={},layers={},effects={},hints={},time=0,lastCrumb=-1},Scene)
 	local frame = Instance.new("ViewportFrame")
 	frame.Name = "ChocolateWorkstation3D"
 	frame.BackgroundColor3 = color("table")
@@ -164,7 +217,12 @@ function Scene.new(view)
 	self.camera.Parent, frame.CurrentCamera = frame, self.camera
 	self:makeTable()
 	self.intact = self:chocolate("WholeBar")
-	for _, name in Config.Trick.pieceOrder do self.pieces[name] = self:chocolate(name,Config.Trick.pieces[name]) end
+	self:attachPiece('WholeBar',self.intact)
+	for _,name in Config.Trick.pieceOrder do
+		self.pieces[name]=self:chocolate(name,Config.Trick.pieces[name])
+		self:attachPiece(name,self.pieces[name])
+	end
+	self.overlay=self:layer('KnifeAndGuides',8)
 	self.knife = model("ChefKnife")
 	-- Лезвие имеет настоящий острый носик, обух и отдельную рукоять.
 	prism(self.knife,"SteelBlade",{Vector2.new(0,-43),Vector2.new(13,-18),Vector2.new(13,27),Vector2.new(-7,27),Vector2.new(-7,-22)},0,0.055,color("knife"))
@@ -174,10 +232,11 @@ function Scene.new(view)
 		local rivet=part(self.knife,"Rivet",Vector3.new(0.06,0.025,0.06),CFrame.new(0.04,0.23,z),color("knife"))
 		rivet.Shape=Enum.PartType.Ball
 	end
-	self.knife.Parent = self.world
+	self.knife.Parent = self.overlay.world
 	view.board.Visible = false
 	view.scene3D = self
 	self:fit()
+	self:step(0)
 	self.resize = view.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:fit() end)
 	self.render = RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
 	self.cleanup = view.gui.Destroying:Connect(function() self:destroy() end)
@@ -204,6 +263,8 @@ function Scene:fit()
 	local px = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(unit,0,0))
 	local py = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(0,0,unit))
 	self.view.boardScale.Scale = math.min((px-p).Magnitude,(py-p).Magnitude)
+	self.overlay.camera.CFrame=self.camera.CFrame
+	self.overlay.camera.Focus=self.camera.Focus
 end
 
 function Scene:screenToBoard(screen)
@@ -222,7 +283,7 @@ function Scene:syncHints()
 			if gui:IsA("Frame") then
 				local p = self.hints[gui]
 				if not p then
-					p=part(self.world,"Guide",Vector3.one,CFrame.identity,gui.BackgroundColor3)
+					p=part(self.overlay.world,"Guide",Vector3.one,CFrame.identity,gui.BackgroundColor3)
 					self.hints[gui]=p
 				end
 				local size = Vector2.new(gui.Size.X.Offset,gui.Size.Y.Offset)
@@ -249,7 +310,7 @@ function Scene:burst(point, count, golden)
 		if #self.effects >= 48 then break end
 		local angle = (i/count*2*math.pi)+self.time*4
 		local size = if golden then 0.075 else 0.045+(i%3)*0.018
-		local p=part(self.world,if golden then "JoinSpark" else "CocoaCrumb",Vector3.one*size,CFrame.new(point),if golden then Color3.fromRGB(255,206,91) else color("bevel"))
+		local p=part(self.overlay.world,if golden then "JoinSpark" else "CocoaCrumb",Vector3.one*size,CFrame.new(point),if golden then Color3.fromRGB(255,206,91) else color("bevel"))
 		if golden then p.Material=Enum.Material.Neon end
 		table.insert(self.effects,{part=p,origin=point,velocity=Vector3.new(math.cos(angle)*1.2,1.3+i%3*0.2,math.sin(angle)*1.2),age=0,life=if golden then 0.6 else 0.45})
 	end
@@ -259,26 +320,21 @@ function Scene:step(dt)
 	self.time += dt
 	local v = self.view
 	local intact = v.intactLayer.Visible
-	present(self.intact,self.world,intact)
+	self:posePiece('WholeBar',intact,Vector3.zero,0)
 	for name,m in self.pieces do
 		local p=v.pieces[name]
 		local reward = name==Config.Trick.rewardPiece and (v.active=="done" or v.active=="collecting")
-		present(m,self.world,p.motion.Visible and (not intact or reward))
+		local visible=p.motion.Visible and (not intact or reward)
+		local fade=0
 		local position = p.motion.Position
 		local raw=Vector2.new(position.X.Offset-p.origin.X,position.Y.Offset-p.origin.Y)
 		local offset=Motion.offset(name,raw,v.active,settings,v.recipe.slides,v.tileWidth,v.tileHeight)
 		if reward and v.active=="collecting" then
 			local elapsed=math.clamp((self.time-(self.collectStarted or self.time))/Config.Trick.collectionDuration,0,1)
 			offset += Vector3.new(-elapsed*0.3,elapsed*0.8,0)
-			for _, child in m:GetChildren() do
-				local rest=child:GetAttribute("RestTransparency") or 0
-				child.Transparency=rest+(1-rest)*elapsed
-			end
-		elseif self.previousActive=="collecting" and m:GetAttribute("Shown") then
-			for _, child in m:GetChildren() do child.Transparency=child:GetAttribute("RestTransparency") or 0 end
+			fade=elapsed
 		end
-		-- Неподвижные сотни граней не пересылаются движку каждый кадр.
-		if self.lastOffsets[name]~=offset then m:PivotTo(CFrame.new(offset*renderScale)); self.lastOffsets[name]=offset end
+		self:posePiece(name,visible,offset,fade)
 	end
 	self:syncHints()
 	if v.active=="cut" or v.active=="finishingCut" then
@@ -289,9 +345,9 @@ function Scene:step(dt)
 		local cutting = v.drag and v.drag.kind=="cut" or v.active=="finishingCut"
 		local lift=if cutting then 0 else 0.18+math.sin(self.time*2)*0.025
 		self.knife:PivotTo(renderFrame(CFrame.lookAt(target+Vector3.new(0,lift,0),target+Vector3.new(direction.X, lift,direction.Y))*CFrame.new(0,0,0.86)*CFrame.Angles(0,0,math.rad(if cutting then -65 else -12))))
-		present(self.knife,self.world,true)
+		present(self.knife,self.overlay.world,true)
 		if cutting and math.abs(v.cutProgress-self.lastCrumb)>7 then self:burst(target,2,false); self.lastCrumb=v.cutProgress end
-	else present(self.knife,self.world,false) end
+	else present(self.knife,self.overlay.world,false) end
 	if self.previousActive~=v.active then
 		if v.active=="collecting" then self.collectStarted=self.time end
 		if v.active=="done" or (v.active=="assembleStrip" and self.previousActive~=nil) then
