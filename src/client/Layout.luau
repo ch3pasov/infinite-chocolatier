@@ -3,6 +3,19 @@
 -- должна менять только масштаб сцены, не геометрию и не прогресс раунда.
 local Layout = {}
 
+function Layout.presentation(width: number, height: number, portraitPadding)
+	local landscape = width >= 568 and width >= height * 1.3
+	local docked = landscape and width >= 1100
+	local left = if landscape then (if docked then 220 else 180) else 0
+	local right = if docked then 320 else 0
+	return {
+		landscape = landscape, docked = docked, left = left, right = right,
+		padding = if landscape then {
+			left = left + 24, right = right + 24, side = 0, top = 24, bottom = 24, maxScale = 2.5,
+		} else portraitPadding,
+	}
+end
+
 function Layout.bounds(recipe, trick, tileWidth: number, tileHeight: number, geom)
 	local minX, minY, maxX, maxY = 0, 0, recipe.cols, recipe.rows
 	local cut = recipe.cuts[1]
@@ -37,14 +50,15 @@ function Layout.fit(width: number, height: number, bounds, padding)
 	if width <= 0 or height <= 0 then
 		return nil
 	end
-	local availableWidth = math.max(1, width - 2 * padding.side)
+	local left, right = padding.left or padding.side, padding.right or padding.side
+	local availableWidth = math.max(1, width - left - right)
 	local availableHeight = math.max(1, height - padding.top - padding.bottom)
 	local spanX = bounds.maxX - bounds.minX
 	local spanY = bounds.maxY - bounds.minY
-	local scale = math.min(1, availableWidth / spanX, availableHeight / spanY)
+	local scale = math.min(padding.maxScale or 1, availableWidth / spanX, availableHeight / spanY)
 	return {
 		scale = scale,
-		x = padding.side + (availableWidth - spanX * scale) / 2 - bounds.minX * scale,
+		x = left + (availableWidth - spanX * scale) / 2 - bounds.minX * scale,
 		y = padding.top + (availableHeight - spanY * scale) / 2 - bounds.minY * scale,
 	}
 end

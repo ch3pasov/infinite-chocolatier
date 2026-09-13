@@ -12,6 +12,28 @@ return function(harness)
 	local bounds = Layout.bounds(recipe, Config.Trick, tileWidth, tileHeight, Geom)
 	local padding = Config.Board.viewportPadding
 
+	harness.test("горизонтальная сцена отделена от боковых панелей во всех размерах", function()
+		for _, viewport in { {568, 320}, {844, 390}, {1024, 768}, {1100, 720}, {1440, 900}, {2560, 1440} } do
+			local mode = Layout.presentation(viewport[1], viewport[2], padding)
+			assert(mode.landscape)
+			local fit = Layout.fit(viewport[1], viewport[2], bounds, mode.padding)
+			assert(fit.x + bounds.minX * fit.scale >= mode.left + 24 - 1e-6)
+			assert(fit.x + bounds.maxX * fit.scale <= viewport[1] - mode.right - 24 + 1e-6)
+			assert(fit.y + bounds.minY * fit.scale >= 24 - 1e-6)
+			assert(fit.y + bounds.maxY * fit.scale <= viewport[2] - 24 + 1e-6)
+		end
+	end)
+	harness.test("вертикальный телефон сохраняет прежние поля, большой экран увеличивает плитку", function()
+		local phone = Layout.presentation(390, 844, padding)
+		harness.equals(phone.landscape, false)
+		harness.equals(phone.padding, padding)
+		local desktop = Layout.presentation(1920, 1080, padding)
+		harness.equals(desktop.docked, true)
+		local old = Layout.fit(1920, 1080, bounds, padding)
+		local new = Layout.fit(1920, 1080, bounds, desktop.padding)
+		assert(new.scale > old.scale * 1.4)
+	end)
+
 	harness.test("область сцены включает внешнюю дольку и верхнюю часть", function()
 		harness.near(bounds.minX, -1.95 * tileWidth)
 		harness.near(bounds.minY, -1.8 * tileHeight)

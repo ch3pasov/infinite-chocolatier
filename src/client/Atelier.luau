@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared").Config)
 local Theme = require(script.Parent.Theme)
+local Layout = require(script.Parent.Layout)
 local Atelier = {}
 Atelier.__index = Atelier
 
@@ -103,12 +104,14 @@ function Atelier.new(gui, gameView, remotes)
 	self.overlay.ZIndex = 1000
 	self.overlay.Parent = gui
 	local panel = box(self.overlay, "Shop", Theme.panel)
+	self.panel = panel
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.new(1, -24, 1, -32)
 	local bounds = Instance.new("UISizeConstraint")
 	bounds.MaxSize = Vector2.new(520, 690)
 	bounds.Parent = panel
+	self.panelBounds = bounds
 	local title = text(panel, "Title", 23, Theme.accent)
 	title.Text = "Шоколадное ателье"
 	title.Position = UDim2.fromOffset(16, 12)
@@ -116,6 +119,8 @@ function Atelier.new(gui, gameView, remotes)
 	local close = button(panel, "Close", "×")
 	close.Position = UDim2.new(1, -54, 0, 16)
 	close.Size = UDim2.fromOffset(38, 38)
+	self.close = close
+	self.title = title
 	self.balance = text(panel, "Balance", 15, Theme.text)
 	self.balance.Position = UDim2.fromOffset(16, 70)
 	self.balance.Size = UDim2.new(1, -32, 0, 36)
@@ -197,10 +202,78 @@ function Atelier.new(gui, gameView, remotes)
 	UserInputService.InputBegan:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.Escape and self.overlay.Visible then self:setOpen(false) end
 	end)
+	self.sidebar = box(gameView.root, "Sidebar", Theme.panel)
+	self.sidebar.ZIndex = 900
+	self.sidebar.Visible = false
+	gameView.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:fit() end)
+	self:fit()
 	return self
 end
 
+function Atelier:fit()
+	local size = self.view.root.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then return end
+	local mode = Layout.presentation(size.X, size.Y, Config.Board.viewportPadding)
+	local changed = self.docked ~= mode.docked or self.landscape ~= mode.landscape
+	self.docked, self.landscape = mode.docked, mode.landscape
+	self.sidebar.Visible = mode.landscape
+	local counter, status = self.view.counter, self.view.status
+	if mode.landscape then
+		local top = if size.Y < 500 then 60 else 80
+		local height = size.Y - top - 16
+		self.sidebar.Position = UDim2.fromOffset(12, top)
+		self.sidebar.Size = UDim2.fromOffset(mode.left - 12, height)
+		counter.Parent = self.sidebar
+		counter.Position = UDim2.fromOffset(12, 12)
+		counter.Size = UDim2.new(1, -24, 0, 48)
+		self.metrics.Parent = self.sidebar
+		self.metrics.Position = UDim2.fromOffset(12, 64)
+		self.metrics.Size = UDim2.new(1, -24, 0, 54)
+		status.Parent = self.sidebar
+		status.AnchorPoint = Vector2.zero
+		status.Position = UDim2.fromOffset(12, 126)
+		status.Size = UDim2.new(1, -24, 0, math.max(40, height - (if mode.docked then 142 else 184)))
+		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = if size.Y < 500 then 18 else 22
+		self.open.Parent = self.sidebar
+		self.open.AnchorPoint = Vector2.new(0, 1)
+		self.open.Position = UDim2.new(0, 12, 1, -12)
+		self.open.Size = UDim2.new(1, -24, 0, 36)
+	else
+		counter.Parent = self.view.root
+		counter.Position = UDim2.fromOffset(128, 12)
+		counter.Size = UDim2.new(1, -144, 0, 48)
+		self.metrics.Parent = self.view.root
+		self.metrics.Position = UDim2.new(0.04, 0, 0, 57)
+		self.metrics.Size = UDim2.new(0.92, 0, 0, 26)
+		status.Parent = self.view.root
+		status.AnchorPoint = Vector2.new(0.5, 1)
+		status.Position = UDim2.new(0.5, 0, 1, -12)
+		status.Size = UDim2.new(0.94, 0, 0, Config.Board.viewportPadding.bottom - 24)
+		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = 28
+		self.open.Parent = self.view.root
+		self.open.AnchorPoint = Vector2.new(0.5, 0)
+		self.open.Position = UDim2.new(0.5, 0, 0, 90)
+		self.open.Size = UDim2.fromOffset(260, 38)
+	end
+	-- На широком экране тот же магазин закреплён справа. Он не становится
+	-- модальным и не перехватывает жесты над шоколадкой в центре.
+	self.open.Visible = not mode.docked
+	self.close.Visible = not mode.docked
+	self.overlay.Position = if mode.docked then UDim2.fromOffset(size.X - mode.right, 16) else UDim2.fromOffset(0, 0)
+	self.overlay.Size = if mode.docked then UDim2.fromOffset(mode.right - 16, size.Y - 32) else UDim2.fromScale(1, 1)
+	self.overlay.BackgroundTransparency = if mode.docked then 1 else 0.08
+	self.panel.AnchorPoint = if mode.docked then Vector2.zero else Vector2.new(0.5, 0.5)
+	self.panel.Position = if mode.docked then UDim2.fromScale(0, 0) else UDim2.fromScale(0.5, 0.5)
+	self.panel.Size = if mode.docked then UDim2.fromScale(1, 1) else UDim2.new(1, -24, 1, -32)
+	self.panelBounds.MaxSize = if mode.docked then Vector2.new(10000, 10000) else Vector2.new(520, 690)
+	self.title.Size = UDim2.new(1, if mode.docked then -32 else -80, 0, 56)
+	if changed then self.confirmed = false; self.overlay.Visible = mode.docked end
+	self.view.inputBlocked = (self.overlay.Visible and not self.docked) or not (self.state and self.state.ready)
+	if self.state then self:update(self.state) end
+end
+
 function Atelier:setOpen(open)
+	if self.docked then return end
 	self.view:endDrag(true)
 	self.overlay.Visible = open
 	self.confirmed = false
@@ -212,7 +285,7 @@ function Atelier:update(state)
 	if not state then return end
 	self.state = state
 	if not state.ready then return end
-	self.view.inputBlocked = self.overlay.Visible
+	self.view.inputBlocked = self.overlay.Visible and not self.docked
 	self.view.counter.Text = `ДОЛЬКИ  {format(state.slices)}`
 	if state.notice then
 		self.notice = state.notice

@@ -496,7 +496,8 @@ function Game:fitViewport()
 	if viewport == self.viewportSize then
 		return
 	end
-	local fit = Layout.fit(viewport.X, viewport.Y, self.layoutBounds, Config.Board.viewportPadding)
+	local presentation = Layout.presentation(viewport.X, viewport.Y, Config.Board.viewportPadding)
+	local fit = Layout.fit(viewport.X, viewport.Y, self.layoutBounds, presentation.padding)
 	if not fit then
 		return
 	end
