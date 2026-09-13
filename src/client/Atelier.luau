@@ -140,6 +140,7 @@ function Atelier.new(gui, gameView, remotes)
 		local card = box(scroll, spec.id, Theme.chocolate)
 		card.Size = UDim2.new(1, -8, 0, 138)
 		card.LayoutOrder = index
+		card.Visible = spec.id ~= "speed"
 		local heading = text(card, "Name", 19, Theme.accentSoft)
 		heading.Position = UDim2.fromOffset(12, 8)
 		heading.Size = UDim2.new(1, -24, 0, 28)
@@ -156,7 +157,7 @@ function Atelier.new(gui, gameView, remotes)
 				remotes.purchase:FireServer(spec.id)
 			end
 		end)
-		self.cards[spec.id] = { heading = heading, description = description, buy = buy, spec = spec }
+		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	prestige.Size = UDim2.new(1, -8, 0, 242)
@@ -297,6 +298,7 @@ function Atelier:update(state)
 	L.set(self.saved,state.saveStatus or "")
 	local affordable = 0
 	for id, card in self.cards do
+		card.frame.Visible = id ~= "speed" or state.levels.workers >= 1
 		local level = state.levels[id]
 		if id=="workers" then
 			L.set(card.description,"Each apprentice: +{reward} per {seconds}s cycle · offline up to 4h",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})

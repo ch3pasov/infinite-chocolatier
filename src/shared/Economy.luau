@@ -58,6 +58,8 @@ function Economy.rate(data)
 end
 
 function Economy.price(data, id)
+	-- Ускорять работу можно только после найма первого ученика.
+	if id == "speed" and data.levels.workers < 1 then return nil end
 	for _, spec in E.upgrades do
 		if spec.id == id then
 			if data.levels[id] >= spec.maxLevel then return nil end
