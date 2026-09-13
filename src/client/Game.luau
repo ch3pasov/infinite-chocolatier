@@ -1218,15 +1218,8 @@ function Game:finishCut()
 		-- части действительно расходятся, и становится видна их диагональная
 		-- граница вместо технической маски на цельной плитке.
 		self.intactLayer.Visible = false
-		-- Оптическая полоса нужна только в собранном положении. Во время
-		-- разлёта она ехала вместе с верхними кусками и оставляла рядом с
-		-- настоящей диагональю второй тёмный контур.
-		for _, name in { "upperLeft", "upperRight" } do
-			local extensionMotion = self.pieces[name].extensionMotion
-			if extensionMotion then
-				extensionMotion.Visible = false
-			end
-		end
+		-- Подложка остаётся видимой и едет вместе с куском весь сдвиг.
+		-- Включение только на финише выдаёт фокус мгновенным заполнением щели.
 		clear(self.progressLayer)
 		clear(self.seamLayer)
 		self:tweenOffsets(targets, self.trick.explodeDuration, function()
@@ -1243,14 +1236,6 @@ function Game:finishLargeAssembly()
 	end
 	self.active = "assembleStrip"
 	self.stripProgress = 0
-	-- Только теперь верхние части заняли Curry-положение и скрытая полоса
-	-- действительно закрывает зазор одной непрерывной кромкой.
-	for _, name in { "upperLeft", "upperRight" } do
-		local extensionMotion = self.pieces[name].extensionMotion
-		if extensionMotion then
-			extensionMotion.Visible = true
-		end
-	end
 	self:drawAssembledSeam()
 	self:showStripHint()
 end

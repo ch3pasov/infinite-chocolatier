@@ -6,15 +6,29 @@ local luau = require("@lune/luau")
 local R = require("@lune/roblox")
 local Config = require("../src/shared/Config")
 local Geom = require("../src/shared/Geom")
+local Recipe = require("../src/shared/Recipe")
+local pending = {}
+local tweenService = {
+	Create = function(_, target, _, properties)
+		return {
+			Play = function() for key, value in properties do target[key] = value end end,
+			Cancel = function() end,
+		}
+	end,
+}
 local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Theme = { background = R.Color3.new() } }
 local shared = { Config = "Config", Geom = "Geom", Recipe = "Recipe" }
 local source = fs.readFile("src/client/Game.luau"):gsub("return Game%s*$", "return { render = renderClippedCanonicalTile, Game = Game }")
 local exports = luau.load(source, {
 	environment = {
-		game = { GetService = function() return { WaitForChild = function() return shared end } end },
+		game = { GetService = function(_, name)
+			return if name == "TweenService" then tweenService else { WaitForChild = function() return shared end }
+		end },
 		script = { Parent = { Theme = "Theme", Layout = "Layout" } },
 		require = function(name) return assert(modules[name]) end,
 		Instance = R.Instance, Vector2 = R.Vector2, UDim2 = R.UDim2,
+		Enum = R.Enum, TweenInfo = { new = function() return {} end },
+		task = { delay = function(_, callback) table.insert(pending, callback) end },
 	}, injectGlobals = true,
 })()
 local V = R.Vector2
@@ -32,6 +46,58 @@ local function render(mode)
 end
 
 return function(harness)
+	harness.test("кромка непрерывна от разлёта до отпускания и отмены сдвига", function()
+		local root = R.Instance.new("Frame")
+		local function frame()
+			local result = R.Instance.new("Frame")
+			result.Parent = root
+			return result
+		end
+		local view = setmetatable({
+			active = "cut", cutIndex = 1, paths = { {} }, status = {},
+			trick = Config.Trick, recipe = Recipe.build(Config.Recipe),
+			tileWidth = 50, tileHeight = 80, pieces = {}, tweens = {}, animationToken = 0,
+			hintLayer = frame(), progressLayer = frame(), seamLayer = frame(), intactLayer = frame(),
+			drawSeam = function() end, showLargeHint = function() end, showStripHint = function() end,
+		}, exports.Game)
+		for _, name in Config.Trick.pieceOrder do
+			view.pieces[name] = { origin = V.new(7, 11), motion = frame() }
+		end
+		for _, name in { "upperLeft", "upperRight" } do
+			view.pieces[name].extensionMotion = frame()
+		end
+		local function check()
+			for _, name in { "upperLeft", "upperRight" } do
+				local piece = view.pieces[name]
+				harness.equals(piece.extensionMotion.Visible, true)
+				harness.equals(piece.extensionMotion.Position, piece.motion.Position)
+			end
+		end
+		local function flush()
+			while #pending > 0 do
+				table.remove(pending, 1)()
+				check()
+			end
+		end
+		view:finishCut()
+		flush()
+		harness.equals(view.active, "assembleLarge")
+		-- Прямой ход, отмена с возвратом и повторный ход: ни на одном
+		-- переходе нельзя выключать подложку и возвращать её на финише.
+		for _, cancelled in { true, false } do
+			for step = 0, 100 do
+				view:setLargeProgress(step / 100)
+				check()
+			end
+			view.drag = { kind = "large" }
+			view:endDrag(cancelled)
+			check()
+			flush()
+		end
+		harness.equals(view.active, "assembleStrip")
+		root:Destroy()
+	end)
+
 	harness.test("стыки рисунка имеют перекрытие по обе стороны диагонали", function()
 		local upperRoot, upper = render("upper")
 		local lowerRoot, lower = render("lower")
