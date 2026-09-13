@@ -50,15 +50,19 @@ return function(h)
 			end
 		end
 	end)
-	h.test('3D: клинья заполняют профиль и сохраняют объём, включая косой срез',function()
+	h.test('3D: блоки и клинья заполняют профиль и сохраняют объём, включая косой срез',function()
 		for _,polygon in {Solid.outline(0,0,58,92,6),Geom.clipPolygon(Solid.outline(0,0,58,92,6),{a=R.Vector2.new(0,70),b=R.Vector2.new(58,20)},true)} do
 			local volume=0
 			for _,w in Solid.prism(polygon,0.2,0.48,0.02) do
-				volume += w.size.X*w.size.Y*w.size.Z/2
+				volume += w.size.X*w.size.Y*w.size.Z/(if w.kind=="Part" then 1 else 2)
 				-- Три вершины лицевой стороны WedgePart должны оставаться
 				-- внутри исходного выпуклого контура, а не зеркалиться наружу.
-				for _,yz in {{-1,-1},{-1,1},{1,1}} do
-					local world=w.frame:PointToWorldSpace(R.Vector3.new(0,yz[1]*w.size.Y/2,yz[2]*w.size.Z/2))
+				local vertices=if w.kind=='Part' then {
+					R.Vector3.new(-w.size.X/2,0,-w.size.Z/2),R.Vector3.new(w.size.X/2,0,-w.size.Z/2),
+					R.Vector3.new(w.size.X/2,0,w.size.Z/2),R.Vector3.new(-w.size.X/2,0,w.size.Z/2),
+				} else {R.Vector3.new(0,-w.size.Y/2,-w.size.Z/2),R.Vector3.new(0,-w.size.Y/2,w.size.Z/2),R.Vector3.new(0,w.size.Y/2,w.size.Z/2)}
+				for _,vertex in vertices do
+					local world=w.frame:PointToWorldSpace(vertex)
 					local point=R.Vector2.new(world.X/0.02,world.Z/0.02)
 					for i,a in polygon do
 						local b=polygon[i%#polygon+1]
@@ -209,6 +213,64 @@ return function(h)
 					end
 				end
 			end
+		end
+	end)
+
+	h.test('3D: близкая сцена сохраняет экранные координаты и обратный ввод',function()
+		for _,size in {R.Vector2.new(304,340),R.Vector2.new(1356,1056)} do
+			local reference=Projection.fit(size,bounds,settings)
+			local camera=reference.Rotation+reference.Position*settings.renderScale
+			assert(camera.Position.Magnitude<100,'камера слишком далеко от маленьких деталей')
+			for x=-128,330,23 do for y=-187,520,31 do
+				local original=R.Vector3.new(x*settings.unitsPerPixel,settings.surfaceHeight,y*settings.unitsPerPixel)
+				local before=Projection.project(reference,size,settings.fieldOfView,original)
+				local after=Projection.project(camera,size,settings.fieldOfView,original*settings.renderScale)
+				assert((before-after).Magnitude<0.002,'видимый масштаб изменился')
+				local hit=Projection.unproject(camera,size,settings.fieldOfView,after,settings.surfaceHeight*settings.renderScale)/settings.renderScale
+				assert((hit-original).Magnitude<0.0002,'ввод оторвался от изображения')
+			end end
+		end
+	end)
+	h.test('3D: плоская поверхность дольки имеет цельный центр без веера клиньев',function()
+		local parts=Solid.prism(Solid.outline(12,15,42,70,3),0.4,0.48,settings.unitsPerPixel)
+		local total,largest=0,0
+		for _,p in parts do
+			if p.kind=='Part' then
+				local area=p.size.X*p.size.Z
+				total+=area; largest=math.max(largest,area)
+			end
+		end
+		assert(largest>42*70*settings.unitsPerPixel^2*0.8)
+		assert(#parts<12)
+	end)
+
+	h.test('3D: разбиение всех срезанных долек сохраняет площадь без наложений',function()
+		local fake=setmetatable({view={tileWidth=66,tileHeight=104,diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)}}},Scene)
+		for _,name in Config.Trick.pieceOrder do
+			for row=0,4 do for col=0,4 do
+				local polygon=fake:clip(Solid.outline(col*66+4,row*104+4,58,96,5),Config.Trick.pieces[name])
+				local area=0
+				local profiles={}
+				for _,w in Solid.prism(polygon,0.23,0.29,settings.unitsPerPixel) do
+					area+=w.size.X*w.size.Y*w.size.Z/(if w.kind=='Part' then 1 else 2)/0.06/settings.unitsPerPixel^2
+					local verts=if w.kind=='Part' then {
+						R.Vector3.new(-w.size.X/2,0,-w.size.Z/2),R.Vector3.new(w.size.X/2,0,-w.size.Z/2),
+						R.Vector3.new(w.size.X/2,0,w.size.Z/2),R.Vector3.new(-w.size.X/2,0,w.size.Z/2),
+					} else {R.Vector3.new(0,-w.size.Y/2,-w.size.Z/2),R.Vector3.new(0,-w.size.Y/2,w.size.Z/2),R.Vector3.new(0,w.size.Y/2,w.size.Z/2)}
+					local contour={}
+					for _,v in verts do local p=w.frame:PointToWorldSpace(v); table.insert(contour,R.Vector2.new(p.X,p.Z)/settings.unitsPerPixel) end
+					local signed=0
+					for i,p in contour do signed+=Geom.cross(p,contour[i%#contour+1]) end
+					if signed<0 then local reversed={}; for i=#contour,1,-1 do table.insert(reversed,contour[i]) end; contour=reversed end
+					table.insert(profiles,contour)
+				end
+				assert(math.abs(area-Geom.polygonArea(polygon))<0.015,`площадь {name} {col} {row}`)
+				for i,a in profiles do for j=i+1,#profiles do
+					local intersection=a
+					for k,p in profiles[j] do intersection=Geom.clipPolygon(intersection,{a=p,b=profiles[j][k%#profiles[j]+1]},false) end
+					assert(Geom.polygonArea(intersection)<0.015,'совпадающие плоские грани')
+				end end
+			end end
 		end
 	end)
 

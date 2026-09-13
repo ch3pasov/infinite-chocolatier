@@ -13,11 +13,21 @@ local Scene = {}
 Scene.__index = Scene
 local settings = Config.Scene3D
 local unit = settings.unitsPerPixel
+local renderScale = settings.renderScale
+local function renderFrame(frame)
+	return frame.Rotation + frame.Position*renderScale
+end
+local function project(camera,size,fov,point)
+	return Projection.project(camera,size,fov,point*renderScale)
+end
 local function color(name) return Color3.fromRGB(table.unpack(settings.colors[name])) end
 
 local function part(parent, name, size, frame, tint, kind)
+	-- Движок округляет меньшие детали до 0,001 stud. Отбрасываем только
+	-- субпиксельные клинья, иначе округление создаёт лишние перекрытия.
+	if kind=='WedgePart' and math.min(size.X,size.Y,size.Z)*renderScale<0.001 then return nil end
 	local p = Instance.new(kind or "Part")
-	p.Name, p.Size, p.CFrame, p.Color = name, size, frame, tint
+	p.Name, p.Size, p.CFrame, p.Color = name, size*renderScale, renderFrame(frame), tint
 	p.Anchored, p.CanCollide, p.CanTouch, p.CanQuery = true, false, false, false
 	p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
 	p.Material = Enum.Material.SmoothPlastic
@@ -31,7 +41,7 @@ local function model(name)
 end
 local function prism(parent, name, polygon, bottom, top, tint)
 	for _, spec in Solid.prism(polygon, bottom, top, unit) do
-		part(parent,name,spec.size,spec.frame,tint,"WedgePart")
+		part(parent,name,spec.size,spec.frame,tint,spec.kind or "WedgePart")
 	end
 end
 local function chamfer(parent, outer, inner, bottom, top, tint, clipper)
@@ -186,23 +196,24 @@ function Scene:fit()
 	self.frame.Position, self.frame.Size = UDim2.fromOffset(left,top), UDim2.fromOffset(area.X,area.Y)
 	self.size = area
 	local b=self.view.layoutBounds
-	self.camera.CFrame = Projection.fit(area,{minX=b.minX-24,maxX=b.maxX+24,minY=b.minY-24,maxY=b.maxY+32},settings)
+	self.camera.CFrame = renderFrame(Projection.fit(area,{minX=b.minX-24,maxX=b.maxX+24,minY=b.minY-24,maxY=b.maxY+32},settings))
+	self.camera.Focus = CFrame.new(Vector3.new((b.minX+b.maxX)*unit/2,settings.surfaceHeight,(b.minY+b.maxY)*unit/2)*renderScale)
 	-- Консервативный масштаб сохраняет удобные допуски пальца при перспективе.
 	local center = Vector3.new(self.view.boardWidth*unit/2,settings.surfaceHeight,self.view.boardHeight*unit/2)
-	local p = Projection.project(self.camera.CFrame,area,settings.fieldOfView,center)
-	local px = Projection.project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(unit,0,0))
-	local py = Projection.project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(0,0,unit))
+	local p = project(self.camera.CFrame,area,settings.fieldOfView,center)
+	local px = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(unit,0,0))
+	local py = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(0,0,unit))
 	self.view.boardScale.Scale = math.min((px-p).Magnitude,(py-p).Magnitude)
 end
 
 function Scene:screenToBoard(screen)
 	local p = Vector2.new(screen.X,screen.Y)-self.frame.AbsolutePosition
 	if not self.size then return Vector2.new(-100000,-100000) end
-	local hit = Projection.unproject(self.camera.CFrame,self.size,settings.fieldOfView,p,settings.surfaceHeight)
-	return if hit then Vector2.new(hit.X/unit,hit.Z/unit) else Vector2.new(-100000,-100000)
+	local hit = Projection.unproject(self.camera.CFrame,self.size,settings.fieldOfView,p,settings.surfaceHeight*renderScale)
+	return if hit then Vector2.new(hit.X/(unit*renderScale),hit.Z/(unit*renderScale)) else Vector2.new(-100000,-100000)
 end
 function Scene:boardToScreen(p)
-	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+Projection.project(self.camera.CFrame,self.size,settings.fieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
+	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+project(self.camera.CFrame,self.size,settings.fieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
 end
 
 function Scene:syncHints()
@@ -216,15 +227,15 @@ function Scene:syncHints()
 				end
 				local size = Vector2.new(gui.Size.X.Offset,gui.Size.Y.Offset)
 				local center = Vector2.new(gui.Position.X.Offset,gui.Position.Y.Offset)+size*(Vector2.new(0.5,0.5)-gui.AnchorPoint)
-				p.Size = Vector3.new(math.max(0.015,size.X*unit),0.018,math.max(0.015,size.Y*unit))
+				p.Size = Vector3.new(math.max(0.015,size.X*unit),0.018,math.max(0.015,size.Y*unit))*renderScale
 				-- Тёмная линия и её тонкая кромка раньше лежали в одной
 				-- плоскости. UI ZIndex сам по себе в 3D глубину не разделяет.
 				local height=if layer==self.view.seamLayer then 0.025+math.clamp(gui.ZIndex-410,0,1)*0.012
 					elseif layer==self.view.progressLayer then 0.055 else 0.08
-				p.CFrame = CFrame.new(center.X*unit,settings.surfaceHeight+height,center.Y*unit)*CFrame.Angles(0,-math.rad(gui.Rotation),0)
+				p.CFrame = renderFrame(CFrame.new(center.X*unit,settings.surfaceHeight+height,center.Y*unit)*CFrame.Angles(0,-math.rad(gui.Rotation),0))
 				p.Color = gui.BackgroundColor3
 				p.Transparency = if gui.Visible then gui.BackgroundTransparency else 1
-				if gui.Name == "Start" then p.Shape=Enum.PartType.Ball; p.Size=Vector3.new(size.X*unit,0.07,size.Y*unit) end
+				if gui.Name == "Start" then p.Shape=Enum.PartType.Ball; p.Size=Vector3.new(size.X*unit,0.07,size.Y*unit)*renderScale end
 			end
 		end
 	end
@@ -267,7 +278,7 @@ function Scene:step(dt)
 			for _, child in m:GetChildren() do child.Transparency=child:GetAttribute("RestTransparency") or 0 end
 		end
 		-- Неподвижные сотни граней не пересылаются движку каждый кадр.
-		if self.lastOffsets[name]~=offset then m:PivotTo(CFrame.new(offset)); self.lastOffsets[name]=offset end
+		if self.lastOffsets[name]~=offset then m:PivotTo(CFrame.new(offset*renderScale)); self.lastOffsets[name]=offset end
 	end
 	self:syncHints()
 	if v.active=="cut" or v.active=="finishingCut" then
@@ -277,7 +288,7 @@ function Scene:step(dt)
 		local target=Vector3.new(p.X*unit,settings.surfaceHeight+0.06,p.Y*unit)
 		local cutting = v.drag and v.drag.kind=="cut" or v.active=="finishingCut"
 		local lift=if cutting then 0 else 0.18+math.sin(self.time*2)*0.025
-		self.knife:PivotTo(CFrame.lookAt(target+Vector3.new(0,lift,0),target+Vector3.new(direction.X, lift,direction.Y))*CFrame.new(0,0,0.86)*CFrame.Angles(0,0,math.rad(if cutting then -65 else -12)))
+		self.knife:PivotTo(renderFrame(CFrame.lookAt(target+Vector3.new(0,lift,0),target+Vector3.new(direction.X, lift,direction.Y))*CFrame.new(0,0,0.86)*CFrame.Angles(0,0,math.rad(if cutting then -65 else -12))))
 		present(self.knife,self.world,true)
 		if cutting and math.abs(v.cutProgress-self.lastCrumb)>7 then self:burst(target,2,false); self.lastCrumb=v.cutProgress end
 	else present(self.knife,self.world,false) end
@@ -299,7 +310,7 @@ function Scene:step(dt)
 		else
 			local t=effect.age
 			local at=effect.origin+effect.velocity*t+Vector3.new(0,-3*t*t,0)
-			effect.part.CFrame=CFrame.new(at)*CFrame.Angles(t*5,t*3,t*6)
+			effect.part.CFrame=renderFrame(CFrame.new(at)*CFrame.Angles(t*5,t*3,t*6))
 			effect.part.Transparency=t/effect.life
 		end
 	end

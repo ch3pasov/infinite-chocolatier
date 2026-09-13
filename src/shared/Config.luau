@@ -7,6 +7,9 @@ local Config = {}
 Config.Scene3D = {
 	enabled = true,
 	unitsPerPixel = 0.02,
+	-- Единый масштаб всей сцены и камеры сохраняет проекцию, но сокращает
+	-- расстояние рендера тонких граней. Во время игры масштаб не меняется.
+	renderScale = 0.25,
 	fieldOfView = 5,
 	cameraTilt = 34,
 	surfaceHeight = 0.48,
