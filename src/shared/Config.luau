@@ -92,10 +92,10 @@ Config.Trick = {
 	clipBleed = 2,
 	rewardPiece = "stripSingle",
 	cutLabels = {
-		"проведи главную диагональ",
-		"отдели правую верхнюю часть",
-		"отрежь верхнюю полоску",
-		"раздели одиночную и двойную дольки",
+		"make the main diagonal cut",
+		"separate the upper-right piece",
+		"cut off the top strip",
+		"separate the single piece from the two-piece strip",
 	},
 	-- Пять частей точно покрывают исходные 5×5. Прямоугольные границы идут
 	-- по уже существующим бороздкам, но теперь игрок действительно проводит
@@ -175,9 +175,9 @@ Config.Payout = {
 -- вскоре после него, но ручное действие продолжает ускорять развитие.
 Config.Economy = {
     upgrades = {
-        { id = "craft", name = "Мастерство", description = "+1 долька за каждый фокус", baseCost = 3, growth = 1.55, maxLevel = 50 },
-        { id = "workers", name = "Шоколатье", description = "+0,2 дольки/с · офлайн до 4 часов", baseCost = 12, growth = 1.4, maxLevel = 100 },
-        { id = "recipe", name = "Рецептура", description = "+25% к ручному и автоматическому доходу", baseCost = 40, growth = 1.7, maxLevel = 40 },
+        { id = "craft", name = "Craftsmanship", description = "+1 piece per trick", baseCost = 3, growth = 1.55, maxLevel = 50 },
+        { id = "workers", name = "Chocolatiers", description = "+0.2 pieces/s · up to 4 hours offline", baseCost = 12, growth = 1.4, maxLevel = 100 },
+        { id = "recipe", name = "Recipe", description = "+25% manual and automatic income", baseCost = 40, growth = 1.7, maxLevel = 40 },
     },
     workerRate = 0.2,
     recipeBonus = 0.25,

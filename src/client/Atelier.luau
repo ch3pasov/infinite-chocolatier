@@ -3,17 +3,14 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared").Config)
+local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
 local Atelier = {}
 Atelier.__index = Atelier
 
 local function format(value)
-	value = value or 0
-	for _, unit in { { 1e12, " трлн" }, { 1e9, " млрд" }, { 1e6, " млн" }, { 1e3, " тыс." } } do
-		if value >= unit[1] then return string.format("%.1f%s", value / unit[1], unit[2]) end
-	end
-	return if math.abs(value - math.floor(value)) < 0.01 then tostring(math.floor(value)) else (string.format("%.2f", value):gsub("0+$", ""):gsub("%.$", ""))
+	return L.number(value or 0)
 end
 
 local function box(parent, name, color)
@@ -44,7 +41,7 @@ end
 local function button(parent, name, caption)
 	local b = Instance.new("TextButton")
 	b.Name = name
-	b.Text = caption
+	L.set(b, caption)
 	b.Font = Enum.Font.GothamBold
 	b.TextSize = 16
 	b.TextScaled = true
@@ -80,14 +77,14 @@ function Atelier.new(gui, gameView, remotes)
 	counterLimit.MinTextSize = 12
 	counterLimit.MaxTextSize = 25
 	counterLimit.Parent = gameView.counter
-	gameView.counter.Text = "ЗАГРУЗКА АТЕЛЬЕ…"
+	L.set(gameView.counter, "LOADING ATELIER…")
 	self.metrics = text(gameView.root, "Production", 14, Theme.muted)
 	self.metrics.Position = UDim2.new(0.04, 0, 0, 57)
 	self.metrics.Size = UDim2.new(0.92, 0, 0, 26)
 	self.metrics.TextXAlignment = Enum.TextXAlignment.Center
 	self.metrics.ZIndex = 910
-	self.metrics.Text = "Загружаем твой прогресс"
-	self.open = button(gameView.root, "OpenAtelier", "АТЕЛЬЕ")
+	L.set(self.metrics, "Loading your progress")
+	self.open = button(gameView.root, "OpenAtelier", "ATELIER")
 	self.open.AnchorPoint = Vector2.new(0.5, 0)
 	self.open.Position = UDim2.new(0.5, 0, 0, 90)
 	self.open.Size = UDim2.fromOffset(260, 38)
@@ -113,7 +110,7 @@ function Atelier.new(gui, gameView, remotes)
 	bounds.Parent = panel
 	self.panelBounds = bounds
 	local title = text(panel, "Title", 23, Theme.accent)
-	title.Text = "Шоколадное ателье"
+	L.set(title, "Chocolate Atelier")
 	title.Position = UDim2.fromOffset(16, 12)
 	title.Size = UDim2.new(1, -80, 0, 56)
 	local close = button(panel, "Close", "×")
@@ -149,8 +146,8 @@ function Atelier.new(gui, gameView, remotes)
 		local description = text(card, "Effect", 14, Theme.muted)
 		description.Position = UDim2.fromOffset(12, 40)
 		description.Size = UDim2.new(1, -24, 0, 40)
-		description.Text = spec.description
-		local buy = button(card, "Buy", "Купить")
+		L.set(description, spec.description)
+		local buy = button(card, "Buy", "Buy")
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		buy.Activated:Connect(function()
@@ -165,7 +162,7 @@ function Atelier.new(gui, gameView, remotes)
 	prestige.Size = UDim2.new(1, -8, 0, 242)
 	prestige.LayoutOrder = 10
 	local heading = text(prestige, "Title", 19, Theme.accent)
-	heading.Text = "Новое ателье"
+	L.set(heading, "New Atelier")
 	heading.Position = UDim2.fromOffset(12, 8)
 	heading.Size = UDim2.new(1, -24, 0, 28)
 	self.prestigeInfo = text(prestige, "Progress", 14, Theme.muted)
@@ -176,10 +173,10 @@ function Atelier.new(gui, gameView, remotes)
 	track.Size = UDim2.new(1, -24, 0, 8)
 	self.fill = box(track, "Fill", Theme.accent)
 	self.fill.Size = UDim2.fromScale(0, 1)
-	self.ascend = button(prestige, "Ascend", "Нужно 5 тыс. заработанных долек")
+	self.ascend = button(prestige, "Ascend", "Earn 5K pieces to start a new atelier")
 	self.ascend.Position = UDim2.new(0, 12, 1, -92)
 	self.ascend.Size = UDim2.new(1, -24, 0, 40)
-	self.cancel = button(prestige, "CancelReset", "Отмена")
+	self.cancel = button(prestige, "CancelReset", "Cancel")
 	self.cancel.Position = UDim2.new(0, 12, 1, -44)
 	self.cancel.Size = UDim2.new(1, -24, 0, 32)
 	self.cancel.Visible = false
@@ -286,44 +283,49 @@ function Atelier:update(state)
 	self.state = state
 	if not state.ready then return end
 	self.view.inputBlocked = self.overlay.Visible and not self.docked
-	self.view.counter.Text = `ДОЛЬКИ  {format(state.slices)}`
+	L.set(self.view.counter, "PIECES  {amount}", {amount=format(state.slices)})
 	if state.notice then
 		self.notice = state.notice
 		self.noticeUntil = os.clock() + 3
 	end
-	self.metrics.Text = if self.noticeUntil and self.noticeUntil > os.clock() then self.notice
-		else `+{format(state.manual)} за фокус  ·  {format(state.rate)}/с  ·  ★ {format(state.stars)}`
-	self.balance.Text = `{format(state.slices)} долек  ·  {format(state.rate)} в секунду`
-	self.saved.Text = state.saveStatus or ""
+	if self.noticeUntil and self.noticeUntil > os.clock() then
+		L.set(self.metrics,self.notice.key,self.notice.args)
+	else
+		L.set(self.metrics,"+{manual} per trick  ·  {rate}/s  ·  ★ {stars}",{manual=format(state.manual),rate=format(state.rate),stars=format(state.stars)})
+	end
+	L.set(self.balance, "Pieces: {amount}  ·  {rate} per second", {amount=format(state.slices),rate=format(state.rate)})
+	L.set(self.saved,state.saveStatus or "")
 	local affordable = 0
 	for id, card in self.cards do
 		local level = state.levels[id]
-		card.heading.Text = `{card.spec.name} · {level}`
+		L.set(card.heading, "{upgrade} · {level}", {upgrade=L.token(card.spec.name),level=level})
 		local price = state.prices[id]
 		local canBuy = price and state.slices >= price
 		if canBuy then affordable += 1 end
 		card.buy.BackgroundColor3 = if canBuy then Theme.accent else Theme.chocolateEdge
 		card.buy.TextColor3 = if canBuy then Theme.background else Theme.text
 		card.buy.AutoButtonColor = canBuy == true
-		card.buy.Text = if not price then "Максимальный уровень" elseif canBuy then `Купить · {format(price)} долек`
-			else `Цена {format(price)} · не хватает {format(price - state.slices)}`
+		if not price then L.set(card.buy,"Maximum level")
+		elseif canBuy then L.set(card.buy,"Buy · {price} pieces",{price=format(price)})
+		else L.set(card.buy,"Price {price} · need {missing} more",{price=format(price),missing=format(price-state.slices)}) end
 	end
-	self.open.Text = if affordable > 0 then `АТЕЛЬЕ · доступно {affordable}` else "АТЕЛЬЕ · улучшения"
+	if affordable>0 then L.set(self.open,"ATELIER · {count} available",{count=affordable}) else L.set(self.open,"ATELIER · upgrades") end
 	local gain = state.prestigeGain
 	if gain < 1 then self.confirmed = false end
-	self.prestigeInfo.Text = if self.confirmed then
-		`Сбросить дольки и все улучшения? Звёзды сохранятся. Получишь ещё {gain}; каждая навсегда даёт +25% к доходу.`
-		else `Заработано в этом ателье: {format(state.earned)}. Первая звезда за 5 тыс., две — за 20 тыс. Каждая даёт +25% навсегда. Дольки и улучшения сбросятся.`
+	if self.confirmed then L.set(self.prestigeInfo,"Reset your pieces and all upgrades? Your stars stay. Gain {stars} more; each permanently adds +25% income.",{stars=gain})
+	else L.set(self.prestigeInfo,"Earned in this atelier: {earned}. The first star costs 5K, two cost 20K. Each adds +25% income permanently. Pieces and upgrades will reset.",{earned=format(state.earned)}) end
 	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
-	self.ascend.Text = if self.confirmed then `Подтвердить сброс · +{gain} ★` elseif gain > 0 then `Открыть новое ателье · +{gain} ★` else "Цель · 5 тыс. заработанных долек"
+	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
+	elseif gain>0 then L.set(self.ascend,"Open a new atelier · +{stars} ★",{stars=gain})
+	else L.set(self.ascend,"Goal · earn 5K pieces") end
 	self.ascend.BackgroundColor3 = if gain > 0 then Theme.accent else Theme.chocolateEdge
 	self.cancel.Visible = self.confirmed
 	if not self.welcomed then
 		self.welcomed = true
 		if (state.offline or 0) >= 0.1 then
-			self.notice = `Пока тебя не было: +{format(state.offline)} долек`
+			self.notice = {key="While you were away: +{amount}",args={amount=format(state.offline)}}
 			self.noticeUntil = os.clock() + 8
-			self.metrics.Text = self.notice
+			L.set(self.metrics,self.notice.key,self.notice.args)
 		end
 	end
 end

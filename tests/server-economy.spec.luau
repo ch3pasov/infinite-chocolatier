@@ -26,9 +26,9 @@ local function fixture(studio, seed)
 		if nextRecord then record = nextRecord end
 		return nextRecord
 	end }
-	local modules = { Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
+	local modules = { LocalizationCatalog = require("../src/shared/LocalizationCatalog"), Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
 	local services = {
-		Players = players, ReplicatedStorage = { WaitForChild = function() return { Config = "Config", Economy = "Economy", Remotes = "Remotes" } end },
+		Players = players, ReplicatedStorage = { WaitForChild = function() return { LocalizationCatalog = "LocalizationCatalog", Config = "Config", Economy = "Economy", Remotes = "Remotes" } end },
 		HttpService = { GenerateGUID = function() return "server" end },
 		RunService = { IsStudio = function() return studio end },
 		DataStoreService = { GetDataStore = function() assert(not studio, "Studio обратился к настоящим сохранениям"); return store end },

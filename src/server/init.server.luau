@@ -9,6 +9,7 @@ Players.CharacterAutoLoads = false
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Catalog = require(Shared.LocalizationCatalog)
 local Economy = require(Shared.Economy)
 local Remotes = require(Shared.Remotes)
 local ProfileStore = require(script.ProfileStore)
@@ -30,9 +31,9 @@ local function send(player, notice, reward)
 	local state = Economy.snapshot(session.data)
 	state.ready = true
 	state.offline = session.offline
-	state.notice = notice
+	state.notice = if type(notice)=="string" then {key=notice} else notice
 	state.reward = reward
-	state.saveStatus = if studio then "Тестовая сессия · без сохранения" else session.saveStatus
+	state.saveStatus = if studio then "Test session · progress is not saved" else session.saveStatus
 	remotes.stateSync:FireClient(player, state)
 end
 
@@ -62,10 +63,10 @@ local function save(player, release)
 	if ok and written then
 		session.lastSave = os.clock()
 		session.nextSave = os.clock() + Config.Economy.saveInterval
-		session.saveStatus = "Прогресс сохранён"
+		session.saveStatus = "Progress saved"
 	else
 		session.nextSave = os.clock() + 10
-		session.saveStatus = "Сохранение задерживается · повторяем"
+		session.saveStatus = "Saving delayed · retrying"
 		warn("Chocolate profile save failed", player.UserId)
 	end
 	if release then
@@ -80,7 +81,7 @@ local function save(player, release)
 		sessions[player] = nil
 	elseif (ok and not written) or os.clock() - session.lastSave > Config.Economy.leaseSeconds - 30 then
 		session.closing = true
-		player:Kick("Не удалось продлить сохранение. Перезайди, чтобы безопасно продолжить.")
+		player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId))
 	elseif player.Parent then
 		send(player)
 	end
@@ -101,11 +102,11 @@ local function join(player)
 	end
 	if not data then
 		loading[player] = nil
-		if player.Parent then player:Kick("Не удалось загрузить прогресс. Подожди немного и зайди снова: сохранение не изменено.") end
+		if player.Parent then player:Kick(Catalog.format("Could not load your progress. Wait a moment and rejoin. Your save has not been changed.", nil, player.LocaleId)) end
 		return
 	end
 	sessions[player] = { data = data, offline = offline, tick = os.clock(), lastRound = -math.huge,
-		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Прогресс сохранён" }
+		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
 	loading[player] = nil
 	send(player)
@@ -133,7 +134,7 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	session.lastRound = now
 	accrue(session)
 	local amount = Economy.round(session.data)
-	send(player, "Фокус удался! +" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", "")) .. " долек", amount)
+	send(player, {key="Trick complete! +{amount}",args={amount=amount}}, amount)
 end)
 
 remotes.purchase.OnServerEvent:Connect(function(player, id)
@@ -144,7 +145,7 @@ remotes.purchase.OnServerEvent:Connect(function(player, id)
 	session.lastAction = now
 	accrue(session)
 	local bought = Economy.buy(session.data, id)
-	send(player, if bought then "Улучшение куплено" else "Покупка недоступна: проверь баланс и уровень")
+	send(player, if bought then "Upgrade purchased" else "Cannot purchase: check your balance and upgrade level")
 end)
 
 remotes.prestige.OnServerEvent:Connect(function(player)
@@ -156,7 +157,7 @@ remotes.prestige.OnServerEvent:Connect(function(player)
 	accrue(session)
 	local gained = Economy.prestigeGain(session.data)
 	local success = Economy.prestige(session.data)
-	send(player, if success then `Новое ателье! +{gained} какао-звёзд` else "Для нового ателье пока мало заработано")
+	send(player, if success then {key="New atelier! +{stars} cocoa stars",args={stars=gained}} else "Earn more pieces to start a new atelier")
 	if success then task.spawn(save, player, false) end
 end)
 

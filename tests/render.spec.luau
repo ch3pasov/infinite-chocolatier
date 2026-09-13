@@ -16,7 +16,7 @@ local tweenService = {
 		}
 	end,
 }
-local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Motion3D = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new(), accent = R.Color3.new(), accentSoft = R.Color3.new() } }
+local modules = { Localization = { set = function(label,source) label.Text=source end }, Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Motion3D = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new(), accent = R.Color3.new(), accentSoft = R.Color3.new() } }
 local shared = { Config = "Config", Geom = "Geom", Recipe = "Recipe" }
 local source = fs.readFile("src/client/Game.luau"):gsub("return Game%s*$", "return { render = renderClippedCanonicalTile, Game = Game }")
 local exports = luau.load(source, {
@@ -24,7 +24,7 @@ local exports = luau.load(source, {
 		game = { GetService = function(_, name)
 			return if name == "TweenService" then tweenService else { WaitForChild = function() return shared end }
 		end },
-		script = { Parent = { Theme = "Theme", Motion3D = "Motion3D", Layout = "Layout" } },
+		script = { Parent = { Localization = "Localization", Theme = "Theme", Motion3D = "Motion3D", Layout = "Layout" } },
 		require = function(name) return assert(modules[name]) end,
 		Instance = R.Instance, Vector2 = R.Vector2, UDim2 = R.UDim2, UDim = R.UDim,
 		Enum = R.Enum, TweenInfo = { new = function() return {} end },

@@ -9,6 +9,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Geom = require(Shared.Geom)
 local Recipe = require(Shared.Recipe)
+local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
 local Motion3D = require(script.Parent.Motion3D)
@@ -404,7 +405,7 @@ function Game.new(gui: ScreenGui, remotes)
 	self.counter.TextXAlignment = Enum.TextXAlignment.Center
 	self.counter.TextColor3 = Theme.accent
 	self.counter.TextSize = 25
-	self.counter.Text = "ДОЛЬКИ  0"
+	L.set(self.counter, "PIECES  0")
 	self.counter.ZIndex = 900
 	self.counter.Parent = self.root
 
@@ -950,7 +951,7 @@ function Game:showCutHint()
 		math.floor(pipSize / 2)
 	)
 	local label = self.trick.cutLabels[self.cutIndex]
-	self.status.Text = `Разрез {self.cutIndex} из {#self.paths}: {label}`
+	L.set(self.status, "Cut {step} of {total}: {instruction}", {step=self.cutIndex,total=#self.paths,instruction=L.token(label)})
 end
 
 function Game:drawArrow(startPoint: Vector2, finish: Vector2)
@@ -982,7 +983,7 @@ function Game:showLargeHint()
 		self.trick.largeHintAnchor.y * self.tileHeight
 	)
 	self:drawArrow(anchor + exploded, anchor + target)
-	self.status.Text = "Сдвинь крупную часть по стрелке — вторая повторит перестановку"
+	L.set(self.status, "Slide the large piece along the arrow — the other piece will follow")
 end
 
 function Game:showStripHint()
@@ -991,7 +992,7 @@ function Game:showStripHint()
 	local target = self:definitionOffset(self.recipe.slides[name])
 	local center = self:pieceCenter(name)
 	self:drawArrow(center + exploded, center + target)
-	self.status.Text = "Вставь блок из двух долек в верхнюю нишу"
+	L.set(self.status, "Slide the two-piece strip into the gap at the top")
 end
 
 function Game:setLargeProgress(progress: number)
@@ -1151,7 +1152,7 @@ function Game:updateDrag(point: Vector2)
 				)
 				self.startPip.Visible = true
 			end
-			self.status.Text = "Вернись к подсвеченной точке — прогресс сохранён"
+			L.set(self.status, "Return to the highlighted point — your cut progress is saved")
 			return
 		end
 		if self.startPip then
@@ -1168,7 +1169,7 @@ function Game:updateDrag(point: Vector2)
 			self.cutProgress = path.geom.length
 			drag.ready = true
 			self:drawProgress(path, path.geom.length)
-			self.status.Text = "Отпусти, чтобы завершить разрез"
+			L.set(self.status, "Release to finish the cut")
 		end
 	elseif drag.kind == "large" or drag.kind == "strip" then
 		local driver = drag.driver
@@ -1235,7 +1236,7 @@ function Game:endDrag(cancelled: boolean?)
 				)
 				self.startPip.Visible = true
 			end
-			self.status.Text = `Разрез {self.cutIndex} из {#self.paths}: продолжи с подсвеченной точки`
+			L.set(self.status, "Cut {step} of {total}: continue from the highlighted point", {step=self.cutIndex,total=#self.paths})
 		end
 	elseif drag.kind == "large" then
 		if not cancelled and self.largeProgress >= Config.Sliding.completeAt then
@@ -1294,7 +1295,7 @@ function Game:finishCut()
 	end
 
 	self.active = "exploding"
-	self.status.Text = "Все четыре разреза готовы — плитка раскрывается на пять частей"
+	L.set(self.status, "All four cuts are done — the bar separates into five pieces")
 
 	local targets = {}
 	for _, name in self.trick.pieceOrder do
@@ -1384,6 +1385,7 @@ function Game:playRewardEffect(amount: number)
 	label.TextStrokeColor3 = Theme.background
 	label.TextStrokeTransparency = 0.15
 	label.TextScaled = true
+	label.AutoLocalize = false
 	label.Text = "+" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", ""))
 	label.ZIndex = 923
 	label.Parent = effect
@@ -1413,7 +1415,7 @@ function Game:finishRound()
 	self.active = "done"
 	clear(self.hintLayer)
 	self:showRewardMarker()
-	self.status.Text = "Готово: плитка снова целая, а исходная долька осталась снаружи"
+	L.set(self.status, "Done! The bar is whole again, with one original piece left over")
 	-- В RemoteEvent нет количества: клиент сообщает только завершение жеста.
 	self.remotes.roundComplete:FireServer()
 	task.delay(self.trick.resetDelay, function()
@@ -1458,7 +1460,7 @@ function Game:beginReset()
 	)
 	wipe.AnchorPoint = Vector2.new(1, 0)
 	self.rewardWipe = wipe
-	self.status.Text = "Долька собрана — плитка остаётся целой без обратной перемотки"
+	L.set(self.status, "Piece collected — the chocolate bar stays whole")
 
 	local duration = self.trick.collectionDuration
 	local token = self.animationToken
