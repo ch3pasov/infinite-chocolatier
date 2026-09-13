@@ -48,6 +48,7 @@ local gameView = Game.new(gui, remotes)
 local atelier = Atelier.new(gui, gameView, remotes)
 remotes.stateSync.OnClientEvent:Connect(function(state)
     atelier:update(state)
+    if state.reward then gameView:playRewardEffect(state.reward) end
 end)
 -- PlayerAdded может сработать раньше подписки клиента, поэтому состояние
 -- запрашивается явно уже после создания интерфейса и обработчика.

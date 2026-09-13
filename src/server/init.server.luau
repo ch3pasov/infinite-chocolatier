@@ -21,7 +21,7 @@ local loading = {}
 local requests = {}
 local closing = false
 
-local function send(player, notice)
+local function send(player, notice, reward)
 	local session = sessions[player]
 	if not session then
 		remotes.stateSync:FireClient(player, { ready = false })
@@ -31,6 +31,7 @@ local function send(player, notice)
 	state.ready = true
 	state.offline = session.offline
 	state.notice = notice
+	state.reward = reward
 	state.saveStatus = if studio then "Тестовая сессия · без сохранения" else session.saveStatus
 	remotes.stateSync:FireClient(player, state)
 end
@@ -132,7 +133,7 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	session.lastRound = now
 	accrue(session)
 	local amount = Economy.round(session.data)
-	send(player, "Фокус удался! +" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", "")) .. " долек")
+	send(player, "Фокус удался! +" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", "")) .. " долек", amount)
 end)
 
 remotes.purchase.OnServerEvent:Connect(function(player, id)

@@ -16,7 +16,7 @@ local tweenService = {
 		}
 	end,
 }
-local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new() } }
+local modules = { Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new(), accent = R.Color3.new(), accentSoft = R.Color3.new() } }
 local shared = { Config = "Config", Geom = "Geom", Recipe = "Recipe" }
 local source = fs.readFile("src/client/Game.luau"):gsub("return Game%s*$", "return { render = renderClippedCanonicalTile, Game = Game }")
 local exports = luau.load(source, {
@@ -26,7 +26,7 @@ local exports = luau.load(source, {
 		end },
 		script = { Parent = { Theme = "Theme", Layout = "Layout" } },
 		require = function(name) return assert(modules[name]) end,
-		Instance = R.Instance, Vector2 = R.Vector2, UDim2 = R.UDim2,
+		Instance = R.Instance, Vector2 = R.Vector2, UDim2 = R.UDim2, UDim = R.UDim,
 		Enum = R.Enum, TweenInfo = { new = function() return {} end },
 		task = { delay = function(_, callback) table.insert(pending, callback) end },
 	}, injectGlobals = true,
@@ -46,6 +46,24 @@ local function render(mode)
 end
 
 return function(harness)
+	harness.test("эффект показывает точное начисление и удаляет свои объекты", function()
+		local root = R.Instance.new("Frame")
+		root.AbsoluteSize = V.new(400, 800)
+		root.AbsolutePosition = V.zero
+		local view = setmetatable({ root = root, board = { AbsolutePosition = V.new(150, 200) },
+			boardScale = { Scale = 0.5 }, trick = Config.Trick,
+			pieces = { stripSingle = { origin = V.zero, offset = V.new(-100, 0), size = V.new(60, 90) } },
+		}, exports.Game)
+		view:playRewardEffect(1.25)
+		local effect = root:FindFirstChild("RewardEffect")
+		assert(effect)
+		harness.equals(effect.EarnedSlices.Text, "+1.25")
+		harness.equals(#effect:GetChildren(), Config.Feedback.sparkCount + 1)
+		while #pending > 0 do table.remove(pending, 1)() end
+		harness.equals(#root:GetChildren(), 0)
+		root:Destroy()
+	end)
+
 	harness.test("бывший внешний угол верхней части заполняет внутренний стык", function()
 		local surface = R.Instance.new("Frame")
 		local extension = R.Instance.new("Frame")

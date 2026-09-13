@@ -1266,6 +1266,53 @@ function Game:showRewardMarker()
 	self.rewardMarker = marker
 end
 
+function Game:playRewardEffect(amount: number)
+	if type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount == math.huge then return end
+	local settings = Config.Feedback
+	local piece = self.pieces[self.trick.rewardPiece]
+	local size = self.root.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then return end
+	local point = self.board.AbsolutePosition - self.root.AbsolutePosition
+		+ (piece.origin + piece.offset + piece.size / 2) * self.boardScale.Scale
+	-- Число остаётся внутри экрана даже у внешней левой дольки. Эффект
+	-- отдельный от полигонов: сброс раунда не обрывает его и не задерживает ввод.
+	point = Vector2.new(math.clamp(point.X, 80, math.max(80, size.X - 80)),
+		math.clamp(point.Y, 100, math.max(100, size.Y - 60)))
+	local effect = makeFrame(self.root, "RewardEffect", Vector2.zero, Vector2.zero, Theme.background, 920)
+	effect.BackgroundTransparency = 1
+	effect.Position = UDim2.fromScale(point.X / size.X, point.Y / size.Y)
+	local label = Instance.new("TextLabel")
+	label.Name = "EarnedSlices"
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Size = UDim2.fromOffset(160, 44)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextColor3 = Theme.accentSoft
+	label.TextStrokeColor3 = Theme.background
+	label.TextStrokeTransparency = 0.15
+	label.TextScaled = true
+	label.Text = "+" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", ""))
+	label.ZIndex = 923
+	label.Parent = effect
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MinTextSize = 12
+	limit.MaxTextSize = 32
+	limit.Parent = label
+	TweenService:Create(label, TweenInfo.new(settings.duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.fromOffset(0, -settings.rise), TextTransparency = 1, TextStrokeTransparency = 1,
+	}):Play()
+	for index = 1, settings.sparkCount do
+		local angle = index / settings.sparkCount * math.pi * 2
+		local spark = makeFrame(effect, "CocoaSpark", Vector2.zero, Vector2.new(6, 6), Theme.accent, 921, 3)
+		spark.AnchorPoint = Vector2.new(0.5, 0.5)
+		TweenService:Create(spark, TweenInfo.new(settings.duration * 0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = UDim2.fromOffset(math.cos(angle) * 38, math.sin(angle) * 28 - 12),
+			BackgroundTransparency = 1, Size = UDim2.fromOffset(2, 2),
+		}):Play()
+	end
+	task.delay(settings.duration, function() effect:Destroy() end)
+end
+
 function Game:finishRound()
 	if self.active ~= "assembleStrip" then
 		return
