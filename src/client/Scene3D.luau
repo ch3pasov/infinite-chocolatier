@@ -9,6 +9,7 @@ local Layout = require(script.Parent.Layout)
 local Projection = require(script.Parent.Projection3D)
 local Solid = require(script.Parent.SolidGeometry)
 local Motion = require(script.Parent.Motion3D)
+local WorldStage = require(script.Parent.WorldStage)
 local Scene = {}
 Scene.__index = Scene
 local settings = Config.Scene3D
@@ -68,8 +69,8 @@ local function chamfer(parent, outer, inner, bottom, top, tint, clipper)
 	end
 end
 local function present(m, parent, visible)
-	-- ViewportFrame не должен заново включать модель в рендер при каждом
-	-- переходе: её дерево и геометрия остаются в WorldModel весь раунд.
+	-- Геометрия живёт весь раунд: переходы меняют видимость, а не создают
+	-- тысячи деталей повторно.
 	if m.Parent ~= parent then m.Parent = parent end
 	if m:GetAttribute("Shown") == visible then return end
 	m:SetAttribute("Shown",visible)
@@ -146,75 +147,56 @@ function Scene:makeTable()
 	end
 end
 
--- Каждый кусок имеет неподвижную геометрию. Общая проекция сохраняется
--- обратным переносом камеры; движок не перегруппировывает его Part при жесте.
-function Scene:layer(name,z)
-	local frame=Instance.new('ViewportFrame')
-	frame.Name=name
-	frame.Size=UDim2.fromScale(1,1)
-	frame.BackgroundTransparency=1
-	frame.BorderSizePixel=0
-	frame.ZIndex=z
-	frame.Active=false
-	frame.Ambient=self.frame.Ambient
-	frame.LightColor=self.frame.LightColor
-	frame.LightDirection=self.frame.LightDirection
-	frame.Parent=self.frame
-	local world=Instance.new('WorldModel')
-	world.Parent=frame
-	local camera=Instance.new('Camera')
-	camera.FieldOfView=settings.fieldOfView
-	camera.Parent=frame
-	frame.CurrentCamera=camera
-	return {frame=frame,world=world,camera=camera}
+-- Все части находятся в одном мире и перемещаются целиком, без подмены камер.
+function Scene:layer(name, _z)
+	local world=Instance.new('Model')
+	world.Name=name
+	world.Parent=self.world
+	return {world=world}
 end
 
 function Scene:attachPiece(name,m)
-	-- Камера смотрит с нижнего края доски: передние части закрывают
-	-- торцы задних при стыковке. Иначе появляется тёмная диагональ.
-	local depth=if name=='base' or name=='WholeBar' then 7
-		elseif name=='upperLeft' or name=='upperRight' then 6 else 5
-	local layer=self:layer(name,depth)
-	local shadow=self:layer(name..'Shadow',4)
-	-- Все тени ниже всех шоколадных поверхностей, иначе при стыковке
-	-- тень верхнего слоя закрасит уже собранный соседний кусок.
+	-- В настоящем мире тень отбрасывает сама геометрия. Копии плоских теней
+	-- пересекались бы при соединении и давали мерцание глубины.
 	for _,p in m:GetChildren() do
-		if p.Name=='ContactShadow' then p.Parent=shadow.world end
+		if p.Name=='ContactShadow' then p:Destroy() end
 	end
-	m.Parent=layer.world
-	shadow.frame.CurrentCamera=layer.camera
-	shadow.camera:Destroy()
-	layer.shadow=shadow
-	self.layers[name]=layer
+	m.Parent=self.world
+	self.layers[name]={model=m}
 end
 
 function Scene:posePiece(name,visible,offset,fade)
 	local layer=self.layers[name]
-	local inverse=CFrame.new(-offset*renderScale)
-	layer.camera.CFrame=inverse*self.camera.CFrame
-	layer.camera.Focus=inverse*self.camera.Focus
-	layer.frame.ImageTransparency=fade or 0
-	layer.shadow.frame.ImageTransparency=fade or 0
-	layer.frame.Visible=visible
-	layer.shadow.frame.Visible=visible
+	local m=layer.model
+	present(m,self.world,visible)
+	local position=offset*renderScale
+	if layer.position~=position then m:PivotTo(CFrame.new(position)); layer.position=position end
+	fade=fade or 0
+	if layer.fade~=fade then
+		layer.fade=fade
+		for _,p in m:GetDescendants() do
+			if p:IsA('BasePart') then
+				local rest=p:GetAttribute('RestTransparency') or 0
+				p.Transparency=if visible then rest+(1-rest)*fade else 1
+			end
+		end
+	end
 end
 
 function Scene.new(view)
 	local self = setmetatable({view=view,pieces={},layers={},effects={},hints={},time=0,lastCrumb=-1},Scene)
-	local frame = Instance.new("ViewportFrame")
-	frame.Name = "ChocolateWorkstation3D"
-	frame.BackgroundColor3 = color("table")
-	frame.BorderSizePixel, frame.ZIndex, frame.Active = 0, 3, false
-	frame.Ambient = Color3.fromRGB(140,131,121)
-	frame.LightColor = Color3.fromRGB(255,232,201)
-	frame.LightDirection = Vector3.new(-0.5,-1,-0.35)
-	frame.Parent = view.root
-	self.frame = frame
-	self.world = Instance.new("WorldModel")
-	self.world.Name, self.world.Parent = "Workstation", frame
-	self.camera = Instance.new("Camera")
-	self.camera.FieldOfView = settings.fieldOfView
-	self.camera.Parent, frame.CurrentCamera = frame, self.camera
+	self.stage=WorldStage.new()
+	local frame=Instance.new('Frame')
+	frame.Name='ChocolateWorldInput'
+	frame.BackgroundTransparency=1
+	frame.Size=UDim2.fromScale(1,1)
+	frame.Active=false
+	frame.Parent=view.root
+	self.frame=frame
+	view.root.BackgroundTransparency=1
+	self.world=self.stage:createWorld('ChocolateWorkstation')
+	self.camera=self.stage:createCamera('ChocolateCamera',settings.fieldOfView)
+	self.stage:activate(self.world,self.camera)
 	self:makeTable()
 	self.intact = self:chocolate("WholeBar")
 	self:attachPiece('WholeBar',self.intact)
@@ -251,30 +233,30 @@ function Scene:fit()
 	local bottom = if mode.landscape then 12 else 96
 	local left = if mode.landscape then mode.left+12 else 8
 	local right = if mode.landscape then mode.right+12 else 8
-	local area = Vector2.new(math.max(60,size.X-left-right),math.max(60,size.Y-top-bottom))
-	self.frame.Position, self.frame.Size = UDim2.fromOffset(left,top), UDim2.fromOffset(area.X,area.Y)
-	self.size = area
+	-- Основная камера занимает весь экран. Симметричный запас оставляет
+	-- шоколадку между панелями, а ввод использует ту же полную проекцию.
+	local area = Vector2.new(math.max(60,size.X-2*math.max(left,right)),math.max(60,size.Y-2*math.max(top,bottom)))
+	self.size=size
+	self.camera.FieldOfView=Projection.expandedFov(settings.fieldOfView,area.Y,size.Y)
 	local b=self.view.layoutBounds
 	self.camera.CFrame = renderFrame(Projection.fit(area,{minX=b.minX-24,maxX=b.maxX+24,minY=b.minY-24,maxY=b.maxY+32},settings))
 	self.camera.Focus = CFrame.new(Vector3.new((b.minX+b.maxX)*unit/2,settings.surfaceHeight,(b.minY+b.maxY)*unit/2)*renderScale)
 	-- Консервативный масштаб сохраняет удобные допуски пальца при перспективе.
 	local center = Vector3.new(self.view.boardWidth*unit/2,settings.surfaceHeight,self.view.boardHeight*unit/2)
-	local p = project(self.camera.CFrame,area,settings.fieldOfView,center)
-	local px = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(unit,0,0))
-	local py = project(self.camera.CFrame,area,settings.fieldOfView,center+Vector3.new(0,0,unit))
+	local p = project(self.camera.CFrame,size,self.camera.FieldOfView,center)
+	local px = project(self.camera.CFrame,size,self.camera.FieldOfView,center+Vector3.new(unit,0,0))
+	local py = project(self.camera.CFrame,size,self.camera.FieldOfView,center+Vector3.new(0,0,unit))
 	self.view.boardScale.Scale = math.min((px-p).Magnitude,(py-p).Magnitude)
-	self.overlay.camera.CFrame=self.camera.CFrame
-	self.overlay.camera.Focus=self.camera.Focus
 end
 
 function Scene:screenToBoard(screen)
 	local p = Vector2.new(screen.X,screen.Y)-self.frame.AbsolutePosition
 	if not self.size then return Vector2.new(-100000,-100000) end
-	local hit = Projection.unproject(self.camera.CFrame,self.size,settings.fieldOfView,p,settings.surfaceHeight*renderScale)
+	local hit = Projection.unproject(self.camera.CFrame,self.size,self.camera.FieldOfView,p,settings.surfaceHeight*renderScale)
 	return if hit then Vector2.new(hit.X/(unit*renderScale),hit.Z/(unit*renderScale)) else Vector2.new(-100000,-100000)
 end
 function Scene:boardToScreen(p)
-	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+project(self.camera.CFrame,self.size,settings.fieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
+	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+project(self.camera.CFrame,self.size,self.camera.FieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
 end
 
 -- След ножа лежит на том же профиле, из которого построены дольки.
@@ -384,6 +366,7 @@ function Scene:burst(point, count, golden)
 end
 
 function Scene:step(dt)
+	if self.view.observingKitchen then return end
 	self.time += dt
 	local v = self.view
 	local intact = v.intactLayer.Visible
@@ -447,5 +430,6 @@ function Scene:destroy()
 	self.intact:Destroy()
 	self.knife:Destroy()
 	self.frame:Destroy()
+	self.stage:destroy()
 end
 return Scene

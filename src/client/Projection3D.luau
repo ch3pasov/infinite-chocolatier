@@ -1,7 +1,13 @@
 --!strict
--- Явная перспективная проекция: камера ViewportFrame не сообщает размер
--- своего окна через Camera.ViewportSize. Рисунок и ввод используют одну матрицу.
+-- Явная перспективная проекция: рисунок и ввод используют одну матрицу
+-- и учитывают свободную область между панелями интерфейса.
 local Projection = {}
+
+-- Увеличение окна камеры при неизменном фокусном расстоянии в пикселях:
+-- центральная рабочая область остаётся того же размера за панелями UI.
+function Projection.expandedFov(fov, areaHeight, screenHeight)
+	return math.deg(2*math.atan(math.tan(math.rad(fov)/2)*screenHeight/areaHeight))
+end
 
 function Projection.lookAt(eye, target)
 	local back = (eye-target).Unit

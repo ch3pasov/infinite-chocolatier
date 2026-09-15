@@ -50,13 +50,13 @@ function Kitchen.new(view,atelier)
  gui.IgnoreGuiInset=true; gui.DisplayOrder=20; gui.Parent=view.gui.Parent; self.gui=gui
  local root=Instance.new("Frame"); root.Name="Kitchen"; root.Size=UDim2.fromScale(1,1)
  root.BackgroundColor3=cocoa; root.Visible=false; root.Parent=gui; self.root=root
- local viewport=Instance.new("ViewportFrame"); viewport.Size=UDim2.new(1,0,1,-150)
- viewport.BackgroundColor3=sage; viewport.Ambient=Color3.fromRGB(165,159,144)
- viewport.LightColor=Color3.fromRGB(255,231,196); viewport.LightDirection=Vector3.new(-1,-2,-1)
- viewport.Parent=root; self.viewport=viewport
- local world=Instance.new("WorldModel"); world.Name="KitchenStations"; world.Parent=viewport
- local camera=Instance.new("Camera"); camera.FieldOfView=45; camera.Parent=viewport; viewport.CurrentCamera=camera; self.camera=camera
- part(world,"Floor",Vector3.new(18,.2,15),Vector3.new(0,-.2,0),Color3.fromRGB(181,160,130))
+ root.BackgroundTransparency=1
+ local viewport=Instance.new("Frame"); viewport.Size=UDim2.new(1,0,1,-150)
+ viewport.BackgroundTransparency=1; viewport.Parent=root; self.viewport=viewport
+ self.stage=view.scene3D.stage
+ local world=self.stage:createWorld("KitchenStations"); self.world=world
+ local camera=self.stage:createCamera("KitchenCamera",45); self.camera=camera
+ part(world,"Floor",Vector3.new(180,.2,180),Vector3.new(0,-.2,0),Color3.fromRGB(181,160,130))
  part(world,"BackWall",Vector3.new(18,7,.2),Vector3.new(0,3,-6),sage)
  part(world,"LeftWall",Vector3.new(.2,7,15),Vector3.new(-9,3,0),sage)
  for x=-8,8,2 do
@@ -114,6 +114,12 @@ function Kitchen:setOpen(open)
  self.opened=open; self.root.Visible=open; self.enter.Visible=not open
  self.view.observingKitchen=open
  self.view.gui.Enabled=not open
+ if open then
+  self:step(0)
+  self.stage:activate(self.world,self.camera)
+ else
+  self.stage:activate(self.view.scene3D.world,self.view.scene3D.camera)
+ end
  if not open then self.atelier:update(self.state) end
 end
 function Kitchen:update(state)
@@ -124,12 +130,17 @@ function Kitchen:step(dt)
  local state=self.state; local working=state.levels.workers>0
  self.watch.Visible=working
  if not working then self.focus=false end
- local aspect=self.viewport.AbsoluteSize.X/math.max(1,self.viewport.AbsoluteSize.Y)
+ local aspect=self.root.AbsoluteSize.X/math.max(1,self.root.AbsoluteSize.Y-150)
  local target=if self.focus then Vector3.new(3.7,2.1,-.4) else Vector3.new(0,1.6,-1)
  local distance=if self.focus then 8 else 16
  distance*=math.max(1,1.5/aspect)
  local cf=CFrame.lookAt(target+Vector3.new(0,distance*.8,distance),target)
- self.camera.CFrame=self.camera.CFrame:Lerp(cf,1-math.exp(-dt*7))
+ -- Нижняя панель занимает 150 px: центр кухни сдвигается выше неё.
+ local focal=math.max(60,self.root.AbsoluteSize.Y-150)/(2*math.tan(math.rad(45)/2))
+ cf+=cf.UpVector*(-75*(cf.Position-target).Magnitude/focal)
+ self.camera.FieldOfView=math.deg(2*math.atan(math.tan(math.rad(45)/2)*self.root.AbsoluteSize.Y/math.max(60,self.root.AbsoluteSize.Y-150)))
+ self.camera.CFrame=if dt==0 then cf else self.camera.CFrame:Lerp(cf,1-math.exp(-dt*7))
+ self.camera.Focus=CFrame.new(target)
  self.actors[1]:setVisible(true)
  self.actors[2]:setVisible(working)
  if working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})

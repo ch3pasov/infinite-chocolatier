@@ -21,7 +21,7 @@ end
 local Projection=module('src/client/Projection3D.luau')
 local Solid=module('src/client/SolidGeometry.luau')
 local Motion=module('src/client/Motion3D.luau')
-local deps={Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
+local deps={WorldStage={},Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
 local modules=setmetatable({},{__index=function(_,k)return k end})
 local sceneEnv=table.clone(env)
 sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' then {WaitForChild=function()return modules end} else {} end}
@@ -37,6 +37,20 @@ return function(h)
 	local settings=Config.Scene3D
 	local recipe=Recipe.build(Config.Recipe)
 	local bounds=Layout.bounds(recipe,Config.Trick,66,104,Geom)
+	h.test('3D: основная камера сохраняет проекцию внутри безопасной области UI',function()
+		for _,size in {R.Vector2.new(390,844),R.Vector2.new(1440,900),R.Vector2.new(844,390)} do
+			local area=R.Vector2.new(size.X*.6,size.Y*.65)
+			local camera=Projection.fit(area,bounds,settings)
+			local fov=Projection.expandedFov(settings.fieldOfView,area.Y,size.Y)
+			for _,point in {R.Vector3.zero,R.Vector3.new(2,.48,3)} do
+				local before=Projection.project(camera,area,settings.fieldOfView,point)
+				local after=Projection.project(camera,size,fov,point)
+				assert((after-before-(size-area)/2).Magnitude<.002)
+				local hit=Projection.unproject(camera,size,fov,after,point.Y)
+				assert((hit-point).Magnitude<.002)
+			end
+		end
+	end)
 	h.test('3D: след разреза повторяет вершины, фаски и канавки долек',function()
 		local scene=setmetatable({view={tileWidth=66,tileHeight=104}},Scene)
 		assert(math.abs(scene:surfaceAt(R.Vector2.new(33,52))-settings.surfaceHeight)<1e-6)
@@ -111,7 +125,7 @@ return function(h)
 			diagonal={a=R.Vector2.new(0,364),b=R.Vector2.new(330,156)},pieces={},active='done'}
 		for _,key in {'intactLayer','hintLayer','progressLayer','seamLayer'} do v[key]=R.Instance.new('Frame') end
 		v.intactLayer.Visible=false
-		local self=setmetatable({view=v,world=R.Instance.new('WorldModel'),pieces={},layers={},frame=R.Instance.new('ViewportFrame'),camera=R.Instance.new('Camera'),hints={},effects={},time=0},Scene)
+		local self=setmetatable({view=v,world=R.Instance.new('Model'),pieces={},layers={},frame=R.Instance.new('Frame'),camera=R.Instance.new('Camera'),hints={},effects={},time=0},Scene)
 		self.intact=self:chocolate('WholeBar')
 		self:attachPiece('WholeBar',self.intact)
 		self.overlay=self:layer('Overlay',8)
@@ -128,11 +142,8 @@ return function(h)
 			count+=#self.pieces[name]:GetDescendants()
 		end
 		assert(count<5000,`слишком много граней: {count}`)
-		assert(self.layers.base.frame.ZIndex>self.layers.upperLeft.frame.ZIndex,'передняя часть должна скрывать торец диагонали')
-		assert(self.layers.upperRight.frame.ZIndex>self.layers.stripDouble.frame.ZIndex,'ниша должна скрывать торец верхней полоски')
-		for _,layer in self.layers do assert(layer.shadow.frame.ZIndex<self.layers.stripDouble.frame.ZIndex) end
 		local frozen={}
-		for _,m in self.pieces do for _,p in m:GetChildren() do frozen[p]={p.CFrame,p.Size,p.Transparency,p.Parent} end end
+		for _,m in self.pieces do for _,p in m:GetChildren() do frozen[p]={p.CFrame,p.Size,p.Transparency,p.Parent,m} end end
 		for _,phase in {'large','join','strip'} do
 			v.active=if phase=='strip' then 'assembleStrip' else 'assembleLarge'
 			for tick=0,40 do
@@ -142,30 +153,30 @@ return function(h)
 				end
 				self:step(0.016)
 				for name in v.pieces do
-					assert(self.layers[name].frame.Visible,`{name} исчез на этапе {phase}`)
-					h.near(self.layers[name].frame.ImageTransparency,0)
+					assert(self.layers[name].model:GetAttribute("Shown"),`{name} исчез на этапе {phase}`)
+					h.near(self.layers[name].fade,0)
 				end
 				for p,before in frozen do
-					h.equals(p.CFrame,before[1]); h.equals(p.Size,before[2])
+					assert((before[5].WorldPivot:ToObjectSpace(p.CFrame).Position-before[1].Position).Magnitude<.0001); h.equals(p.Size,before[2])
 					h.equals(p.Transparency,before[3]); h.equals(p.Parent,before[4])
 				end
 			end
 		end
 		v.active='done'; self:step(0.016)
-		assert(self.layers.stripSingle.frame.Visible)
+		assert(self.layers.stripSingle.model:GetAttribute("Shown"))
 		v.active='collecting'; v.intactLayer.Visible=true
 		self:step(0.016); self:step(0.15)
-		assert(self.layers.stripSingle.frame.ImageTransparency>0)
-		assert(self.layers.WholeBar.frame.Visible)
-		assert(not self.layers.stripDouble.frame.Visible)
+		assert(self.layers.stripSingle.fade>0)
+		assert(self.layers.WholeBar.model:GetAttribute("Shown"))
+		assert(not self.layers.stripDouble.model:GetAttribute("Shown"))
 		v.active='exploding'
 		for _=1,60 do self:step(0.016) end
-		assert(not self.layers.stripSingle.frame.Visible)
+		assert(not self.layers.stripSingle.model:GetAttribute("Shown"))
 		v.intactLayer.Visible=false; self:step(0.016)
 		for name,m in self.pieces do
-			assert(m.Parent==self.layers[name].world)
-			assert(self.layers[name].frame.Visible)
-			h.near(self.layers[name].frame.ImageTransparency,0)
+			assert(m.Parent==self.world)
+			assert(self.layers[name].model:GetAttribute("Shown"))
+			h.near(self.layers[name].fade,0)
 		end
 		h.equals(#self.effects,0)
 		self.frame:Destroy(); self.world:Destroy(); self.camera:Destroy(); self.knife:Destroy()
