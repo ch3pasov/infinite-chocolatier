@@ -4,7 +4,8 @@
 local RunService = game:GetService("RunService")
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
-local Motion = require(script.Parent.Motion3D)
+local Action = require(script.Parent.WorkstationAction)
+local ChocolatierAnimator = require(script.Parent.ChocolatierAnimator)
 local L = require(script.Parent.Localization)
 local Kitchen = {}
 local cocoa = Color3.fromRGB(71,38,27)
@@ -82,26 +83,16 @@ function Kitchen.new(view,atelier)
   local station={origin=origin+Vector3.new(-.75,.07,-.3),parts={}}
   station.whole=clone(view.scene3D.intact,world)
   station.whole:PivotTo(CFrame.new(station.origin))
-  if i==2 then
+  do
    for name,m in view.scene3D.pieces do station.parts[name]=clone(m,world); show(station.parts[name],false) end
    station.knife=clone(view.scene3D.knife,world)
   end
   self.stations[i]=station
  end
- local chef=Instance.new("Model"); chef.Name="ApprenticeChef"; chef.Parent=world; self.chef=chef
- part(chef,"Torso",Vector3.new(1.1,1.2,.65),Vector3.new(3.7,2,-3.4),cream)
- part(chef,"Apron",Vector3.new(.85,1.1,.1),Vector3.new(3.7,1.85,-3.02),sage)
- part(chef,"Head",Vector3.new(.8,.8,.75),Vector3.new(3.7,3,-3.4),Color3.fromRGB(210,157,113))
- part(chef,"HatBand",Vector3.new(.9,.25,.85),Vector3.new(3.7,3.52,-3.4),cream)
- for i=-1,1 do local p=part(chef,"ChefHat",Vector3.new(.55,.55,.8),Vector3.new(3.7+i*.28,3.8,-3.4),cream); p.Shape=Enum.PartType.Ball end
- for _,x in {3.45,3.95} do
-  part(chef,"Leg",Vector3.new(.35,1.1,.5),Vector3.new(x,.85,-3.4),cocoa)
-  part(chef,"Eye",Vector3.new(.08,.1,.04),Vector3.new(x,3.08,-3.01),cocoa)
- end
- self.arms={}
- for _,x in {3.05,4.35} do
-  table.insert(self.arms,{upper=part(chef,"UpperArm",Vector3.new(.32,1,.32),Vector3.new(x,2,-3),cream),lower=part(chef,"Forearm",Vector3.new(.28,1,.28),Vector3.new(x,2,-3),cream)})
- end
+ self.actors={
+  ChocolatierAnimator.new(world,"PlayerChocolatier",-3.7,true),
+  ChocolatierAnimator.new(world,"ApprenticeChocolatier",3.7,false),
+ }
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
  panel.Position=UDim2.new(0,12,1,-150); panel.Size=UDim2.new(1,-24,0,138); panel.Parent=root
  self.title=label(panel,"Title",UDim2.fromOffset(12,8),UDim2.new(1,-24,0,30)); L.set(self.title,"Chocolate kitchen")
@@ -110,7 +101,10 @@ function Kitchen.new(view,atelier)
  self.watch=button(panel,"Watch","Watch apprentice",UDim2.new(.5,6,1,-50),UDim2.new(.5,-18,0,38),function() self.focus=not self.focus; L.set(self.watch,if self.focus then "View kitchen" else "Watch apprentice") end)
  self.enter=button(gui,"EnterKitchen","View kitchen",UDim2.new(1,-156,0,12),UDim2.fromOffset(144,38),function() self:setOpen(true) end)
  self.render=RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
- gui.Destroying:Connect(function() self.render:Disconnect() end)
+ gui.Destroying:Connect(function()
+  self.render:Disconnect()
+  for _,actor in self.actors do actor:destroy() end
+ end)
  view.gui.Destroying:Connect(function() gui:Destroy() end)
  return self
 end
@@ -136,40 +130,30 @@ function Kitchen:step(dt)
  distance*=math.max(1,1.5/aspect)
  local cf=CFrame.lookAt(target+Vector3.new(0,distance*.8,distance),target)
  self.camera.CFrame=self.camera.CFrame:Lerp(cf,1-math.exp(-dt*7))
- show(self.chef,working)
+ self.actors[1]:setVisible(true)
+ self.actors[2]:setVisible(working)
  if working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})
  else L.set(self.info,"Hire your first apprentice in the workshop") end
- local s=self.stations[2]
  local t=((state.productionRemainder or 0)+(os.clock()-(self.syncedAt or os.clock()))/state.cycleSeconds)%1
- show(s.whole,not working or t<.45)
- for name,m in s.parts do
-  show(m,working and t>=.45)
-  local phase,p="explode",(t-.45)/.13
-  if t>=.84 then phase,p="strip",math.min(1,(t-.84)/.12)
-  elseif t>=.74 then phase,p="join",(t-.74)/.1
-  elseif t>=.58 then phase,p="large",(t-.58)/.16 end
-  local offset=Motion.pose(name,phase,math.clamp(p,0,1),Config.Scene3D.layouts.landscape,self.view.recipe.slides,Config.Scene3D.passageY)
-  local unit=Config.Scene3D.unitsPerPixel*Config.Scene3D.renderScale
-  m:PivotTo(CFrame.new(s.origin+Vector3.new(offset.X*self.view.tileWidth*unit,0,offset.Y*self.view.tileHeight*unit)))
+ self:poseStation(1,Action.player(self.view),true,dt)
+ self:poseStation(2,Action.cycle(t,Config,self.view.recipe.slides),working,dt)
+end
+function Kitchen:poseStation(index,action,working,dt)
+ local station=self.stations[index]
+ local unit=Config.Scene3D.unitsPerPixel*Config.Scene3D.renderScale
+ local scale=Vector2.new(self.view.tileWidth*unit,self.view.tileHeight*unit)
+ show(station.whole,not working or action.whole)
+ for name,model in station.parts do
+  show(model,working and not action.whole and not (action.hidden and action.hidden[name]))
+  local offset=action.offsets[name]
+  model:PivotTo(CFrame.new(station.origin+Vector3.new(offset.X*scale.X,0,offset.Y*scale.Y)))
  end
- show(s.knife,working and t<.45)
- if working then
-  local index=math.min(4,math.floor(t/.45*4)+1)
-  local cut=Config.Recipe.cuts[index]; local p=math.clamp((t/.45*4)%1,0,1)
-  local u=Config.Scene3D.unitsPerPixel*Config.Scene3D.renderScale
-  local a,b=Vector3.new(cut[1][1]*self.view.tileWidth*u,.18,cut[1][2]*self.view.tileHeight*u),Vector3.new(cut[2][1]*self.view.tileWidth*u,.18,cut[2][2]*self.view.tileHeight*u)
-  local point=s.origin+a:Lerp(b,p)
-  s.knife:PivotTo(CFrame.lookAt(point,point+(b-a))*CFrame.Angles(0,0,-math.pi/3))
-  for i,arm in self.arms do
-   local shoulder=Vector3.new(if i==1 then 3.05 else 4.35,2.5,-3.2)
-   local hand=if t<.45 then point else s.origin+Vector3.new(math.sin(t*math.pi*6)*.7,.25,.6)
-   local elbow=shoulder:Lerp(hand,.48)+Vector3.new(if i==1 then -.48 else .48,-.25,0)
-   for _,segment in {{arm.upper,shoulder,elbow},{arm.lower,elbow,hand}} do
-    local bone,a,b=table.unpack(segment)
-    bone.Size=Vector3.new(.28,(b-a).Magnitude,.28)
-    bone.CFrame=CFrame.lookAt((a+b)/2,b)*CFrame.Angles(math.pi/2,0,0)
-   end
-  end
+ show(station.knife,working and action.cutting)
+ if working and action.cutting then
+  local point=station.origin+Vector3.new(action.knifePoint.X*scale.X,.18,action.knifePoint.Y*scale.Y)
+  local direction=Vector3.new(action.knifeDirection.X*scale.X,0,action.knifeDirection.Y*scale.Y)
+  station.knife:PivotTo(CFrame.lookAt(point,point+direction)*CFrame.Angles(0,0,-math.pi/3))
  end
+ self.actors[index]:step(action,station.origin,scale,dt)
 end
 return Kitchen

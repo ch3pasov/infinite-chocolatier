@@ -1,0 +1,75 @@
+--!nonstrict
+-- Один контроллер поз для человека и ученика. Источник действий не знает
+-- об устройстве rig; длина рук остаётся постоянной, меняются только суставы.
+local Players = game:GetService("Players")
+local Animator = {}
+Animator.__index = Animator
+function Animator.new(parent, name, x, isPlayer)
+ local self=setmetatable({alive=true,visible=false,x=x},Animator)
+ task.spawn(function()
+  local description=Instance.new("HumanoidDescription")
+  description.HeadColor=Color3.fromRGB(223,176,130)
+  description.LeftArmColor=description.HeadColor; description.RightArmColor=description.HeadColor
+  description.TorsoColor=if isPlayer then Color3.fromRGB(90,133,166) else Color3.fromRGB(244,234,209)
+  description.LeftLegColor=Color3.fromRGB(64,52,44); description.RightLegColor=description.LeftLegColor
+  -- Стандартный R6 одинаков у обоих участников: одни суставы и позы.
+  local ok,rig=pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(description,Enum.HumanoidRigType.R6) end)
+  description:Destroy()
+  if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
+  if not self.alive or not parent.Parent then rig:Destroy(); return end
+  rig.Name=name; rig:ScaleTo(.8)
+  self.rig=rig; self.rest={}; self.motors={}
+  local root=rig:FindFirstChild("HumanoidRootPart")
+  -- Сгенерированная модель может иметь pivot не в корне; иначе персонаж
+  -- оказывается по плечи внутри стола при одинаковой высоте станции.
+  rig.PrimaryPart=root
+  local humanoid=rig:FindFirstChildOfClass("Humanoid")
+  humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+  humanoid.AutoRotate=false
+  for _,item in rig:GetDescendants() do
+   if item:IsA("BasePart") then
+    item.CanCollide=false; item.CanTouch=false; item.CanQuery=false
+    item.Anchored=item==root; self.rest[item]=item.Transparency
+   elseif item:IsA("Motor6D") then self.motors[item.Name]={joint=item,c0=item.C0}
+   elseif item:IsA("BaseScript") then item:Destroy() end
+  end
+  rig.Parent=parent
+  rig:PivotTo(CFrame.new(x,2.4,-2.9)*CFrame.Angles(0,math.pi,0))
+  self:setVisible(self.visible)
+ end)
+ return self
+end
+function Animator:setVisible(visible)
+ self.visible=visible
+ if not self.rig then return end
+ for part,rest in self.rest do part.Transparency=if visible then rest else 1 end
+end
+function Animator:step(action, origin, scale, dt)
+ if not self.rig or not self.visible then return end
+ local active=action.cutting or not action.whole
+ local alpha=1-math.exp(-dt*12)
+ -- Одинаковые позы нарезки/переноса для любого источника Action.
+ for _,side in {"Left","Right"} do
+  local entry=self.motors[side.." Shoulder"]
+  if entry then
+   local joint=entry.joint
+   local tile=if side=="Right" then action.rightHand else action.leftHand
+   local target=origin+Vector3.new(tile.X*scale.X,.2,tile.Y*scale.Y)
+   local shoulder=joint.Part0.CFrame:PointToWorldSpace(entry.c0.Position)
+   local desired=entry.c0
+   if active then
+    local rotation=CFrame.lookAt(shoulder,target)*CFrame.Angles(math.pi/2,0,0)
+    local arm=rotation*CFrame.new(0,-joint.Part1.Size.Y/2,0)
+    desired=joint.Part0.CFrame:ToObjectSpace(arm*joint.C1)
+   end
+   joint.C0=joint.C0:Lerp(desired,alpha)
+  end
+ end
+ local neck=self.motors.Neck
+ if neck then neck.joint.C0=neck.joint.C0:Lerp(neck.c0*CFrame.Angles(if active then -.2 else 0,0,0),alpha) end
+end
+function Animator:destroy()
+ self.alive=false
+ if self.rig then self.rig:Destroy() end
+end
+return Animator
