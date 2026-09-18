@@ -229,7 +229,7 @@ function Scene:fit()
 	local size = self.view.root.AbsoluteSize
 	if size.X < 1 or size.Y < 1 then return end
 	local mode = Layout.presentation(size.X,size.Y,Config.Board.viewportPadding)
-	local top = if mode.landscape then 12 else 132
+	local top = if mode.landscape then 12 else 174
 	local bottom = if mode.landscape then 12 else 96
 	local left = if mode.landscape then mode.left+12 else 8
 	local right = if mode.landscape then mode.right+12 else 8
@@ -367,6 +367,12 @@ end
 
 function Scene:step(dt)
 	if self.view.observingKitchen then return end
+    -- Стандартный спавн Roblox возвращает камеру в Custom. В режиме нарезки
+    -- восстанавливаем нашу проекцию после этого события, не отключая аватар.
+    if self.camera.CameraType ~= Enum.CameraType.Scriptable then
+        self.camera.CameraType = Enum.CameraType.Scriptable
+        self:fit()
+    end
 	self.time += dt
 	local v = self.view
 	local intact = v.intactLayer.Visible

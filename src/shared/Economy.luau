@@ -24,9 +24,13 @@ function Economy.load(raw)
 		-- становится той же долей нового полного фокуса. Деньги не списываются.
 		productionRemainder = number(raw.productionRemainder, 0, 0.999999999),
 		levels = {},
+		decor = {},
 	}
 	for _, spec in E.upgrades do
 		data.levels[spec.id] = math.floor(number(levels[spec.id], 0, spec.maxLevel))
+        if spec.cosmetic then
+            data.decor[spec.id] = data.levels[spec.id] > 0 and not (type(raw.decor) == "table" and raw.decor[spec.id] == false)
+        end
 	end
 	-- Старый таймер оставлял случайные сотые даже без множителей. Один раз
 	-- доводим такой баланс вверх до десятой, не отнимая уже заработанное.
@@ -42,15 +46,15 @@ function Economy.load(raw)
 end
 
 function Economy.multiplier(data)
-	return (1 + data.levels.recipe * E.recipeBonus) * (1 + data.stars * E.starBonus)
+	return (1 + data.levels.recipe * E.recipeBonus) * (1 + data.stars * E.starBonus) * (1 + data.levels.temper * E.temperBonus)
 end
 
 function Economy.manual(data)
-	return (Config.Payout.amount + data.levels.craft) * Economy.multiplier(data)
+	return (Config.Payout.amount + data.levels.craft + data.levels.library * E.libraryBonus) * Economy.multiplier(data)
 end
 
 function Economy.cycleSeconds(data)
-	return E.apprenticeCycleSeconds / (1 + data.levels.speed * E.apprenticeSpeedBonus)
+	return E.apprenticeCycleSeconds / (1 + data.levels.speed * E.apprenticeSpeedBonus + data.levels.clock * E.clockBonus)
 end
 
 function Economy.rate(data)
@@ -98,10 +102,18 @@ end
 
 function Economy.buy(data, id)
 	if type(id) ~= "string" then return false end
-	local price = Economy.price(data, id)
+	-- Повторное нажатие включает/убирает уже купленный декор без списания.
+    for _, spec in E.upgrades do
+        if spec.id == id and spec.cosmetic and data.levels[id] > 0 then
+            data.decor[id] = not data.decor[id]
+            return true
+        end
+    end
+    local price = Economy.price(data, id)
 	if not price or data.slices < price then return false end
 	data.slices -= price
 	data.levels[id] += 1
+    if data.decor[id] ~= nil then data.decor[id] = true end
 	return true
 end
 
@@ -116,7 +128,7 @@ function Economy.prestige(data)
 	data.slices = 0
 	data.earned = 0
 	data.productionRemainder = 0
-	for id in data.levels do data.levels[id] = 0 end
+	for _, spec in E.upgrades do if not spec.permanent then data.levels[spec.id] = 0 end end
 	return true
 end
 

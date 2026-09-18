@@ -4,7 +4,7 @@
 local Players = game:GetService("Players")
 local Animator = {}
 Animator.__index = Animator
-function Animator.new(parent, name, x, isPlayer)
+function Animator.new(parent, name, x, isPlayer, roomOrigin)
  local self=setmetatable({alive=true,visible=false,x=x},Animator)
  task.spawn(function()
   local description=Instance.new("HumanoidDescription")
@@ -30,11 +30,12 @@ function Animator.new(parent, name, x, isPlayer)
    if item:IsA("BasePart") then
     item.CanCollide=false; item.CanTouch=false; item.CanQuery=false
     item.Anchored=item==root; self.rest[item]=item.Transparency
+   elseif item:IsA("Decal") then self.rest[item]=item.Transparency
    elseif item:IsA("Motor6D") then self.motors[item.Name]={joint=item,c0=item.C0}
    elseif item:IsA("BaseScript") then item:Destroy() end
   end
   rig.Parent=parent
-  rig:PivotTo(CFrame.new(x,2.4,-2.9)*CFrame.Angles(0,math.pi,0))
+  rig:PivotTo(CFrame.new((roomOrigin or Vector3.zero)+Vector3.new(x,2.4,-2.9))*CFrame.Angles(0,math.pi,0))
   self:setVisible(self.visible)
  end)
  return self

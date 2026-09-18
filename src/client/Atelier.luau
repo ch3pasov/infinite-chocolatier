@@ -152,8 +152,8 @@ function Atelier.new(gui, gameView, remotes)
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		buy.Activated:Connect(function()
-			if self.state and self.state.ready and self.state.prices[spec.id]
-				and self.state.slices >= self.state.prices[spec.id] then
+			if self.state and self.state.ready and ((spec.cosmetic and self.state.levels[spec.id] > 0) or (self.state.prices[spec.id]
+				and self.state.slices >= self.state.prices[spec.id])) then
 				remotes.purchase:FireServer(spec.id)
 			end
 		end)
@@ -161,7 +161,7 @@ function Atelier.new(gui, gameView, remotes)
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	prestige.Size = UDim2.new(1, -8, 0, 242)
-	prestige.LayoutOrder = 10
+	prestige.LayoutOrder = 100
 	local heading = text(prestige, "Title", 19, Theme.accent)
 	L.set(heading, "New Workshop")
 	heading.Position = UDim2.fromOffset(12, 8)
@@ -212,6 +212,7 @@ function Atelier:fit()
 	local size = self.view.root.AbsoluteSize
 	if size.X <= 0 or size.Y <= 0 then return end
 	local mode = Layout.presentation(size.X, size.Y, Config.Board.viewportPadding)
+	if self.external then mode.docked = false end
 	local changed = self.docked ~= mode.docked or self.landscape ~= mode.landscape
 	self.docked, self.landscape = mode.docked, mode.landscape
 	self.sidebar.Visible = mode.landscape
@@ -277,6 +278,7 @@ function Atelier:setOpen(open)
 	self.confirmed = false
 	self.view.inputBlocked = open or not (self.state and self.state.ready)
 	if self.state then self:update(self.state) end
+	if not open and self.onClose then self.onClose() end
 end
 
 function Atelier:update(state)
@@ -312,15 +314,19 @@ function Atelier:update(state)
 		card.buy.BackgroundColor3 = if canBuy then Theme.accent else Theme.chocolateEdge
 		card.buy.TextColor3 = if canBuy then Theme.background else Theme.text
 		card.buy.AutoButtonColor = canBuy == true
-		if not price then L.set(card.buy,"Maximum level")
+		if card.spec.cosmetic and level > 0 then
+            card.buy.AutoButtonColor = true; card.buy.BackgroundColor3 = Theme.accent
+            card.buy.TextColor3 = Theme.background
+            L.set(card.buy, if state.decor[id] then "Put away · owned" else "Place · owned")
+        elseif not price then L.set(card.buy,"Maximum level")
 		elseif canBuy then L.set(card.buy,"Buy · {price} pieces",{price=format(price)})
 		else L.set(card.buy,"Price {price} · need {missing} more",{price=format(price),missing=format(price-state.slices)}) end
 	end
 	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
 	local gain = state.prestigeGain
 	if gain < 1 then self.confirmed = false end
-	if self.confirmed then L.set(self.prestigeInfo,"Reset your pieces and all upgrades? Your stars stay. Gain {stars} more; each permanently adds +25% income.",{stars=gain})
-	else L.set(self.prestigeInfo,"Earned in this workshop: {earned}. The first star costs 5K, two cost 20K. Each adds +25% income permanently. Pieces and upgrades will reset.",{earned=format(state.earned)}) end
+	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces and production upgrades? Stars and decorations stay. Gain {stars} stars (+25% income each).",{stars=gain})
+	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Pieces and production reset; decorations stay.",{earned=format(state.earned)}) end
 	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
 	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
 	elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})

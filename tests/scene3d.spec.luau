@@ -126,6 +126,7 @@ return function(h)
 		for _,key in {'intactLayer','hintLayer','progressLayer','seamLayer'} do v[key]=R.Instance.new('Frame') end
 		v.intactLayer.Visible=false
 		local self=setmetatable({view=v,world=R.Instance.new('Model'),pieces={},layers={},frame=R.Instance.new('Frame'),camera=R.Instance.new('Camera'),hints={},effects={},time=0},Scene)
+		self.camera.CameraType=R.Enum.CameraType.Scriptable
 		self.intact=self:chocolate('WholeBar')
 		self:attachPiece('WholeBar',self.intact)
 		self.overlay=self:layer('Overlay',8)
