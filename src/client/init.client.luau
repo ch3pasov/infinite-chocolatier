@@ -29,6 +29,7 @@ local remotes = {
 	purchase = remotesFolder:WaitForChild(Remotes.Names.Purchase) :: RemoteEvent,
 	prestige = remotesFolder:WaitForChild(Remotes.Names.Prestige) :: RemoteEvent,
 	kitchenMode = remotesFolder:WaitForChild(Remotes.Names.KitchenMode) :: RemoteEvent,
+	kitchenAction = remotesFolder:WaitForChild(Remotes.Names.KitchenAction) :: RemoteEvent,
 }
 
 local gameView = Game.new(gui, remotes)

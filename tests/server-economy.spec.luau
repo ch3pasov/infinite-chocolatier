@@ -26,7 +26,7 @@ local function fixture(studio, seed)
 		if nextRecord then record = nextRecord end
 		return nextRecord
 	end }
-	local modules = { KitchenRooms = {start=function() end}, LocalizationCatalog = require("../src/shared/LocalizationCatalog"), Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
+	local modules = { KitchenRelay = {start=function() end}, KitchenRooms = {start=function() end}, LocalizationCatalog = require("../src/shared/LocalizationCatalog"), Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
 	local services = {
 		Players = players, ReplicatedStorage = { WaitForChild = function() return { LocalizationCatalog = "LocalizationCatalog", Config = "Config", Economy = "Economy", Remotes = "Remotes" } end },
 		HttpService = { GenerateGUID = function() return "server" end },
@@ -35,7 +35,7 @@ local function fixture(studio, seed)
 	}
 	luau.load(fs.readFile("src/server/init.server.luau"), { environment = {
 		game = { GetService = function(_, name) return services[name] end, BindToClose = function() end },
-		script = { ProfileStore = "ProfileStore", KitchenRooms = "KitchenRooms" }, require = function(name) return modules[name] end,
+		script = { ProfileStore = "ProfileStore", KitchenRooms = "KitchenRooms", KitchenRelay = "KitchenRelay" }, require = function(name) return modules[name] end,
 		os = { clock = function() return now end, time = function() return now end },
 		task = { spawn = function() end, wait = function() end }, warn = function() end,
 	}, injectGlobals = true })()

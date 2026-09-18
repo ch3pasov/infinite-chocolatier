@@ -1,20 +1,53 @@
 --!nonstrict
 -- Сервер держит пол и границы даже тогда, когда клиент смотрит на шоколадку.
--- Разнесённые комнаты пока приватные; это не имитация сетевых действий соседей.
+-- Соседние рабочие места соединены общим проходом, а слоты переиспользуются.
 local Players=game:GetService('Players')
 local Workspace=game:GetService('Workspace')
 local Rooms={}
 function Rooms.start(remote)
- local rooms={}; local nextSlot=0
+ local rooms={}; local slots={}
+ local corridor=Instance.new('Model'); corridor.Name='SharedKitchenHall'; corridor.Parent=Workspace
  local function solid(parent,name,size,position)
   local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position
   p.Anchored=true; p.Transparency=1; p.CanCollide=true; p.Parent=parent
   return p
  end
+ local capacity=math.max(1,Players.MaxPlayers or 50)
+ local length=capacity*24
+ -- Общий пол остаётся и после ухода владельца комнаты.
+ local foundation=solid(corridor,'Foundation',Vector3.new(length,1,35),Vector3.new(length/2-12,-.65,1010.5))
+ foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
+ local floor=solid(corridor,'HallFloor',Vector3.new(length,1,12),Vector3.new(length/2-12,-.6,1022))
+ floor.Transparency=0; floor.Color=Color3.fromRGB(151,126,98)
+ for _,wall in {{Vector3.new(length,10,1),Vector3.new(length/2-12,4.5,1028)}, {Vector3.new(1,10,12),Vector3.new(-12,4.5,1022)}, {Vector3.new(1,10,12),Vector3.new(length-12,4.5,1022)}} do
+  local p=solid(corridor,'HallBoundary',wall[1],wall[2]); p.Transparency=0; p.Color=Color3.fromRGB(83,112,97)
+ end
  local function mode(player,value)
   local room=rooms[player]; if not room then return end
   if value~='walk' and value~='cut' and value~='watch' then return end
   room.mode=value
+  player:SetAttribute('KitchenMode',value)
+  -- За рабочим столом виден анимированный дубль, а настоящий аватар скрыт.
+  -- Сохранённые значения возвращаются при прогулке, включая аксессуары.
+  local char=player.Character
+  if room.character~=char then room.character=char; room.hidden={} end
+  if char then
+   if value=='cut' then
+    for _,p in char:GetDescendants() do
+     if p:IsA('BasePart') or p:IsA('Decal') then
+      if room.hidden[p]==nil then room.hidden[p]={transparency=p.Transparency,collide=p:IsA('BasePart') and p.CanCollide} end
+      p.Transparency=1
+      if p:IsA('BasePart') then p.CanCollide=false end
+     end
+    end
+   else
+    for p,saved in room.hidden do if p.Parent then
+     p.Transparency=saved.transparency
+     if p:IsA('BasePart') then p.CanCollide=saved.collide end
+    end end
+    room.hidden={}
+   end
+  end
   local char=player.Character
   local root=char and char:FindFirstChild('HumanoidRootPart')
   if root then
@@ -24,14 +57,16 @@ function Rooms.start(remote)
  end
  local function add(player)
   if rooms[player] then return end
-  nextSlot+=1
-  local origin=Vector3.new(nextSlot*80,0,1000)
+  local slot=1; while slots[slot] do slot+=1 end
+  slots[slot]=player
+  local origin=Vector3.new((slot-1)*24,0,1000)
   local model=Instance.new('Model'); model.Name='KitchenRoom_'..player.UserId; model.Parent=Workspace
   solid(model,'Floor',Vector3.new(22,1,24),origin+Vector3.new(0,-.6,5))
-  for _,wall in {{Vector3.new(22,10,1),Vector3.new(0,4.5,-7)}, {Vector3.new(22,10,1),Vector3.new(0,4.5,17)}, {Vector3.new(1,10,24),Vector3.new(-11,4.5,5)}, {Vector3.new(1,10,24),Vector3.new(11,4.5,5)}} do solid(model,'Wall',wall[1],origin+wall[2]) end
+  for _,wall in {{Vector3.new(22,10,1),Vector3.new(0,4.5,-7)}, {Vector3.new(1,10,24),Vector3.new(-11,4.5,5)}, {Vector3.new(1,10,24),Vector3.new(11,4.5,5)}} do solid(model,'Wall',wall[1],origin+wall[2]) end
   for _,x in {-3.7,3.7} do solid(model,'Worktable',Vector3.new(6.8,2.3,5.8),origin+Vector3.new(x,1,0)) end
   solid(model,'Cabinets',Vector3.new(18,2.3,1.8),origin+Vector3.new(0,1,-5))
-  rooms[player]={model=model,origin=origin,mode='cut'}
+  rooms[player]={model=model,origin=origin,mode='cut',slot=slot,hidden={}}
+  player:SetAttribute('KitchenMode','cut')
   player:SetAttribute('KitchenOrigin',origin)
   local function spawn()
    if not player.Parent or not rooms[player] then return end
@@ -58,7 +93,7 @@ function Rooms.start(remote)
  remote.OnServerEvent:Connect(mode)
  Players.PlayerAdded:Connect(add)
  Players.PlayerRemoving:Connect(function(player)
-  if rooms[player] then rooms[player].model:Destroy(); rooms[player]=nil end
+  if rooms[player] then slots[rooms[player].slot]=nil; rooms[player].model:Destroy(); rooms[player]=nil end
  end)
  for _,player in Players:GetPlayers() do add(player) end
 end

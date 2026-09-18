@@ -2,6 +2,10 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Watch player"] = "Смотреть игрока",
+ ["Watching {name} · live"] = "Смотрим: {name} · прямой эфир",
+ ["{name} is away from their worktable"] = "{name} сейчас не за своим столом",
+
 	["Tempering Machine"] = "Темперирующая машина",
 	["+20% trick reward · adds a tempering machine"] = "+20% к награде за фокус · машина появляется на кухне",
 	["Recipe Library"] = "Библиотека рецептов",

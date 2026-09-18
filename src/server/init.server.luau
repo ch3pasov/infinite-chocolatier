@@ -14,7 +14,10 @@ local Economy = require(Shared.Economy)
 local Remotes = require(Shared.Remotes)
 local ProfileStore = require(script.ProfileStore)
 local remotes = Remotes.ensure(ReplicatedStorage)
-if Config.Kitchen.enabled and Config.Scene3D.enabled then require(script.KitchenRooms).start(remotes.kitchenMode) end
+if Config.Kitchen.enabled and Config.Scene3D.enabled then
+ require(script.KitchenRooms).start(remotes.kitchenMode)
+ require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock)
+end
 local studio = RunService:IsStudio()
 local storage = if studio then nil else ProfileStore.new(DataStoreService:GetDataStore("ChocolateAtelier_v1"), Economy,
 	Config.Economy, HttpService:GenerateGUID(false), os.time)
