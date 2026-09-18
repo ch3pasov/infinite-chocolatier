@@ -2,6 +2,7 @@
 -- Один контроллер поз для человека и ученика. Источник действий не знает
 -- об устройстве rig; длина рук остаётся постоянной, меняются только суставы.
 local Players = game:GetService("Players")
+local Appearance=require(script.Parent.FriendAppearance)
 local Animator = {}
 Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
@@ -12,12 +13,13 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   description.LeftArmColor=description.HeadColor; description.RightArmColor=description.HeadColor
   description.TorsoColor=if isPlayer then Color3.fromRGB(90,133,166) else Color3.fromRGB(244,234,209)
   description.LeftLegColor=Color3.fromRGB(64,52,44); description.RightLegColor=description.LeftLegColor
-  if userId and userId>0 then
-   local ok,appearance=pcall(function() return Players:GetHumanoidDescriptionFromUserIdAsync(userId) end)
-   if ok then description:Destroy(); description=appearance end
+  if not isPlayer then
+   local player=Players.LocalPlayer
+   userId=Appearance.pickFriend(Players,player and player.UserId,math.random)
   end
-  -- Стандартный R6 одинаков у обоих участников: одни суставы и позы.
-  local ok,rig=pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(description,Enum.HumanoidRigType.R6) end)
+  if not self.alive then description:Destroy(); return end
+  -- R6 сохраняет общие суставы и позы игрока и стажёра.
+  local ok,rig=Appearance.createRig(Players,description,userId,Enum.HumanoidRigType.R6)
   description:Destroy()
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
   if not self.alive or not parent.Parent then rig:Destroy(); return end
