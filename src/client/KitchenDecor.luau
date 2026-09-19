@@ -2,8 +2,9 @@
 -- Покупки меняют предметы в комнате. Перестраиваем только при смене набора,
 -- а не при каждом секундном обновлении баланса.
 local Decor={}
-function Decor.update(kitchen,state)
- local levels=state.levels; local equipped=state.decor or {}
+function Decor.update(kitchen,state,previewId)
+ local levels=state.levels; local equipped=table.clone(state.decor or {})
+ if previewId then equipped[previewId]=true end
  local key=table.concat({levels.temper,levels.library,levels.clock,tostring(equipped.plant),tostring(equipped.rug),tostring(equipped.art)},':')
  if kitchen.decorKey==key then return end
  kitchen.decorKey=key

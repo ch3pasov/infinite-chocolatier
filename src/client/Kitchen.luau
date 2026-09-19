@@ -12,6 +12,7 @@ local L = require(script.Parent.Localization)
 local Players=game:GetService("Players")
 local StarterGui=game:GetService("StarterGui")
 local Decor=require(script.Parent.KitchenDecor)
+local Preview=require(script.Parent.DecorPreview)
 local Kitchen = {}
 local cocoa = Color3.fromRGB(71,38,27)
 local cream = Color3.fromRGB(255,232,192)
@@ -63,6 +64,21 @@ function Kitchen.new(view,atelier)
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
  panel.Position=UDim2.new(0,12,1,-150); panel.Size=UDim2.new(1,-24,0,138); panel.Parent=root
  self.panel=panel
+ local previewPanel=Instance.new('Frame'); previewPanel.Name='DecorationPreview'; previewPanel.BackgroundColor3=cocoa
+ previewPanel.Position=UDim2.new(0,12,1,-176); previewPanel.Size=UDim2.new(1,-24,0,164); previewPanel.Visible=false; previewPanel.Parent=root
+ self.previewPanel=previewPanel
+ self.previewTitle=label(previewPanel,'Title',UDim2.fromOffset(12,6),UDim2.new(1,-24,0,28))
+ self.previewInfo=label(previewPanel,'Info',UDim2.fromOffset(12,38),UDim2.new(1,-24,0,32))
+ self.previewBuy=button(previewPanel,'Buy','Buy',UDim2.fromOffset(12,78),UDim2.new(1,-24,0,36),function()
+  local state=self.state; local id=self.preview and self.preview.id
+  if not id or os.clock()<(self.previewNextBuy or 0) then return end
+  local price=state.prices[id]
+  if state.levels[id]>0 or (price and state.slices>=price) then
+   self.previewNextBuy=os.clock()+.5; atelier.remotes.purchase:FireServer(id)
+  end
+ end)
+ button(previewPanel,'Back','Back to catalog',UDim2.fromOffset(12,120),UDim2.new(1,-24,0,32),function() self:setWalking(); self:openShop() end)
+ atelier.onPreview=function(id) self:previewDecor(id) end
  self.title=label(panel,"Title",UDim2.fromOffset(12,8),UDim2.new(1,-24,0,30)); L.set(self.title,"Chocolate kitchen")
  self.info=label(panel,"Info",UDim2.fromOffset(12,44),UDim2.new(1,-24,0,30))
  self.back=button(panel,"Back","Back to walking",UDim2.new(0,12,1,-50),UDim2.new(1,-24,0,38),function() self:setWalking() end)
@@ -124,6 +140,9 @@ function Kitchen:setAvatarVisible(visible)
  end
 end
 function Kitchen:setWalking()
+ self.preview=nil
+ if self.previewPanel then self.previewPanel.Visible=false end
+ if self.state and self.state.ready then Decor.update(self,self.state) end
  self.focus=false; self.shopping=false; self.watchPeer=nil
  self:setAvatarVisible(true)
  pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,true) end)
@@ -168,7 +187,9 @@ function Kitchen:setOpen(open)
 end
 function Kitchen:update(state)
  self.state=state; self.syncedAt=os.clock()
- if state.ready then Decor.update(self,state) end
+ if state.ready then
+  if self.preview then self:updatePreview() else Decor.update(self,state) end
+ end
 end
 function Kitchen:step(dt)
  self.online:step(dt)
@@ -178,14 +199,19 @@ function Kitchen:step(dt)
  self.panel.Visible=self.focus
  self.stations[1].actor:setVisible(false)
  if not working and self.focus and not self.watchPeer then self:setWalking() end
- if self.focus then
+ if self.focus or self.preview then
  self:setAvatarVisible(false)
  self.camera.CameraType=Enum.CameraType.Scriptable
  local aspect=self.root.AbsoluteSize.X/math.max(1,self.root.AbsoluteSize.Y-150)
  local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(-3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
+ local lookOffset
+ if self.preview then
+  local shots={plant={Vector3.new(8.5,1.5,9),Vector3.new(-3,2,5)},rug={Vector3.new(0,0,9),Vector3.new(0,8,5)},art={Vector3.new(-10.1,4,8),Vector3.new(6,1,1)}}
+  local shot=shots[self.preview.id]; target=self.origin+shot[1]; lookOffset=shot[2]
+ end
  local distance=if self.focus then 8 else 16
  distance*=math.max(1,1.5/aspect)
- local cf=CFrame.lookAt(target+Vector3.new(0,distance*.8,distance),target)
+ local cf=CFrame.lookAt(target+(if lookOffset then lookOffset*math.max(1,1.3/aspect) else Vector3.new(0,distance*.8,distance)),target)
  -- Нижняя панель занимает 150 px: центр кухни сдвигается выше неё.
  local focal=math.max(60,self.root.AbsoluteSize.Y-150)/(2*math.tan(math.rad(45)/2))
  cf+=cf.UpVector*(-75*(cf.Position-target).Magnitude/focal)
@@ -201,6 +227,34 @@ function Kitchen:step(dt)
  local t=((state.productionRemainder or 0)+(os.clock()-(self.syncedAt or os.clock()))/state.cycleSeconds)%1
  self.stations[1]:pose(Action.player(self.view),true,dt)
  self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides),working,dt)
+end
+function Kitchen:previewDecor(id)
+ local spec
+ for _,item in Config.Economy.upgrades do if item.id==id and item.cosmetic then spec=item end end
+ if not spec or not self.state or not self.state.ready then return end
+ if self.atelier.external then self.atelier:setOpen(false) end
+ if not self.opened then self:setOpen(true) end
+ self.preview=Preview.begin(id,self.state); self.previewSpec=spec
+ self.focus=false; self.shopping=true; self.controls:Disable()
+ self.previewPanel.Visible=true; self.atelier.overlay.Visible=false
+ self.atelier.remotes.kitchenMode:FireServer('watch')
+ self.stage:activate(self.world,self.camera); self:updatePreview(); self:step(0)
+end
+function Kitchen:updatePreview()
+ local state=self.state; local id=self.preview.id
+ Decor.update(self,state,Preview.update(self.preview,state))
+ L.set(self.previewTitle,self.previewSpec.name)
+ local owned=state.levels[id]>0
+ local installed=state.decor[id]==true
+ L.set(self.previewInfo,if not owned then 'Preview · not purchased' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Decoration put away')
+ local price=state.prices[id]
+ local available=owned or (price and state.slices>=price)
+ self.previewBuy.AutoButtonColor=available==true
+ self.previewBuy.BackgroundColor3=if available then gold else cocoa
+ self.previewBuy.TextColor3=if available then cocoa else cream
+ if owned then L.set(self.previewBuy,if installed then 'Put away · owned' else 'Place · owned')
+ elseif available then L.set(self.previewBuy,'Buy · {price} pieces',{price=L.number(price)})
+ else L.set(self.previewBuy,'Price {price} · need {missing} more',{price=L.number(price or 0),missing=L.number(math.max(0,(price or 0)-state.slices))}) end
 end
 function Kitchen:watchPlayer(peer)
  if not self.opened or self.shopping then return end

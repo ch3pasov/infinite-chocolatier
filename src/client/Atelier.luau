@@ -152,6 +152,7 @@ function Atelier.new(gui, gameView, remotes)
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		buy.Activated:Connect(function()
+            if spec.cosmetic and self.onPreview and self.state and self.state.ready then self.onPreview(spec.id); return end
 			if self.state and self.state.ready and ((spec.cosmetic and self.state.levels[spec.id] > 0) or (self.state.prices[spec.id]
 				and self.state.slices >= self.state.prices[spec.id])) then
 				remotes.purchase:FireServer(spec.id)
@@ -314,7 +315,10 @@ function Atelier:update(state)
 		card.buy.BackgroundColor3 = if canBuy then Theme.accent else Theme.chocolateEdge
 		card.buy.TextColor3 = if canBuy then Theme.background else Theme.text
 		card.buy.AutoButtonColor = canBuy == true
-		if card.spec.cosmetic and level > 0 then
+		if card.spec.cosmetic and self.onPreview then
+            card.buy.AutoButtonColor=true; card.buy.BackgroundColor3=Theme.accent; card.buy.TextColor3=Theme.background
+            L.set(card.buy,"Preview in kitchen")
+        elseif card.spec.cosmetic and level > 0 then
             card.buy.AutoButtonColor = true; card.buy.BackgroundColor3 = Theme.accent
             card.buy.TextColor3 = Theme.background
             L.set(card.buy, if state.decor[id] then "Put away · owned" else "Place · owned")

@@ -2,6 +2,12 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Preview in kitchen"] = "Посмотреть на кухне",
+ ["Back to catalog"] = "Вернуться в каталог",
+ ["Preview · not purchased"] = "Примерка · ещё не куплено",
+ ["Preview · already owned"] = "Примерка · уже куплено",
+ ["Placed in your kitchen"] = "Установлено на вашей кухне",
+ ["Decoration put away"] = "Украшение убрано",
  ["Watch player"] = "Смотреть игрока",
  ["Watching {name} · live"] = "Смотрим: {name} · прямой эфир",
  ["{name} is away from their worktable"] = "{name} сейчас не за своим столом",
