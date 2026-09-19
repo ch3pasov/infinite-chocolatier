@@ -14,6 +14,7 @@ local StarterGui=game:GetService("StarterGui")
 local Decor=require(script.Parent.KitchenDecor)
 local Preview=require(script.Parent.DecorPreview)
 local AvatarVisibility=require(script.Parent.AvatarVisibility)
+local WalkCamera=require(script.Parent.WalkCamera)
 local Kitchen = {}
 local cocoa = Color3.fromRGB(71,38,27)
 local cream = Color3.fromRGB(255,232,192)
@@ -61,6 +62,7 @@ function Kitchen.new(view,atelier)
  local world=self.stage:createWorld("KitchenStations"); self.world=world
  local camera=self.stage:createCamera("KitchenCamera",45); self.camera=camera
  self.walkCamera=self.stage:createCamera("KitchenWalkCamera",70)
+ self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping end)
  Shell.new(world,self.origin)
  self.stations={Station.new(view,world,self.origin,-3.7,true),Station.new(view,world,self.origin,3.7,false)}
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
@@ -116,7 +118,7 @@ function Kitchen.new(view,atelier)
  self.online=Online.new(self)
  self.render=RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
  gui.Destroying:Connect(function()
-  self.render:Disconnect()
+  self.render:Disconnect(); self.walkController:destroy()
   self.characterConnection:Disconnect(); self:setAvatarVisible(true); self.controls:Enable()
   self.online:destroy()
   for _,station in self.stations do station:destroy() end
@@ -135,16 +137,8 @@ function Kitchen:setWalking()
  self:setAvatarVisible(true)
  pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,true) end)
  self.controls:Enable()
- self.walkCamera.CameraType=Enum.CameraType.Custom
- local char=self.player.Character
- local humanoid=char and char:FindFirstChildOfClass('Humanoid')
- self.walkCamera.CameraSubject=humanoid
- if not self.walkStarted then
-  local target=self.origin+Vector3.new(0,2,4)
-  self.walkCamera.CFrame=CFrame.lookAt(target+Vector3.new(0,7,12),target)
-  self.walkStarted=true
- end
  self.stage:activate(self.world,self.walkCamera)
+ self.walkController:step(0)
  self.atelier.remotes.kitchenMode:FireServer('walk')
 end
 function Kitchen:openShop()
