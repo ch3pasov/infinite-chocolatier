@@ -13,6 +13,7 @@ local Players=game:GetService("Players")
 local StarterGui=game:GetService("StarterGui")
 local Decor=require(script.Parent.KitchenDecor)
 local Preview=require(script.Parent.DecorPreview)
+local AvatarVisibility=require(script.Parent.AvatarVisibility)
 local Kitchen = {}
 local cocoa = Color3.fromRGB(71,38,27)
 local cream = Color3.fromRGB(255,232,192)
@@ -43,6 +44,7 @@ end
 function Kitchen.new(view,atelier)
  local self=setmetatable({view=view,atelier=atelier,opened=false,focus=false}, {__index=Kitchen})
  local player=Players.LocalPlayer; self.player=player
+ self.avatarVisibility=AvatarVisibility.new()
  while not player:GetAttribute('KitchenOrigin') do player:GetAttributeChangedSignal('KitchenOrigin'):Wait() end
  self.origin=player:GetAttribute('KitchenOrigin')
  self.controls=require(player:WaitForChild('PlayerScripts'):WaitForChild('PlayerModule')):GetControls()
@@ -123,21 +125,7 @@ function Kitchen.new(view,atelier)
  return self
 end
 function Kitchen:setAvatarVisible(visible)
- if visible then
-  for item,transparency in self.hiddenAvatar or {} do
-   if item.Parent then item.Transparency=transparency end
-  end
-  self.hiddenAvatar=nil
- else
-  self.hiddenAvatar=self.hiddenAvatar or {}
-  local char=self.player.Character
-  if char then for _,item in char:GetDescendants() do
-   if item:IsA('BasePart') or item:IsA('Decal') then
-    if self.hiddenAvatar[item]==nil then self.hiddenAvatar[item]=item.Transparency end
-    item.Transparency=1
-   end
-  end end
- end
+ self.avatarVisibility:set(self.player.Character,visible)
 end
 function Kitchen:setWalking()
  self.preview=nil
