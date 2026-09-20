@@ -78,6 +78,8 @@ return function(h)
   -- Проверяем покрытие всех краёв всего фундамента, а не только коридора.
   assert(hall.Foundation.Position.Y+hall.Foundation.Size.Y/2<-.3)
   h.equals(hall:FindFirstChild('HallFloor'),nil)
+  h.equals(hall.Foundation.Transparency,1)
+  h.equals(hall.Floor.Transparency,1)
   local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2
   local max=foundation.Position+foundation.Size/2
   for _,name in {'HomeCafeArrow','NextCafeArrow'} do

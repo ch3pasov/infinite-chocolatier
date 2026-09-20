@@ -16,7 +16,10 @@ local function part(parent,name,size,pos,color)
 end
 function Shell.new(parent,origin)
  local world=Instance.new('Model'); world.Name='KitchenFurniture'; world.Parent=parent
- part(world,"Floor",Vector3.new(22,.2,24),Vector3.new(0,-.2,5),Color3.fromRGB(181,160,130))
+ for name,spec in {Floor=Structure.floor,Foundation=Structure.foundation} do
+  part(world,name,Vector3.new(table.unpack(spec.size)),Vector3.new(table.unpack(spec.position)),
+   if name=='Floor' then Color3.fromRGB(181,160,130) else Color3.fromRGB(194,173,142))
+ end
  for _,wall in Structure.walls do
   part(world,wall.name,Vector3.new(table.unpack(wall.size)),Vector3.new(table.unpack(wall.position)),sage)
  end

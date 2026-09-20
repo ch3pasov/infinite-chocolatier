@@ -13,5 +13,16 @@ return function(h)
   assert(math.abs(back.CFrame.Position.Z-back.Size.Z/2-(left.CFrame.Position.Z-left.Size.Z/2))<.0001)
   assert(math.abs(back.CFrame.Position.Y+back.Size.Y/2-(left.CFrame.Position.Y+left.Size.Y/2))<.0001)
   assert(math.abs(model.Floor.CFrame.Position.Z+model.Floor.Size.Z/2-17)<.0001)
+  local floor,base=model.Floor,model.Foundation
+  -- CFrame/Size движка используют float32.
+  local function near(a,b) assert(math.abs(a-b)<.0001) end
+  local function lo(p,axis) return p.CFrame.Position[axis]-p.Size[axis]/2 end
+  local function hi(p,axis) return p.CFrame.Position[axis]+p.Size[axis]/2 end
+  near(lo(floor,'X'),hi(left,'X'))
+  near(hi(floor,'X'),lo(right,'X'))
+  near(lo(floor,'Z'),hi(back,'Z'))
+  for _,p in {floor,left,right,back} do near(lo(p,'Y'),hi(base,'Y')) end
+  near(hi(floor,'Y'),-.1)
+
  end)
 end

@@ -8,6 +8,7 @@ local Wire=require(Shared.WorkstationWire)
 local Queue=require(Shared.CafeQueue)
 local Roster=require(Shared.StaffRoster)
 local Config=require(Shared.Config)
+local Structure=require(Shared.KitchenStructure)
 local Action=require(script.Parent.WorkstationAction)
 local Station=require(script.Parent.WorkstationView)
 local Shell=require(script.Parent.KitchenShell)
@@ -188,9 +189,12 @@ function Online:updateIslands(models)
     end
    end
   else
-   part('DistantFloor',Vector3.new(22,.3,24),location+Vector3.new(0,-.2,5),Color3.fromRGB(181,160,130))
-   for _,wall in {{Vector3.new(22,7,.6),Vector3.new(0,3,-6.2)},{Vector3.new(.6,7,23.5),Vector3.new(-10.7,3,5.25)},{Vector3.new(.6,7,23.5),Vector3.new(10.7,3,5.25)}} do
-    part('DistantWall',wall[1],location+wall[2],Color3.fromRGB(83,112,97))
+   for name,spec in {DistantFloor=Structure.floor,DistantFoundation=Structure.foundation} do
+    part(name,Vector3.new(table.unpack(spec.size)),location+Vector3.new(table.unpack(spec.position)),
+     if name=='DistantFloor' then Color3.fromRGB(181,160,130) else Color3.fromRGB(194,173,142))
+   end
+   for _,wall in Structure.walls do
+    part('DistantWall',Vector3.new(table.unpack(wall.size)),location+Vector3.new(table.unpack(wall.position)),Color3.fromRGB(83,112,97))
    end
    for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
   end

@@ -104,13 +104,15 @@ function Rooms.start(remote)
   model:SetAttribute('OwnerOnline',true); model:SetAttribute('CafeCount',0)
   model:SetAttribute('CycleSeconds',if source then source.model:GetAttribute('CycleSeconds') else 10)
   model:SetAttribute('HasApprentice',index>0)
-  local foundation=solid(model,'Foundation',Vector3.new(22,1,24),origin+Vector3.new(0,-.85,5))
-  foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
+  -- Видимое основание принадлежит клиентской оболочке, иначе две одинаковые
+  -- поверхности снова мерцают. Здесь остаётся только физическая опора.
+  for name,spec in {Foundation=Structure.foundation,Floor=Structure.floor} do
+   solid(model,name,Vector3.new(table.unpack(spec.size)),origin+Vector3.new(table.unpack(spec.position)))
+  end
   for _,boundary in {
    {Vector3.new(23,64,1),Vector3.new(0,31,17)}, {Vector3.new(23,64,1),Vector3.new(0,31,-7)},
    {Vector3.new(1,64,24),Vector3.new(-11,31,5)}, {Vector3.new(1,64,24),Vector3.new(11,31,5)},
   } do solid(model,'IslandBoundary',boundary[1],origin+boundary[2]) end
-  solid(model,'Floor',Vector3.new(22,1,24),origin+Vector3.new(0,-.6,5))
   for _,wall in Structure.walls do solid(model,wall.name,Vector3.new(table.unpack(wall.size)),origin+Vector3.new(table.unpack(wall.position))) end
   for _,x in {-3.7,3.7} do solid(model,'Worktable',Vector3.new(6.8,2.3,5.8),origin+Vector3.new(x,1,0)) end
   solid(model,'Cabinets',Vector3.new(18,2.3,1.8),origin+Vector3.new(0,1,-5))
