@@ -15,6 +15,7 @@ return function(h)
      assert((tip-point).Magnitude<.00001)
      local grip=Knife.grip(frame,settings)
      assert((grip-tip).Magnitude>.4*size)
+     assert((grip-tip):Dot(direction.Unit)>0,"Рукоять должна идти впереди кончика при прежнем направлении жеста")
     end
    end
   end

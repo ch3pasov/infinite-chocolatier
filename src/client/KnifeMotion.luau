@@ -14,7 +14,9 @@ Knife.profile = {
 }
 function Knife.frame(point, direction, settings, roll)
  local scale=settings.renderScale*settings.knifeScale
- local rotation=CFrame.lookAt(Vector3.zero,direction)*CFrame.Angles(0,0,roll)*CFrame.Angles(math.rad(-5),0,0)
+ -- Жест задаёт путь кончика, но рукоять идёт впереди: нож тянут, а не толкают.
+ local yaw=math.atan2(direction.X,direction.Z)
+ local rotation=CFrame.Angles(0,yaw,0)*CFrame.Angles(0,0,roll)*CFrame.Angles(math.rad(-5),0,0)
  return CFrame.new(point)*rotation*CFrame.new(-Knife.tip*scale)
 end
 function Knife.grip(frame,settings)
