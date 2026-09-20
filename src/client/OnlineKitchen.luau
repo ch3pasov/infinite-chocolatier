@@ -58,9 +58,18 @@ function Online:clearQueue()
  self.queueStations={}
  if self.queue then self.queue:Destroy(); self.queue=nil end
 end
+function Online:publishPlayer()
+ local action=Action.player(self.kitchen.view); local now=os.clock()
+ -- Редкое повторение восстанавливает последнюю позу, если сервер отбросил
+ -- пакет при всплеске частоты. Новый зритель получает серверный кеш отдельно.
+ if not Wire.samePose(self.lastPublished,action) or now-(self.publishedAt or -math.huge)>=1 then
+  self.remote:FireServer(action); self.lastPublished=action; self.publishedAt=now
+ end
+end
 function Online:step(dt)
  local k=self.kitchen; self.elapsed+=dt; self.scan+=dt
- if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then self.elapsed=0; self.remote:FireServer(Action.player(k.view)) end
+ if k.opened then self.lastPublished=nil end
+ if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then self.elapsed=0; self:publishPlayer() end
  if not k.opened then return end
  self.request+=dt; if self.request>=1.1 then self.request=0; self.remote:FireServer() end
  if self.scan>=.5 then

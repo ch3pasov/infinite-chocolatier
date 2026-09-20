@@ -375,7 +375,7 @@ class Session:
         checks = self.start_test()
         for name, options in [("purchase", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
-                              ("kitchen", {}), ("visibility", {}), ("catalog", {})]:
+                              ("kitchen", {}), ("visibility", {}), ("catalog", {}), ("idleNetwork", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)
             self.report["stage"] = name
             result = self.control(name, **options)

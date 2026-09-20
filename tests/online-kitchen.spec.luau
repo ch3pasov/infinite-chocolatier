@@ -10,6 +10,36 @@ local function signal()
   Fire=function(_,...) for fn in callbacks do fn(...) end end}
 end
 return function(h)
+ h.test('неподвижная ручная станция шлёт редкий снимок, движение сохраняет частоту',function()
+  local now=0; local calls={}
+  local stub=setmetatable({},{__index=function(_,key) return key end})
+  local modules={WorkstationWire=Wire,WorkstationAction=Action}
+  local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},
+   script={Parent=stub},require=function(name) return modules[name] or {} end,
+   os={clock=function() return now end},
+  },injectGlobals=true})()
+  local view={intactLayer={Visible=true},active='cut',cutIndex=1,cutProgress=0,
+   tileWidth=10,tileHeight=20,pieces={},paths={{points={Vector2.new(0,70),Vector2.new(50,30)},geom={length=100}}}}
+  for _,name in Config.Trick.pieceOrder do
+   view.pieces[name]={origin=Vector2.zero,motion={Position={X={Offset=0},Y={Offset=0}},Visible=false}}
+  end
+  local k={opened=false,state={ready=true},view=view}
+  local online=setmetatable({kitchen=k,elapsed=0,scan=0,
+   remote={FireServer=function(_,a) table.insert(calls,a) end}},Online)
+  -- За десять секунд было сто одинаковых пакетов. Редкий повтор остаётся,
+  -- чтобы серверный лимит при сетевом всплеске не терял последнюю позу навсегда.
+  for i=1,100 do now=i*.1; online:step(.1) end
+  assert(#calls>=9 and #calls<=11,'ожидался примерно один снимок в секунду, получили '..#calls)
+  local idle=#calls
+  for i=1,10 do now=10+i*.1; view.cutProgress=i; online:step(.1) end
+  h.equals(#calls,idle+10,'активная резка продолжает идти с частотой 10 Гц')
+  h.near((calls[#calls].knifePoint-Action.player(view).knifePoint).Magnitude,0)
+  now+=.1; view.pieces.stripSingle.motion.Visible=true; online:step(.1)
+  h.equals(#calls,idle+11,'появление кусочка отправляется сразу')
+  k.state.ready=false; now+=2; online:step(2)
+  h.equals(#calls,idle+11,'неготовое состояние не отправляется')
+ end)
  h.test('наблюдатель: поздние атрибуты, сеть, крупный план, дальние столы и уход игрока',function()
   local now=0; local calls={}; local objects={}; local stations={}
   local function new(class)

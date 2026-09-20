@@ -26,6 +26,16 @@ function Wire.clean(raw)
  a.leftHand=Vector2.new(3.7,1.2)+a.offsets.upperRight
  return a
 end
+-- Сравниваются уже сформированные позы, не произвольный сетевой ввод.
+-- Точность не округляем: даже небольшой реальный сдвиг должен дойти до зрителя.
+function Wire.samePose(a,b)
+ if not a or not b or a.whole~=b.whole or a.cutting~=b.cutting then return false end
+ for _,name in Config.Trick.pieceOrder do
+  if a.offsets[name]~=b.offsets[name] then return false end
+  if (a.hidden and a.hidden[name]==true or false)~=(b.hidden and b.hidden[name]==true or false) then return false end
+ end
+ return not a.cutting or (a.knifePoint==b.knifePoint and a.knifeDirection==b.knifeDirection)
+end
 function Wire.blend(a,b,t)
  if not a or a.whole~=b.whole or a.cutting~=b.cutting then return b end
  local result={whole=b.whole,cutting=b.cutting,offsets={},hidden=b.hidden}

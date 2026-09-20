@@ -28,7 +28,20 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="networkPrepare" then
+ if args.action=="idleNetwork" then
+  local Online=require(script.OnlineKitchen)
+  local view=table.clone(gameView); view.active='cut'; view.cutIndex=1; view.cutProgress=0
+  local sent=0
+  -- Изолированный отправитель считает реальные вызовы той же функции.
+  -- Изменяется копия view; в серверную экономику и живой разрез не вмешиваемся.
+  local sender=setmetatable({kitchen={view=view},remote={FireServer=function() sent+=1 end}},Online)
+  for _=1,21 do sender:publishPlayer(); task.wait(.1) end
+  local idle=sent
+  assert(idle>=2 and idle<=5,'Idle pose was repeated too often: '..idle)
+  for i=1,10 do view.cutProgress=i; sender:publishPlayer(); task.wait(.1) end
+  assert(sent-idle==10,'A moving knife lost updates')
+  return {ok=true,idlePackets=idle,idleSamples=21,movingPackets=sent-idle,movingSamples=10}
+ elseif args.action=="networkPrepare" then
   if networkProbe then networkProbe.connection:Disconnect() end
   networkProbe={}
   networkProbe.connection=remotes.kitchenAction.OnClientEvent:Connect(function(id,action)

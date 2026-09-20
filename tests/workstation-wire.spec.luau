@@ -11,6 +11,19 @@ local function signal()
 end
 local function pose(t) return Action.cycle(t,Config,Recipe.build(Config.Recipe).slides) end
 return function(h)
+ h.test('сравнение сетевой позы замечает малое движение и видимость куска',function()
+  local a=Wire.clean(pose(.1)); local b=Wire.clean(pose(.1))
+  h.equals(Wire.samePose(nil,b),false); h.equals(Wire.samePose(a,b),true)
+  b.knifePoint+=Vector2.new(.00001,0); h.equals(Wire.samePose(a,b),false)
+  b=Wire.clean(pose(.1)); b.knifeDirection=-b.knifeDirection; h.equals(Wire.samePose(a,b),false)
+  b=Wire.clean(pose(.1)); b.hidden.stripSingle=true; h.equals(Wire.samePose(a,b),false)
+  b=Wire.clean(pose(.1)); b.offsets.stripDouble+=Vector2.new(.00001,0); h.equals(Wire.samePose(a,b),false)
+  b=Wire.clean(pose(.1)); b.cutting=false; h.equals(Wire.samePose(a,b),false)
+  b=Wire.clean(pose(.1)); b.whole=false; h.equals(Wire.samePose(a,b),false)
+  local held=Wire.clean(pose(.7)); local copy=Wire.clean(pose(.7))
+  copy.knifePoint=Vector2.new(9,9)
+  h.equals(Wire.samePose(held,copy),true,'скрытый нож не является частью видимой позы')
+ end)
  h.test('видимый сосед в очереди получает позы несмотря на удалённый физический остров',function()
   local now=0; local sent={}; local queries=0
   local function player(id,x)
@@ -89,7 +102,9 @@ return function(h)
   -- Новый наблюдатель получает уже существующий снимок без ожидания жеста.
   remote.OnServerEvent:Fire(observer); h.equals(#sent,3)
   remote.OnServerEvent:Fire(observer); h.equals(#sent,3)
+  now=20; remote.OnServerEvent:Fire(observer); h.equals(#sent,4,'кеш доступен, даже если автор давно не отправлял позу')
+  h.near((sent[4][3].knifePoint-manual.knifePoint).Magnitude,0)
   players.PlayerRemoving:Fire(author); author.Parent=nil
-  now=2; remote.OnServerEvent:Fire(observer); h.equals(#sent,3)
+  now=22; remote.OnServerEvent:Fire(observer); h.equals(#sent,4)
  end)
 end
