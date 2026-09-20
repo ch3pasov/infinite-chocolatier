@@ -15,6 +15,9 @@ local Shell=require(script.Parent.KitchenShell)
 local Decor=require(script.Parent.KitchenDecor)
 local L=require(script.Parent.Localization)
 local Online={}; Online.__index=Online
+local function transparency(part,value)
+ if part.LocalTransparencyModifier~=value then part.LocalTransparencyModifier=value end
+end
 function Online.new(kitchen)
  local self=setmetatable({kitchen=kitchen,peers={},packets={},elapsed=0,scan=0,request=0},Online)
  self.remote=kitchen.atelier.remotes.kitchenAction
@@ -122,6 +125,20 @@ function Online:step(dt)
   end
  end
 end
+function Online:updateLocalVisibility(origin)
+ local function update(part)
+  if part:IsA('BasePart') then transparency(part,if (part.Position-origin).Magnitude<55 then 0 else 1) end
+ end
+ -- Очередь сама выбирает дальнюю детализацию. Не разворачиваем тысячи её
+ -- потомков ради последующего IsDescendantOf. Остальные ветки читаем заново:
+ -- новый аватар или купленный декор появится без отдельного кеша/подписок.
+ for _,branch in self.kitchen.world:GetChildren() do
+  if branch~=self.queue then
+   update(branch)
+   for _,part in branch:GetDescendants() do update(part) end
+  end
+ end
+end
 function Online:updateIslands(models)
  local k=self.kitchen; local owner=k.player:GetAttribute('VisitingKitchen') or k.player.UserId
  local index=k.player:GetAttribute('VisitingCafeIndex') or 0; local currentKey=Queue.key(owner,index)
@@ -133,7 +150,7 @@ function Online:updateIslands(models)
    table.insert(records,{owner=id,index=n,online=model:GetAttribute('OwnerOnline'),count=model:GetAttribute('CafeCount') or 0})
    if not sources[id] or n==0 then sources[id]=model end
    for _,part in model:GetDescendants() do
-    if part:IsA('BasePart') then part.LocalTransparencyModifier=if key==currentKey then 0 else 1
+    if part:IsA('BasePart') then transparency(part,if key==currentKey then 0 else 1)
     elseif part:IsA('ProximityPrompt') then
      table.insert(prompts,{prompt=part,current=key==currentKey})
     end
@@ -152,9 +169,7 @@ function Online:updateIslands(models)
  end
  if not current then return end
  local origin=current:GetAttribute('Origin')
- for _,part in k.world:GetDescendants() do
-  if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1 end
- end
+ self:updateLocalVisibility(origin)
  local key=currentKey..':'..tostring(origin)
  for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..(sources[entry.owner]:GetAttribute('StaffRoster') or '')..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
  if self.queueKey==key then return end; self.queueKey=key

@@ -76,6 +76,46 @@ local function dispatch(args)
   end
   kitchen:setOpen(false)
   return {ok=true,queueStations=6,loadedAvatars=loaded,expectedAvatars=7,frames="explicit"}
+ elseif args.action=="visibility" then
+  kitchen:setOpen(true); kitchen:step(.5)
+  local online=kitchen.online; local origin=kitchen.origin
+  local all=kitchen.world:GetDescendants(); local excluded=online.queue:GetDescendants()
+  local sentinel=online.queue:FindFirstChildWhichIsA("BasePart",true)
+  assert(sentinel,"Queue has no parts"); sentinel.LocalTransparencyModifier=.37
+  local late=Instance.new("Part"); late.Anchored=true; late.Transparency=1; late.CanCollide=false
+  late.Position=origin+Vector3.new(256,0,0); late.Parent=kitchen.world
+  online:updateLocalVisibility(origin); assert(late.LocalTransparencyModifier==1,"New part was not hidden")
+  late.Position=origin; online:updateLocalVisibility(origin)
+  assert(late.LocalTransparencyModifier==0,"Moved part did not reappear"); late:Destroy()
+  online:updateLocalVisibility(origin+Vector3.new(256,0,0))
+  assert(math.abs(sentinel.LocalTransparencyModifier-.37)<.001,"Queue visibility was overwritten")
+  online:updateLocalVisibility(origin); sentinel.LocalTransparencyModifier=0
+  local checked=0
+  for _,part in all do
+   if part:IsA("BasePart") and not part:IsDescendantOf(online.queue) then
+    local expected=if (part.Position-origin).Magnitude<55 then 0 else 1
+    assert(part.LocalTransparencyModifier==expected,"Local visibility mismatch: "..part:GetFullName())
+    checked+=1
+   end
+  end
+  -- Замер одного участка, не FPS. Старый обход оставлен только в тесте;
+  -- количество комнат и деталей в обоих случаях строго одинаковое.
+  local function legacy()
+   for _,part in kitchen.world:GetDescendants() do
+    if part:IsA("BasePart") and not part:IsDescendantOf(online.queue) then
+     part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1
+    end
+   end
+  end
+  local samples={}
+  for _=1,3 do
+   local started=os.clock(); for _=1,100 do legacy() end
+   local before=(os.clock()-started)*1000
+   started=os.clock(); for _=1,100 do online:updateLocalVisibility(origin) end
+   table.insert(samples,{beforeMs=before,afterMs=(os.clock()-started)*1000})
+  end
+  kitchen:setOpen(false)
+  return {ok=true,checked=checked,descendants=#all,excluded=#excluded,samples=samples,iterations=100}
  end
  error("Unknown QA action: "..tostring(args.action))
 end

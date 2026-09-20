@@ -30,7 +30,7 @@ return function(h)
    return {GetAttribute=function(_,key) return attributes[key] end,SetAttribute=function(_,key,value) attributes[key]=value end,GetDescendants=function() return descendants or {} end}
   end
   local remote={OnClientEvent=signal(),FireServer=function(_,a) table.insert(calls,a or 'request') end}
-  local k={player=localPlayer,world={GetDescendants=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
+  local k={player=localPlayer,world={GetChildren=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
    state={ready=true},atelier={remotes={kitchenAction=remote}}}
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
@@ -107,5 +107,40 @@ return function(h)
   models[2]:SetAttribute('Staff1',103); online:step(.1); h.equals(cafe.stations[1].actor.identity,103)
   local previous=online.packets[2]; online:destroy(); remote.OnClientEvent:Fire(2,action)
   h.equals(online.packets[2],previous)
+ end)
+ h.test('видимость кухни: очередь не обходится, новые модели и смена кафе учитываются',function()
+  local stub=setmetatable({},{__index=function(_,key) return key end})
+  local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},
+   script={Parent=stub},require=function() return {} end,
+  },injectGlobals=true})()
+  local writes=0
+  local function part(x)
+   local values={Position=R.Vector3.new(x,0,0),LocalTransparencyModifier=0}
+   return setmetatable({IsA=function(_,class) return class=='BasePart' end,GetDescendants=function() return {} end},
+    {__index=values,__newindex=function(_,key,value) if key=='LocalTransparencyModifier' then writes+=1 end; values[key]=value end})
+  end
+  local home=part(0); local neighbor=part(256); local anchor=part(10)
+  local descendants={home,neighbor}
+  local branch={IsA=function() return false end,GetDescendants=function() return descendants end}
+  local queue={IsA=function() error('очередь не должна обрабатываться') end,
+   GetDescendants=function() error('не разворачивать дальнюю очередь') end}
+  local branches={branch,queue,anchor}
+  local kitchen={world={GetChildren=function() return branches end}}
+  local online=setmetatable({kitchen=kitchen,queue=queue},Online)
+  online:updateLocalVisibility(R.Vector3.zero)
+  h.equals(home.LocalTransparencyModifier,0); h.equals(neighbor.LocalTransparencyModifier,1)
+  h.equals(anchor.LocalTransparencyModifier,0); h.equals(writes,1)
+  online:updateLocalVisibility(R.Vector3.zero); h.equals(writes,1,'не повторять неизменные свойства')
+  -- Асинхронная загрузка аватара/покупка мебели после предыдущего обхода.
+  local late=part(260); table.insert(descendants,late)
+  online:updateLocalVisibility(R.Vector3.zero); h.equals(late.LocalTransparencyModifier,1); h.equals(writes,2)
+  online:updateLocalVisibility(R.Vector3.new(256,0,0))
+  h.equals(home.LocalTransparencyModifier,1); h.equals(anchor.LocalTransparencyModifier,1)
+  h.equals(neighbor.LocalTransparencyModifier,0); h.equals(late.LocalTransparencyModifier,0)
+  -- Удалённая ветка больше не удерживается в кеше и не получает записи.
+  table.remove(descendants,3); table.remove(branches,2); online.queue=nil
+  online:updateLocalVisibility(R.Vector3.zero)
+  h.equals(late.LocalTransparencyModifier,0); h.equals(home.LocalTransparencyModifier,0)
  end)
 end

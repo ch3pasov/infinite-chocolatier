@@ -308,7 +308,7 @@ class Session:
             raise QaError("Тестовый профиль не применён: " + str(state))
         for name, options in [("purchase", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
-                              ("kitchen", {})]:
+                              ("kitchen", {}), ("visibility", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)
             self.report["stage"] = name
             result = self.control(name, **options)
