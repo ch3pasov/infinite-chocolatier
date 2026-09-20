@@ -5,7 +5,7 @@ local ProfileStore = {}
 ProfileStore.__index = ProfileStore
 
 function ProfileStore.new(store, economy, settings, token, now)
-	return setmetatable({ store = store, economy = economy, settings = settings, token = token, now = now }, ProfileStore)
+	return setmetatable({ store = store, economy = economy, settings = settings, token = token, now = now, pendingClaims = {} }, ProfileStore)
 end
 
 -- Версия 4 не даёт старому серверу стереть прогресс заказов новым сохранением.
@@ -25,8 +25,21 @@ function ProfileStore:claim(key)
 		self.economy.tick(data, away.seconds)
 		-- В отчёте показываем полученные дольки, а не сумму сверх предела кошелька.
 		offline = math.max(0, data.slices - balance)
+		-- UpdateAsync мог записать аренду, но потерять ответ. Своё владение
+		-- подтверждает запись; сохраняем первый отчёт, не начисляя его снова.
+		-- Чужая/ещё не записанная аренда требует нового расчёта из её данных.
+		local pending = self.pendingClaims[key]
+		if type(old) == "table" and old.owner == self.token and pending then
+			offline = pending.amount
+			away = table.clone(pending.report)
+		else
+			self.pendingClaims[key] = { amount = offline, report = table.clone(away) }
+		end
 		return { version = 4, owner = self.token, expires = now + self.settings.leaseSeconds, savedAt = now, data = data }
 	end)
+	-- Только неопределённый сетевой исход оставляет отчёт следующей попытке.
+	-- После обычного ответа повторный claim не показывает старую выплату.
+	self.pendingClaims[key] = nil
 	if not record or record.owner ~= self.token then return nil end
 	return self.economy.load(record.data), offline, away
 end

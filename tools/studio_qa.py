@@ -422,7 +422,8 @@ class Session:
             if not isinstance(result, dict) or result.get("ok") is not True:
                 raise QaError(name + ": " + str(result))
             checks.append((name, result))
-        for name, check in [("networkPrepare", lambda: self.control("networkPrepare")),
+        for name, check in [("storageReceipt", lambda: self.execute((ROOT / "tools/studio_qa_storage.luau").read_text(), "Server")),
+                            ("networkPrepare", lambda: self.control("networkPrepare")),
                             ("networkRelay", lambda: self.execute((ROOT / "tools/studio_qa_network.luau").read_text(), "Server")),
                             ("networkFinish", lambda: self.control("networkFinish"))]:
             self.report["stage"] = name

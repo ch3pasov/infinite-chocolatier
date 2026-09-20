@@ -27,6 +27,7 @@ class FakeMCP:
             code=args["code"]
             if 'GetLogHistory()' in code: return {"count":0,"errors":[]}
             if 'local Relay=require(' in code: return {"ok":True,"packets":1}
+            if 'local Store=require(' in code: return {"ok":True,"storage":"in-memory"}
             if "q:Invoke" in code:
                 if self.failure: raise qa.QaError("test interruption")
                 return {"ready":True,"workers":25,"manual":1,"ok":True}

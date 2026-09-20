@@ -219,6 +219,32 @@ return function(h)
 		h.equals(ok, false)
 		h.equals(calls, 1)
 	end)
+	h.test("отчёт повторной загрузки различает потерянный ответ и незаписанную попытку",function()
+		for _,committed in {true,false} do
+			local now=1000; local calls=0
+			local record={savedAt=900,data={collectionVersion=2,owned={workers_1=true},levels={kitchen=1}}}
+			local fake={UpdateAsync=function(_,_,transform)
+				calls+=1
+				local updated=transform(record)
+				if calls==1 then
+					if committed then record=updated end
+					error('uncertain response')
+				end
+				-- Повтор callback на той же записи не должен суммировать отчёт.
+				updated=transform(record); record=updated; return updated
+			end}
+			local store=Store.new(fake,E,Config.Economy,'A',function() return now end)
+			h.equals(pcall(function() store:claim('user') end),false)
+			now+=20
+			local data,amount,report=store:claim('user')
+			h.equals(data.slices,12)
+			h.equals(amount,if committed then 10 else 12)
+			h.equals(report.seconds,if committed then 100 else 120)
+			h.equals(store.pendingClaims.user,nil)
+			local again,extra,nextReport=store:claim('user')
+			h.equals(again.slices,12); h.equals(extra,0); h.equals(nextReport.seconds,0)
+		end
+	end)
  h.test('хранилище переводит старую запись в формат коллекции и не читает будущую версию',function()
   local record={version=1,savedAt=1000,data={slices=200,levels={workers=7,clock=4}}}
   local store=Store.new({UpdateAsync=function(_,_,transform) local next=transform(record); if next then record=next end; return next end},E,Config.Economy,'A',function() return 1000 end)
