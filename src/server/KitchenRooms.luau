@@ -1,4 +1,5 @@
 --!nonstrict
+local Structure=require(game:GetService('ReplicatedStorage'):WaitForChild('Shared'):WaitForChild('KitchenStructure'))
 -- Сервер держит пол и границы даже тогда, когда клиент смотрит на шоколадку.
 -- Соседние рабочие места соединены общим проходом, а слоты переиспользуются.
 local Players=game:GetService('Players')
@@ -89,7 +90,9 @@ function Rooms.start(remote)
   local origin=Vector3.new((slot-1)*24,0,1000)
   local model=Instance.new('Model'); model.Name='KitchenRoom_'..player.UserId; model.Parent=Workspace
   solid(model,'Floor',Vector3.new(22,1,24),origin+Vector3.new(0,-.6,5))
-  for _,wall in {{Vector3.new(22,10,1),Vector3.new(0,4.5,-7)}, {Vector3.new(1,10,24),Vector3.new(-11,4.5,5)}, {Vector3.new(1,10,24),Vector3.new(11,4.5,5)}} do solid(model,'Wall',wall[1],origin+wall[2]) end
+  for _,wall in Structure.walls do
+   solid(model,wall.name,Vector3.new(table.unpack(wall.size)),origin+Vector3.new(table.unpack(wall.position)))
+  end
   for _,x in {-3.7,3.7} do solid(model,'Worktable',Vector3.new(6.8,2.3,5.8),origin+Vector3.new(x,1,0)) end
   solid(model,'Cabinets',Vector3.new(18,2.3,1.8),origin+Vector3.new(0,1,-5))
   rooms[player]={model=model,origin=origin,mode='cut',slot=slot,hidden={}}

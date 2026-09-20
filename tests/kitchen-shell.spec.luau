@@ -4,7 +4,7 @@ return function(h)
  h.test('стены кухни имеют толщину и сходятся в задних углах',function()
   -- Lune не реализует Model:GetPivot; проверяем локальную геометрию до переноса.
   local source=fs.readFile('src/client/KitchenShell.luau'):gsub('world:PivotTo%([^\n]+','')
-  local Shell=luau.load(source,{environment={Instance=R.Instance,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,Enum=R.Enum},injectGlobals=true})()
+  local Shell=luau.load(source,{environment={game={GetService=function() return {WaitForChild=function(self) return self end} end},require=function() return require("../src/shared/KitchenStructure") end,Instance=R.Instance,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,Enum=R.Enum},injectGlobals=true})()
   local model=Shell.new(R.Instance.new('Folder'),R.Vector3.zero)
   local back,left,right=model.BackWall,model.LeftWall,model.RightWall
   assert(back.Size.Z>=.5 and left.Size.X>=.5 and right.Size.X>=.5)

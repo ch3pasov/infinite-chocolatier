@@ -14,7 +14,8 @@ return function(h)
   local players={PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function() return {} end}
   local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}
   local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'),{environment={
-   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run else world end},
+   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(self) return self end} else world end},
+   require=function() return require("../src/shared/KitchenStructure") end,
    Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,
    task={spawn=function(fn) fn() end,delay=function(_,fn) table.insert(delayed,fn) end},
   },injectGlobals=true})()
@@ -35,6 +36,22 @@ return function(h)
    players.PlayerAdded:Fire(p); return p
   end
   local a,b=player(1),player(2)
+  -- Сравниваем реальные результаты обоих строителей, включая перенос комнаты.
+  local source=fs.readFile('src/client/KitchenShell.luau'):gsub('world:PivotTo%([^\n]+','')
+  local Shell=luau.load(source,{environment={
+   game={GetService=function() return {WaitForChild=function(self) return self end} end},
+   require=function() return require('../src/shared/KitchenStructure') end,
+   Instance=R.Instance,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,Enum=R.Enum,
+  },injectGlobals=true})()
+  local visible=Shell.new(R.Instance.new('Folder'),R.Vector3.zero)
+  for _,owner in {a,b} do for _,name in {'BackWall','LeftWall','RightWall'} do
+   local hitbox=world['KitchenRoom_'..owner.UserId][name]; local wall=visible[name]
+   h.equals(hitbox.Size,wall.Size)
+   assert((hitbox.Position-owner.KitchenOrigin-wall.CFrame.Position).Magnitude<.0001)
+   assert(math.abs(hitbox.Position.Y+hitbox.Size.Y/2-6.5)<.0001)
+   assert(hitbox.CanCollide and hitbox.Transparency==1)
+  end end
+
   h.equals(a.root.Anchored,true); h.equals(b.root.Anchored,true)
   h.equals(a.body.Transparency,1); h.equals(a.body.CanCollide,false)
   assert((a.KitchenOrigin-b.KitchenOrigin).Magnitude==24)
