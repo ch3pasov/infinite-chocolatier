@@ -28,7 +28,42 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="loadingRecovery" then
+ if args.action=="avatarLifecycle" then
+  local Animator=require(script.ChocolatierAnimator)
+  local Appearance=require(script.FriendAppearance)
+  local original=Appearance.createRig
+  local parent=Instance.new("Model"); parent.Name="AvatarLifecycleQA"; parent.Parent=kitchen.world
+  local actor,cancelled
+  local calls=0; local identity=-567890
+  -- Отрицательный QA-id использует обычную сборку R6, без запроса чужого
+  -- аккаунта. Остальные станции проходят через загрузчик без изменений.
+  Appearance.createRig=function(players,description,id,rigType,current)
+   if id==identity then calls+=1 end
+   return original(players,description,id,rigType,current)
+  end
+  local ok,result=pcall(function()
+   actor=Animator.new(parent,"Current",0,true,kitchen.origin,identity)
+   actor:setIdentity(identity,42); actor:setVisible(true)
+   cancelled=Animator.new(parent,"Cancelled",0,true,kitchen.origin,identity)
+   cancelled:destroy()
+   assert(waitUntil(function() return actor.rig~=nil end,15),"Avatar did not load")
+   assert(calls==1,"Obsolete assignments started avatar loads: "..calls)
+   assert(actor.rig.Parent==parent and actor.rig:GetAttribute("AssignedUserId")==identity,"Wrong avatar attached")
+   assert(math.abs(actor.rig:GetScale()-.8)<.001,"Avatar scale changed")
+   local root=actor.rig:FindFirstChild("HumanoidRootPart")
+   local torso=actor.rig:FindFirstChild("Torso")
+   assert(root.Transparency==1 and torso.Transparency==0,"Initial visibility changed")
+   actor:setVisible(false); assert(torso.Transparency==1,"Avatar did not hide")
+   actor:setVisible(true); assert(torso.Transparency==0 and root.Transparency==1,"Avatar did not restore")
+   actor:destroy(); assert(actor.rig==nil and #parent:GetChildren()==0,"Destroyed avatar retained its model")
+   return {ok=true,createdRigs=calls,cancelledBeforeLoad=true,visibilityRestored=true}
+  end)
+  Appearance.createRig=original
+  if actor then actor:destroy() end
+  if cancelled then cancelled:destroy() end
+  parent:Destroy()
+  assert(ok,result); return result
+ elseif args.action=="loadingRecovery" then
   local saved=state
   kitchen:setOpen(false)
   kitchen.state=nil

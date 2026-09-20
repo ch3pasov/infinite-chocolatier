@@ -39,15 +39,22 @@ local function description(players,userId)
  end
  return result
 end
-function Appearance.createRig(players,defaultDescription,userId,rigType)
+function Appearance.createRig(players,defaultDescription,userId,rigType,isCurrent)
+ if isCurrent and not isCurrent() then return false,nil,false end
  local appearance,loadError
  if userId and userId>0 then appearance,loadError=description(players,userId) end
+ -- Запрос описания может ждать сеть. Устаревшее назначение не должно после
+ -- ответа запускать ещё и тяжёлое создание персонажа.
+ if isCurrent and not isCurrent() then
+  if appearance then appearance:Destroy() end
+  return false,nil,false
+ end
  local ok,rig=pcall(function()
   return players:CreateHumanoidModelFromDescriptionAsync(appearance or defaultDescription,rigType)
  end)
  local friendLoaded=appearance~=nil and ok
  if appearance then appearance:Destroy() end
- if not ok and appearance then
+ if not ok and appearance and (not isCurrent or isCurrent()) then
   loadError=rig
   ok,rig=pcall(function() return players:CreateHumanoidModelFromDescriptionAsync(defaultDescription,rigType) end)
  end

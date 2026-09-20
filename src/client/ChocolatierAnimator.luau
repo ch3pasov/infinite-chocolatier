@@ -8,12 +8,20 @@ Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
  local self=setmetatable({alive=true,visible=false,x=x,generation=0},Animator)
  function self:setIdentity(nextId,seed,retry)
+  if not self.alive then return end
   nextId=nextId or 0; seed=seed or 1
   local key=tostring(nextId)..':'..tostring(seed)
-  if self.identity==key and not retry then return end
+  local sameIdentity=self.identity==key
+  if sameIdentity and not retry then return end
   self.identity=key; self.generation+=1; local generation=self.generation
-  if self.rig then self.rig:Destroy(); self.rig=nil end
-  task.spawn(function()
+  -- При повторе того же назначения запасной повар остаётся до готовности
+  -- внешности. Сменившийся друг убирается сразу, чтобы не дублировать игрока.
+  if self.rig and not (sameIdentity and retry) then self.rig:Destroy(); self.rig=nil end
+  local function current() return self.alive and self.generation==generation and parent.Parent~=nil end
+  -- Очередь назначает друга сразу после создания станции. Даём этому коду
+  -- закончить назначение, чтобы не загружать запасной rig перед настоящим.
+  task.defer(function()
+  if not current() then return end
   local description=Instance.new("HumanoidDescription")
   description.HeadColor=Color3.fromRGB(223,176,130)
   description.LeftArmColor=description.HeadColor; description.RightArmColor=description.HeadColor
@@ -27,10 +35,10 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
    description.TorsoColor=Color3.fromHSV(random:NextNumber(),.35,.85)
    description.LeftLegColor=Color3.fromHSV(random:NextNumber(),.3,.3); description.RightLegColor=description.LeftLegColor
   end
-  if not self.alive then description:Destroy(); return end
   -- R6 сохраняет общие суставы и позы игрока и стажёра.
-  local ok,rig,friendLoaded,loadError=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6)
+  local ok,rig,friendLoaded,loadError=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6,current)
   description:Destroy()
+  if not current() then if ok and rig then rig:Destroy() end; return end
   -- Временный сбой Roblox не закрепляет случайного персонажа навсегда.
   -- Повтор отменяется вместе со станцией или сменой назначенного друга.
   if nextId>0 and not friendLoaded then
@@ -41,10 +49,10 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
    end) end
   end
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
-  if not self.alive or generation~=self.generation or not parent.Parent then rig:Destroy(); return end
   rig.Name=name; rig:ScaleTo(.8)
   rig:SetAttribute("AppearanceUserId",if friendLoaded then nextId else 0)
   rig:SetAttribute("AssignedUserId",nextId)
+  if self.rig then self.rig:Destroy() end
   self.rig=rig; self.rest={}; self.motors={}
   local root=rig:FindFirstChild("HumanoidRootPart")
   -- Сгенерированная модель может иметь pivot не в корне; иначе персонаж
@@ -103,6 +111,6 @@ end
 function Animator:destroy()
  self.alive=false
  if self.rig then self.rig:Destroy() end
- self.visibleRig=nil
+ self.rig=nil; self.rest=nil; self.motors=nil; self.visibleRig=nil
 end
 return Animator

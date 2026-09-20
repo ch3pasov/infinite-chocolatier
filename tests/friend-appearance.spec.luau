@@ -1,6 +1,24 @@
 --!nonstrict
 local A=require('../src/client/FriendAppearance')
 return function(h)
+ h.test('отмена назначения не создаёт rig после ожидания описания',function()
+  local current=true; local destroyed=false; local calls=0
+  local appearance={Destroy=function() destroyed=true end}
+  local players={GetHumanoidDescriptionFromUserIdAsync=function() current=false; return appearance end,
+   CreateHumanoidModelFromDescriptionAsync=function() calls+=1 end}
+  local ok,rig=A.createRig(players,{},9001,'R6',function() return current end)
+  h.equals(ok,false); h.equals(rig,nil); h.equals(destroyed,true); h.equals(calls,0)
+  ok,rig=A.createRig({}, {},9002,'R6',function() return false end)
+  h.equals(ok,false); h.equals(rig,nil)
+ end)
+ h.test('отменённая ошибка модели друга не запускает запасную загрузку',function()
+  local current=true; local calls=0; local destroyed=false
+  local appearance={Destroy=function() destroyed=true end}
+  local players={GetHumanoidDescriptionFromUserIdAsync=function() return appearance end,
+   CreateHumanoidModelFromDescriptionAsync=function() calls+=1; current=false; error('late failure') end}
+  local ok=A.createRig(players,{},9003,'R6',function() return current end)
+  h.equals(ok,false); h.equals(calls,1); h.equals(destroyed,true)
+ end)
  h.test('стажёр выбирает друга со всех страниц и пропускает самого игрока',function()
   local pages={IsFinished=false,index=1}
   function pages:GetCurrentPage() return if self.index==1 then {{Id=10},{Id=20}} else {{Id=30}} end
