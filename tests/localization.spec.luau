@@ -45,7 +45,7 @@ return function(h)
 	end)
 	h.test('локализация: смена языка обновляет статический текст, вложенные слова и крупные числа',function()
 		local L,switch=fixture('en-us')
-		local label={Parent=true}
+		local label={Parent=true,Destroying=signal()}
 		L.set(label,'{upgrade} · {level}',{upgrade=L.token('Craftsmanship'),level=L.number(1200)})
 		h.equals(label.Text,'Craftsmanship · 1.2K')
 		switch('ru-ru')
@@ -60,7 +60,7 @@ return function(h)
 				assert(key=='Buy · {price} pieces'); return 'Acheter · '..args.price..' morceaux'
 			end}
 		local L=fixture('en-us',cloud)
-		local label={Parent=true}; L.set(label,'Buy · {price} pieces',{price=17})
+		local label={Parent=true,Destroying=signal()}; L.set(label,'Buy · {price} pieces',{price=17})
 		h.equals(label.Text,'Acheter · 17 morceaux'); h.equals(label.AutoLocalize,false)
 		cloud.LocaleId='ru-ru'; changed.Fire()
 		h.equals(label.Text,'Купить · 17 долек')
@@ -69,5 +69,13 @@ return function(h)
 		local L=fixture('ru')
 		h.equals(L.text('Trick complete! +{amount}',{amount=8.75}),'Фокус удался! +8.75 долек')
 		assert(Catalog.format('Could not renew your save session. Rejoin to continue safely.',nil,'ru'):find('Перезайди'))
+	end)
+	h.test('локализация: временно снятая подпись обновляется, уничтоженная освобождается',function()
+		local L,switch=fixture('en-us')
+		local label={Destroying=signal()}
+		L.set(label,'While you were away')
+		switch('ru-ru'); h.equals(label.Text,'Пока тебя не было')
+		label.Destroying:Fire(); switch('en-us')
+		h.equals(label.Text,'Пока тебя не было')
 	end)
 end

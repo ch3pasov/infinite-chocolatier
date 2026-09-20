@@ -8,7 +8,9 @@ local Catalog=require(Shared.LocalizationCatalog)
 local L={}
 local locale=Service.RobloxLocaleId or "en-us"
 local translator=nil
-local bindings=setmetatable({},{__mode="k"})
+-- Подпись живёт до Destroy(), даже если на неё нет других Lua-ссылок.
+-- Слабая таблица теряла статические заголовки раньше смены языка.
+local bindings={}
 
 function L.token(source) return {source=source} end
 function L.number(value) return {number=value} end
@@ -42,15 +44,19 @@ local function render(label,binding)
 end
 
 function L.set(label,source,args)
-	local binding={source=source,args=args}
-	bindings[label]=binding
+	local binding=bindings[label]
+	if not binding then
+		binding={}; bindings[label]=binding
+		label.Destroying:Connect(function() bindings[label]=nil end)
+	end
+	binding.source=source; binding.args=args
 	render(label,binding)
 end
 
 local function refresh()
 	locale=if translator then translator.LocaleId else Service.RobloxLocaleId
 	for label,binding in bindings do
-		if label.Parent then render(label,binding) end
+		render(label,binding)
 	end
 end
 

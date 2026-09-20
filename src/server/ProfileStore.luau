@@ -11,6 +11,7 @@ end
 -- Версия 4 не даёт старому серверу стереть прогресс заказов новым сохранением.
 function ProfileStore:claim(key)
 	local offline = 0
+	local away = { seconds = 0, capped = false }
 	local now = self.now()
 	local record = self.store:UpdateAsync(key, function(old)
 		if type(old) == "table" and old.version and old.version > 4 then return nil end
@@ -18,11 +19,16 @@ function ProfileStore:claim(key)
 			and type(old.expires) == "number" and old.expires > now then return nil end
 		local data = self.economy.load(if type(old) == "table" then old.data else nil)
 		local savedAt = if type(old) == "table" and type(old.savedAt) == "number" then old.savedAt else now
-		offline = self.economy.tick(data, math.clamp(now - savedAt, 0, self.settings.offlineLimit))
+		local elapsed = math.max(0, now - savedAt)
+		away = { seconds = math.min(elapsed, self.settings.offlineLimit), capped = elapsed > self.settings.offlineLimit }
+		local balance = data.slices
+		self.economy.tick(data, away.seconds)
+		-- В отчёте показываем полученные дольки, а не сумму сверх предела кошелька.
+		offline = math.max(0, data.slices - balance)
 		return { version = 4, owner = self.token, expires = now + self.settings.leaseSeconds, savedAt = now, data = data }
 	end)
 	if not record or record.owner ~= self.token then return nil end
-	return self.economy.load(record.data), offline
+	return self.economy.load(record.data), offline, away
 end
 
 function ProfileStore:save(key, data, release)

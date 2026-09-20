@@ -2,6 +2,13 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["While you were away"]="Пока тебя не было",
+ ["+{amount} pieces"]="+{amount} долек",
+ ["Apprentices worked: {hours}h {minutes}m"]="Стажёры работали: {hours} ч {minutes} мин",
+ ["Apprentices worked: {minutes}m {seconds}s"]="Стажёры работали: {minutes} мин {seconds} с",
+ ["Apprentices worked: {seconds}s"]="Стажёры работали: {seconds} с",
+ ["Already added to your balance. The 4h offline limit was reached."]="Уже на балансе. Достигнут предел офлайн-работы: 4 часа.",
+ ["Already added to your balance. Apprentices work offline for up to 4h."]="Уже на балансе. Стажёры работают офлайн до 4 часов.",
  ["Cycle: {before}s → {after}s\n+{rate}/s from apprentices"]="Цикл: {before} с → {after} с\n+{rate}/с от стажёров",
  ["+{workers} apprentices\n+{rate}/s automatic income"]="+{workers} стажёров\n+{rate}/с автоматического дохода",
  ["+{manual} per trick\n+{rate}/s from apprentices"]="+{manual} за фокус\n+{rate}/с от стажёров",

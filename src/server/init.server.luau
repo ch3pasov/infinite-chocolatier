@@ -39,6 +39,7 @@ local function send(player, notice, reward)
 	state.canTestBalance = player.UserId == Config.BalanceTesterUserId
 	state.prestigeDisabled = session.data.ignorePrestige == true
 	state.offline = session.offline
+	state.offlineReport = session.offlineReport
 	state.notice = if type(notice)=="string" then {key=notice} else notice
 	state.reward = reward
 	state.saveStatus = if studio then "Test session · progress is not saved" else session.saveStatus
@@ -98,13 +99,13 @@ end
 local function join(player)
 	if loading[player] or sessions[player] or closing then return end
 	loading[player] = true
-	local data, offline
+	local data, offline, offlineReport
 	if studio then
 		data, offline = Economy.load(nil), 0
 	else
 		for _ = 1, 3 do
-			local ok, loaded, away = pcall(function() return storage:claim(tostring(player.UserId)) end)
-			if ok and loaded then data, offline = loaded, away; break end
+			local ok, loaded, away, report = pcall(function() return storage:claim(tostring(player.UserId)) end)
+			if ok and loaded then data, offline, offlineReport = loaded, away, report; break end
 			task.wait(2)
 		end
 	end
@@ -113,7 +114,7 @@ local function join(player)
 		if player.Parent then player:Kick(Catalog.format("Could not load your progress. Wait a moment and rejoin. Your save has not been changed.", nil, player.LocaleId)) end
 		return
 	end
-	sessions[player] = { data = data, offline = offline, tick = os.clock(), lastRound = -math.huge,
+	sessions[player] = { data = data, offline = offline, offlineReport = offlineReport, tick = os.clock(), lastRound = -math.huge,
 		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
 	loading[player] = nil

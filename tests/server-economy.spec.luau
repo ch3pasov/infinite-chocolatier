@@ -11,7 +11,7 @@ local function signal()
 	return { Connect = function(_, fn) table.insert(callbacks, fn) end,
 		Fire = function(_, ...) for _, fn in callbacks do fn(...) end end }
 end
-local function fixture(studio, seed, userId)
+local function fixture(studio, seed, userId, savedAt)
 	local now = 1000
 	local sent = {}
 	local events = {}
@@ -20,7 +20,7 @@ local function fixture(studio, seed, userId)
 	end
 	local player = { UserId = userId or 123, Parent = true, Kick = function(self, message) self.kicked = message end }
 	local players = { PlayerAdded = signal(), PlayerRemoving = signal(), GetPlayers = function() return {} end }
-	local record = if seed then { data = seed, savedAt = now } else nil
+	local record = if seed then { data = seed, savedAt = savedAt or now } else nil
 	local store = { UpdateAsync = function(_, _, callback)
 		local nextRecord = callback(record)
 		if nextRecord then record = nextRecord end
@@ -45,6 +45,16 @@ local function fixture(studio, seed, userId)
 		record = function() return record end }
 end
 return function(h)
+ h.test("сервер сохраняет офлайн-отчёт на весь вход без повторного начисления при запросах",function()
+  local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,900)
+  h.equals(f.latest().offline,10); h.equals(f.latest().offlineReport.seconds,100)
+  h.equals(f.latest().slices,10)
+  f.advance(); f.events.requestState.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().offline,10); h.equals(f.latest().offlineReport.seconds,100)
+  h.equals(f.latest().slices,10)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().data.offlineReport,nil)
+ end)
  h.test("сервер покупает десять уровней по своей сумме и сохраняет весь пакет",function()
   local f=fixture(false,{slices=10000})
   local price=Economy.quote(f.latest(),"craft",10)

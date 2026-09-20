@@ -59,6 +59,12 @@ function Journal.new(gui,view)
 	scroll.ScrollBarThickness=4; scroll.ScrollBarImageColor3=Theme.accent
 	scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; scroll.CanvasSize=UDim2.fromOffset(0,0); scroll.Parent=panel
 	local layout=Instance.new("UIListLayout"); layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Padding=UDim.new(0,12); layout.Parent=scroll
+	local away=frame(scroll,"OfflineEarnings",Theme.chocolateDark); away.LayoutOrder=0; away.Size=UDim2.new(1,-8,0,150); away.Visible=false; self.offlineCard=away
+	local awayTitle=label(away,"Title",18,Theme.accentSoft); awayTitle.Position=UDim2.fromOffset(12,8); awayTitle.Size=UDim2.new(1,-24,0,28)
+	L.set(awayTitle,"While you were away")
+	self.offlineAmount=label(away,"Amount",22,Theme.accent); self.offlineAmount.Position=UDim2.fromOffset(12,40); self.offlineAmount.Size=UDim2.new(1,-24,0,30); scaled(self.offlineAmount,22)
+	self.offlineTime=label(away,"Time",13,Theme.muted); self.offlineTime.Position=UDim2.fromOffset(12,76); self.offlineTime.Size=UDim2.new(1,-24,0,24)
+	self.offlineHelp=label(away,"Help",12,Theme.muted); self.offlineHelp.Position=UDim2.fromOffset(12,106); self.offlineHelp.Size=UDim2.new(1,-24,0,34)
 	local order=frame(scroll,"CurrentOrder",Theme.chocolate); order.LayoutOrder=1; order.Size=UDim2.new(1,-8,0,176)
 	self.orderTitle=label(order,"Title",20,Theme.accentSoft); self.orderTitle.Position=UDim2.fromOffset(12,8); self.orderTitle.Size=UDim2.new(1,-24,0,34)
 	scaled(self.orderTitle,20)
@@ -108,6 +114,17 @@ end
 
 function Journal:update(state)
 	self.state=state; local order=state.order
+	self.offlineCard.Visible=(state.offline or 0)>=.1
+	if self.offlineCard.Visible then
+		L.set(self.offlineAmount,"+{amount} pieces",{amount=L.number(state.offline)})
+		local report=state.offlineReport or {}; local seconds=math.floor(report.seconds or 0)
+		if seconds>=3600 then
+			L.set(self.offlineTime,"Apprentices worked: {hours}h {minutes}m",{hours=math.floor(seconds/3600),minutes=math.floor(seconds%3600/60)})
+		elseif seconds>=60 then
+			L.set(self.offlineTime,"Apprentices worked: {minutes}m {seconds}s",{minutes=math.floor(seconds/60),seconds=seconds%60})
+		else L.set(self.offlineTime,"Apprentices worked: {seconds}s",{seconds=seconds}) end
+		L.set(self.offlineHelp,if report.capped then "Already added to your balance. The 4h offline limit was reached." else "Already added to your balance. Apprentices work offline for up to 4h.")
+	end
 	self.chip.Visible=state.ready==true and order~=nil
 	if not order then return end
 	L.set(self.chipTitle,if self.compact then "Order · {done}/{total}" else order.name,{done=order.progress,total=order.required})
