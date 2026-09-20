@@ -76,6 +76,38 @@ local function dispatch(args)
   end
   kitchen:setOpen(false)
   return {ok=true,queueStations=6,loadedAvatars=loaded,expectedAvatars=7,frames="explicit"}
+ elseif args.action=="catalog" then
+  local catalog=require(game.ReplicatedStorage.Shared.KitchenCatalog)
+  kitchen:setOpen(true); kitchen:openShop()
+  local slot=atelier.placeProgress.clock
+  assert(slot.count.Text=="0/5","Wrong initial collection count")
+  atelier.selectedPlace="clock"; atelier:update(atelier.state)
+  remotes.purchase:FireServer("clock_5")
+  assert(waitUntil(function() return atelier.state.owned.clock_5==true end,4),"Clock purchase did not arrive")
+  assert(slot.count.Text=="1/5" and slot.visualId=="clock_5","Map did not show the purchased clock")
+  local original=slot.visual; atelier:update(atelier.state)
+  assert(slot.visual==original,"Income refresh recreated the thumbnail")
+  assert(atelier.cards.clock_5.installed.Enabled,"Displayed clock not marked")
+  local rate=atelier.state.rate; local balance=atelier.state.slices
+  task.wait(.25)
+  remotes.purchase:FireServer("clock_5")
+  assert(waitUntil(function() return atelier.state.equipped.clock==nil end,4),"Clock did not hide")
+  assert(slot.count.Text=="1/5" and slot.visualId=="clock_1","Hidden clock lost collection credit")
+  assert(not atelier.cards.clock_5.installed.Enabled,"Hidden clock still marked as displayed")
+  assert(atelier.state.rate==rate and atelier.state.slices>=balance,"Hiding changed bonus or charged pieces")
+  local checked=0
+  for _,locale in {"en-us","ru-ru"} do
+   require(script.Localization).__qaLocale(locale)
+   atelier.panel.Size=UDim2.fromOffset(336,690)
+   atelier.selectedPlace=nil; atelier:update(atelier.state); task.wait(.15)
+   checked+=checkText(atelier.placeMap)
+   for _,group in {"clock","temper","library","workers","art","rug","plant"} do
+    atelier.selectedPlace=group; atelier:update(atelier.state); task.wait(.15)
+    for _,card in atelier.cards do if card.spec.group==group then checked+=checkText(card.frame) end end
+   end
+  end
+  atelier:setOpen(false); kitchen:setOpen(false)
+  return {ok=true,collected=catalog.collection(atelier.state).owned,texts=checked,thumbnailReused=true,bonusKept=true}
  elseif args.action=="visibility" then
   kitchen:setOpen(true); kitchen:step(.5)
   local online=kitchen.online; local origin=kitchen.origin

@@ -80,6 +80,18 @@ class StudioQaTests(unittest.TestCase):
         self.assertEqual(qa.select_studio(studios,qa.DEFAULT_PLACE,"b"),"b")
         with self.assertRaises(qa.QaError): qa.select_studio(studios,qa.DEFAULT_PLACE,"missing")
 
+    def test_discovery_waits_for_the_named_copy_without_selecting_another_scene(self):
+        fake=FakeMCP(); attempts=[]
+        def discover(name,**args):
+            attempts.append(name)
+            if len(attempts)==1: return {"studios":[{"id":"unrelated","name":"Other scene"}]}
+            return FakeMCP.tool(fake,name,**args)
+        fake.tool=discover
+        with patch.object(qa.time,"sleep"):
+            result=qa.discover_studios(fake,qa.DEFAULT_PLACE)
+        self.assertEqual(qa.select_studio(result,qa.DEFAULT_PLACE),"local-qa")
+        self.assertEqual(len(attempts),2)
+
     def test_lua_strings_preserve_quotes_newlines_and_bracket_tokens(self):
         text="\nрусский 'quoted' ]=] ]==] `$(ignored)`"
         self.assertEqual(qa.lua(text),"[===[\n"+text+"]===]")

@@ -28,4 +28,18 @@ function C.selected(state,group,preview)
  local selected=C.byId[(state.equipped or {})[group]]
  return if selected then selected.variant else 0
 end
+function C.collection(state,group)
+ -- Владение и установленный облик независимы: убранная мебель всё ещё
+ -- входит в коллекцию и даёт бонус. Произвольные старые id не считаются.
+ local owned,total=0,0
+ for _,item in C.items do
+  if not group or item.group==group then
+   total+=1; if (state.owned or {})[item.id] then owned+=1 end
+  end
+ end
+ local equipped=(state.equipped or {})[group]
+ local item=C.byId[equipped]
+ if not item or item.group~=group or not (state.owned or {})[equipped] then equipped=nil end
+ return {owned=owned,total=total,equipped=equipped}
+end
 return C

@@ -160,6 +160,7 @@ function Atelier.new(gui, gameView, remotes)
 	self.placeMap.Size=UDim2.new(1,-24,1,-158)
 	self.placeMap.Visible=false
 	local hint=text(self.placeMap,"Hint",17,Theme.accentSoft)
+	self.collectionHint=hint
 	L.set(hint,"Choose a spot in your kitchen")
 	hint.Position=UDim2.fromOffset(12,4); hint.Size=UDim2.new(1,-24,0,44)
 	local floor=box(self.placeMap,"KitchenPlan",Color3.fromRGB(181,160,130))
@@ -176,13 +177,22 @@ function Atelier.new(gui, gameView, remotes)
 	 local tableTop=box(floor,"Worktable",Color3.fromRGB(207,161,101)); tableTop.Position=UDim2.fromScale(x,.36); tableTop.Size=UDim2.fromScale(.31,.23)
 	end
 	self.placeButtons={}
+	self.placeProgress={}
 	local spots={{'temper',.17,.27},{'library',.25,.08},{'clock',.77,.08},{'workers',.71,.46},{'art',.1,.67},{'rug',.5,.81},{'plant',.89,.81}}
 	for _,spot in spots do
 	 local spec
 	 for _,item in Catalog.items do if item.group==spot[1] then spec=item; break end end
 	 local choice=button(floor,spot[1],"")
 	 choice.AnchorPoint=Vector2.new(.5,.5); choice.Position=UDim2.fromScale(spot[2],spot[3]); choice.Size=UDim2.fromOffset(52,52)
-	 Thumbnails.new(choice,if spot[1]=="library" then Catalog.byId.library_5 else spec)
+	 local base=if spot[1]=="library" then Catalog.byId.library_5 else spec
+	 local visual=Thumbnails.new(choice,base); visual.Size=UDim2.new(1,0,1,-8)
+	 local count=text(choice,"Collected",12,Theme.accentSoft)
+	 count.BackgroundTransparency=0; count.BackgroundColor3=Theme.chocolateDark
+	 count.AnchorPoint=Vector2.new(1,1); count.Position=UDim2.new(1,2,1,3); count.Size=UDim2.fromOffset(32,18)
+	 count.TextXAlignment=Enum.TextXAlignment.Center; count.AutoLocalize=false
+	 count.ZIndex=2
+	 local corner=Instance.new('UICorner'); corner.CornerRadius=UDim.new(0,6); corner.Parent=count
+	 self.placeProgress[spot[1]]={count=count,visual=visual,visualId=base.id,base=base,button=choice}
 	 self.placeButtons[spot[1]]=choice
 	 choice.Activated:Connect(function()
 	  self.selectedPlace=spot[1]; self.scroll.CanvasPosition=Vector2.zero; self:update(self.state)
@@ -219,9 +229,16 @@ function Atelier.new(gui, gameView, remotes)
 		 local visual=Instance.new('Frame'); visual.Name='Visual'; visual.BackgroundTransparency=1; visual.Position=UDim2.fromOffset(6,8); visual.Size=UDim2.fromOffset(96,80); visual.Parent=card
 		 Thumbnails.new(visual,spec)
 		 heading.Position=UDim2.fromOffset(108,8); heading.Size=UDim2.new(1,-120,0,32); heading.TextSize=17
+		 heading.TextScaled=true
+		 local titleLimit=Instance.new('UITextSizeConstraint'); titleLimit.MinTextSize=12; titleLimit.MaxTextSize=17; titleLimit.Parent=heading
 		 description.Position=UDim2.fromOffset(108,42); description.Size=UDim2.new(1,-120,0,42); description.TextSize=12
 		end
 		local buy = button(card, "Buy", "Buy")
+		local installed
+		if spec.group then
+		 installed=Instance.new('UIStroke'); installed.Name='DisplayedItem'; installed.Color=Theme.accent
+		 installed.Thickness=2; installed.Enabled=false; installed.Parent=card
+		end
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		local function activate()
@@ -233,7 +250,7 @@ function Atelier.new(gui, gameView, remotes)
 		 local imageButton=button(card.Visual,"PreviewItem",""); imageButton.BackgroundTransparency=1; imageButton.Size=UDim2.fromScale(1,1)
 		 imageButton.Activated:Connect(activate)
 		end
-		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec, benefit = benefit, waitHint = waitHint }
+		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec, benefit = benefit, waitHint = waitHint, installed = installed }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	self.prestigeCard=prestige
@@ -403,12 +420,33 @@ function Atelier:purchase(spec)
 	if price and count > 0 and self.state.slices >= price then self.remotes.purchase:FireServer(spec.id,quantity) end
 end
 
+function Atelier:updateCollection(state)
+	if not self.collectionHint then return end
+	local all=Catalog.collection(state)
+	L.set(self.collectionHint,"Choose a spot · {owned}/{total} collected",{owned=all.owned,total=all.total})
+	for group,slot in self.placeProgress do
+		local progress=Catalog.collection(state,group)
+		slot.count.Text=progress.owned.."/"..progress.total
+		local complete=progress.owned==progress.total
+		slot.count.BackgroundColor3=if complete then Theme.accent else Theme.chocolateDark
+		slot.count.TextColor3=if complete then Theme.background else Theme.accentSoft
+		local spec=Catalog.byId[progress.equipped] or slot.base
+		-- Редкое изменение покупки/облика не перестраивает ViewportFrame
+		-- на каждое обновление дохода; в плане виден выбранный предмет.
+		if slot.visualId~=spec.id then
+			slot.visual:Destroy(); slot.visual=Thumbnails.new(slot.button,spec)
+			slot.visual.Size=UDim2.new(1,0,1,-8); slot.visualId=spec.id
+		end
+	end
+end
+
 function Atelier:update(state)
 	if not state then return end
 	self.state = state
 	if not state.ready then return end
 	self.journal:update(state)
 	local kitchen=self.mode=='kitchen'
+	if kitchen then self:updateCollection(state) end
 	self.placeMap.Visible=kitchen and self.selectedPlace==nil
 	self.placesBack.Visible=kitchen and self.selectedPlace~=nil
 	self.scroll.Visible=not kitchen or self.selectedPlace~=nil
@@ -479,7 +517,10 @@ function Atelier:update(state)
         card.buy.TextColor3=if canBuy or catalog then Theme.background else Theme.text
         card.buy.AutoButtonColor=canBuy or catalog
         if catalog then
-            if state.owned[id] then L.set(card.buy,'View · owned')
+            local placed=state.owned[id] and (state.equipped or {})[card.spec.group]==id
+            if card.installed then card.installed.Enabled=placed==true end
+            if placed then L.set(card.buy,'View · in your kitchen')
+            elseif state.owned[id] then L.set(card.buy,'View · owned')
             elseif price==0 then L.set(card.buy,'Preview · free apprentice')
             else L.set(card.buy,'Preview · {price} pieces',{price=format(price)}) end
         elseif not price then L.set(card.buy,'Maximum level')

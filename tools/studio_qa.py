@@ -154,7 +154,7 @@ def select_studio(studios, place_name, studio_id=None):
     return matches[0]["id"]
 
 
-def discover_studios(client):
+def discover_studios(client, place_name=None):
     # Proxy отвечает на initialize раньше, чем Studio зарегистрирует сцену.
     # Ждём только обнаружение; команды запуска/записи здесь не повторяются.
     deadline = time.monotonic() + 30
@@ -165,7 +165,8 @@ def discover_studios(client):
             if client.pending is not None or "Unable to reach Roblox Studio right now" not in str(error):
                 raise
             studios = []
-        if studios or time.monotonic() >= deadline:
+        found = bool(studios) if place_name is None else any(row.get("name") == place_name for row in studios)
+        if found or time.monotonic() >= deadline:
             return studios
         time.sleep(1)
 
@@ -308,7 +309,7 @@ class Session:
             raise QaError("Тестовый профиль не применён: " + str(state))
         for name, options in [("purchase", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
-                              ("kitchen", {}), ("visibility", {})]:
+                              ("kitchen", {}), ("visibility", {}), ("catalog", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)
             self.report["stage"] = name
             result = self.control(name, **options)
@@ -342,7 +343,8 @@ def run(args, mcp_factory=MCP):
     failure = None
     try:
         client = mcp_factory(args.mcp, args.timeout)
-        studios = discover_studios(client)
+        studios = discover_studios(client, None if args.command == "list" else args.place_name)
+        report["studios"] = studios
         if args.command == "list":
             report["studios"] = studios
         else:
