@@ -296,19 +296,21 @@ function Atelier:fit()
 	if mode.landscape then
 		local top = if size.Y < 500 then 60 else 80
 		local height = size.Y - top - 16
+		local compact = height < 300
 		self.sidebar.Position = UDim2.fromOffset(12, top)
 		self.sidebar.Size = UDim2.fromOffset(mode.left - 12, height)
 		counter.Parent = self.sidebar
 		counter.Position = UDim2.fromOffset(12, 12)
-		counter.Size = UDim2.new(1, -24, 0, 48)
+		counter.Size = UDim2.new(1, -24, 0, if compact then 38 else 48)
 		self.metrics.Parent = self.sidebar
-		self.metrics.Position = UDim2.fromOffset(12, 64)
-		self.metrics.Size = UDim2.new(1, -24, 0, 54)
+		self.metrics.Position = UDim2.fromOffset(12, if compact then 54 else 64)
+		self.metrics.Size = UDim2.new(1, -24, 0, if compact then 40 else 54)
 		status.Parent = self.sidebar
 		status.AnchorPoint = Vector2.zero
-		self.journal:fit(self.sidebar,false,UDim2.fromOffset(12,124),UDim2.new(1,-24,0,78))
-		status.Position = UDim2.fromOffset(12, 208)
-		status.Size = UDim2.new(1, -24, 0, math.max(40, height - (if mode.docked then 224 else 266)))
+		self.journal:fit(self.sidebar,compact,UDim2.fromOffset(12,if compact then 100 else 124),UDim2.new(1,-24,0,if compact then 38 else 78))
+		local statusTop = if compact then 144 else 208
+		status.Position = UDim2.fromOffset(12, statusTop)
+		status.Size = UDim2.new(1, -24, 0, math.max(20, height - statusTop - (if mode.docked then 16 else 58)))
 		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = if size.Y < 500 then 18 else 22
 		self.open.Parent = self.sidebar
 		self.open.AnchorPoint = Vector2.new(0, 1)

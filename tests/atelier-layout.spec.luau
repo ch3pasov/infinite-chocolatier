@@ -42,9 +42,9 @@ return function(h)
 			state = { ready = true }, sidebar = make(), metrics = make("TextLabel"),
 			open = make("TextButton"), close = make("TextButton"), overlay = make(), panel = make(),
 			panelBounds = make("UISizeConstraint"), title = make("TextLabel"), update = function() end,
-			journal = { fit = function() end },
+			journal = { fit = function(self,_,_,position,size) self.position=position; self.size=size end },
 		}, Atelier)
-		for _, size in { R.Vector2.new(390, 844), R.Vector2.new(1440, 900), R.Vector2.new(844, 390), R.Vector2.new(390, 844) } do
+		for _, size in { R.Vector2.new(390, 844), R.Vector2.new(1440, 900), R.Vector2.new(844, 390), R.Vector2.new(568,320), R.Vector2.new(812,375), R.Vector2.new(390, 844) } do
 			root.AbsoluteSize = size
 			ui:fit()
 			local mode = Layout.presentation(size.X, size.Y, Config.Board.viewportPadding)
@@ -54,6 +54,13 @@ return function(h)
 			h.equals(counter.Parent, if mode.landscape then ui.sidebar else root)
 			h.equals(status.Parent, counter.Parent)
 			h.equals(ui.view.cutProgress, 95)
+			if mode.landscape then
+				assert(status.Position.Y.Offset>=ui.journal.position.Y.Offset+ui.journal.size.Y.Offset+4)
+				if not mode.docked then
+					local buttonTop=ui.sidebar.Size.Y.Offset+ui.open.Position.Y.Offset-ui.open.Size.Y.Offset
+					assert(status.Position.Y.Offset+status.Size.Y.Offset<=buttonTop-6,"подсказка перекрыла кнопку улучшений")
+				end
+			end
 			if mode.docked then
 				h.equals(ui.overlay.Position.X.Offset, size.X - mode.right)
 				h.equals(ui.close.Visible, false)

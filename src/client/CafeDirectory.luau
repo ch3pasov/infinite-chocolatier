@@ -43,7 +43,7 @@ function Directory.new(kitchen)
  scroll.Position=UDim2.fromOffset(12,118); scroll.Size=UDim2.new(1,-24,1,-188)
  scroll.ScrollBarThickness=4; scroll.ScrollBarImageColor3=Theme.accent; scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; scroll.CanvasSize=UDim2.fromOffset(0,0); scroll.Parent=panel; self.scroll=scroll
  local layout=Instance.new("UIListLayout"); layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Padding=UDim.new(0,10); layout.Parent=scroll
- self.empty=label(panel,"Empty",18,Theme.muted); self.empty.Position=UDim2.fromOffset(24,145); self.empty.Size=UDim2.new(1,-48,0,120)
+ self.empty=label(panel,"Empty",18,Theme.muted); self.empty.Position=UDim2.fromOffset(24,130); self.empty.Size=UDim2.new(1,-48,1,-202)
  self.empty.TextXAlignment=Enum.TextXAlignment.Center; L.set(self.empty,"Other players' cafes will appear here when they join this server.")
  self.next=button(panel,"Next","Next cafe →"); self.next.Position=UDim2.new(0,16,1,-56); self.next.Size=UDim2.new(1,-32,0,40)
  self.next.Activated:Connect(function()
