@@ -145,6 +145,24 @@ return function(harness)
 		harness.equals(view.cutProgress, 50)
 	end)
 
+	harness.test("отчёт блокирует разрез даже после обновления ателье и сохраняет его прогресс", function()
+		local view, events = fixture()
+		local pointer = input("Touch")
+		events.InputBegan:Fire(pointer, false)
+		move(events, pointer, 40)
+		view:endDrag(true)
+		view.diagnosticsOpen = true
+		view.inputBlocked = false -- Так приходит обычное обновление открытой боковой панели.
+		local nextPointer = input("Touch", 40)
+		events.InputBegan:Fire(nextPointer, false)
+		harness.equals(view.drag, nil)
+		harness.equals(view.cutProgress, 40)
+		view.diagnosticsOpen = false
+		events.InputBegan:Fire(nextPointer, false)
+		move(events, nextPointer, 60)
+		harness.equals(view.cutProgress, 60)
+	end)
+
 	harness.test("второй палец не перехватывает и не отпускает разрез", function()
 		local view, events = fixture()
 		local first, second = input("Touch"), input("Touch", 10)

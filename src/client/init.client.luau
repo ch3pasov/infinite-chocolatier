@@ -34,6 +34,16 @@ local remotes = {
 
 local gameView = Game.new(gui, remotes)
 local atelier = Atelier.new(gui, gameView, remotes)
+-- Сбой вспомогательного отчёта не должен останавливать загрузку самой игры.
+local diagnosticOk, diagnostics = pcall(function()
+	return require(script.Diagnostics).new(gui.Parent, gameView)
+end)
+if not diagnosticOk then
+	warn("Developer diagnostics unavailable: " .. tostring(diagnostics))
+	local partial = gui.Parent:FindFirstChild("DeveloperDiagnostics")
+	if partial then partial:Destroy() end
+	diagnostics = nil
+end
 local kitchen
 if Config.Scene3D.enabled then
 	local Scene3D = require(script.Scene3D)
@@ -44,6 +54,7 @@ remotes.stateSync.OnClientEvent:Connect(function(state)
     atelier:update(state)
 	if kitchen then kitchen:update(state) end
     if state.reward then gameView:playRewardEffect(state.reward) end
+	if diagnostics then diagnostics:update(state) end
 end)
 -- PlayerAdded может сработать раньше подписки клиента, поэтому состояние
 -- запрашивается явно уже после создания интерфейса и обработчика.

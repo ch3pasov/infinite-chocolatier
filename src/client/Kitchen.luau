@@ -63,7 +63,7 @@ function Kitchen.new(view,atelier)
  local world=self.stage:createWorld("KitchenStations"); self.world=world
  local camera=self.stage:createCamera("KitchenCamera",45); self.camera=camera
  self.walkCamera=self.stage:createCamera("KitchenWalkCamera",70)
- self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping end)
+ self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping and not view.diagnosticsOpen end)
  Shell.new(world,self.origin)
  self.stations={Station.new(view,world,self.origin,-3.7,true),Station.new(view,world,self.origin,3.7,false)}
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08

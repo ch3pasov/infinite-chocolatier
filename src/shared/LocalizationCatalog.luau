@@ -2,6 +2,9 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Bug report"]="Сообщение об ошибке",
+ ["Select the report text and copy it into your message. A screenshot with the version badge also helps."]="Нажми на текст, скопируй и приложи к сообщению. Можно просто прислать скриншот с отметкой версии.",
+ ["{version} · ★ {bonus} · report"]="{version} · ★ {bonus} · отчёт",
  ["Choose a spot in your kitchen"]="Выбери место на кухне",
  ["‹ Choose another spot"]="‹ Выбрать другое место",
  ["3/3 · Choose the apprentice spot, then hire for free."]="3/3 · Выбери значок стажёра и найми его бесплатно.",
