@@ -10,6 +10,43 @@ local function signal()
   Fire=function(_,...) for fn in callbacks do fn(...) end end}
 end
 return function(h)
+ h.test('сосед с новым Instance или координатами заменяет старую комнату без пропущенного опроса',function()
+  local stub=setmetatable({},{__index=function(_,key) return key end}); local models={}
+  local workspace={FindFirstChild=function() return {GetChildren=function() return models end} end}
+  local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
+   game={GetService=function(_,name) return if name=='Workspace' then workspace else {WaitForChild=function() return stub end} end},
+   script={Parent=stub},require=function(name) return if name=='CafeQueue' then require('../src/shared/CafeQueue') else {} end,
+  },injectGlobals=true})()
+  local function model(x)
+   return {origin=R.Vector3.new(x,0,0),GetAttribute=function(self,key)
+    return if key=='OwnerId' then 2 elseif key=='Origin' then self.origin else 0
+   end}
+  end
+  local k={player={UserId=1},origin=R.Vector3.zero,opened=true}
+  function k:setWalking() self.watchPeer=nil; self.focus=false end
+  local online=setmetatable({kitchen=k,peers={},packets={},cycles={},elapsed=0,scan=0,request=0,
+   remote={FireServer=function() end},updateIslands=function() end},Online)
+  local created=0
+  function online:add(source)
+   created+=1
+   local p={model=source,origin=source.origin,stations={},prompt={},player={UserId=2,GetAttribute=function() end},world={Destroy=function(self) self.destroyed=true end}}
+   self.peers['2:0']=p; return p
+  end
+  models={model(256)}; online:step(.5)
+  local first=online.peers['2:0']; online:step(.5); h.equals(created,1)
+  local station={actor={setVisible=function() end},destroy=function(self) self.destroyed=true end}
+  first.stations={station}; first.station=station; k.watchPeer=first; k.focus=true
+  -- Исчезновение и повторное появление между двумя опросами: ключ остался.
+  models={model(256)}; online:step(.5)
+  local second=online.peers['2:0']
+  h.equals(second.model,models[1],'источник остался старой моделью')
+  h.equals(created,2); assert(first.world.destroyed and station.destroyed)
+  h.equals(k.watchPeer,nil); h.equals(k.focus,false)
+  models[1].origin=R.Vector3.new(512,0,0); online:step(.5)
+  h.equals(created,3); assert(second.world.destroyed)
+  h.equals(online.peers['2:0'].origin,models[1].origin)
+  models={}; online:step(.5); h.equals(online.peers['2:0'],nil)
+ end)
  h.test('цикл владельца сохраняет фазу при ускорении и долгом отсутствии кадров',function()
   local stub=setmetatable({},{__index=function(_,key) return key end})
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={

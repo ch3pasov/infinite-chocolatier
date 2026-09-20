@@ -259,6 +259,37 @@ local function dispatch(args)
   Appearance.createRig=original
   home:SetAttribute('StaffRoster',savedRoster); online:updateIslands(models); kitchen:setOpen(false)
   assert(ok,result); return result
+ elseif args.action=="peerReplacement" then
+  kitchen:setOpen(true)
+  local directory=workspace.KitchenIslands; local online=kitchen.online
+  local id=-567891; local key=tostring(id)..':0'
+  local fake=Instance.new('Model'); fake.Name='PeerReplacementQA'
+  for name,value in {OwnerId=id,CafeIndex=0,OwnerOnline=false,DisplayName='QA',Username='QA',
+   HasApprentice=false,CafeCount=0,CycleSeconds=10,Origin=kitchen.origin+Vector3.new(30,0,0)} do fake:SetAttribute(name,value) end
+  fake.Parent=directory
+  local replacement
+  local ok,result=pcall(function()
+   kitchen:step(.5)
+   local first=online.peers[key]
+   assert(first and first.station,"Temporary neighboring station did not appear")
+   local oldWorld=first.world; local oldStation=first.station.world
+   kitchen:watchPlayer(first); assert(kitchen.watchPeer==first and kitchen.focus,"Watch mode did not open")
+   replacement=fake:Clone(); fake:Destroy(); replacement.Parent=directory
+   kitchen:step(.5)
+   local second=online.peers[key]
+   assert(second and second~=first and second.model==replacement,"Old room model stayed attached")
+   assert(oldWorld.Parent==nil and oldStation.Parent==nil,"Old room retained its geometry")
+   assert(kitchen.watchPeer==nil and not kitchen.focus,"Old watch mode did not close")
+   local moved=kitchen.origin+Vector3.new(35,0,0)
+   replacement:SetAttribute('Origin',moved); kitchen:step(.5)
+   local third=online.peers[key]
+   assert(third and third~=second and third.origin==moved and third.station,"Room did not move to its new origin")
+   assert(second.world.Parent==nil,"Moved room left old geometry")
+   return {ok=true,modelReplaced=true,watchClosed=true,originUpdated=true,conditionalNeighbor=true}
+  end)
+  fake:Destroy(); if replacement then replacement:Destroy() end
+  kitchen:step(.5); kitchen:setOpen(false)
+  assert(ok,result); assert(online.peers[key]==nil,"Temporary neighbor was not removed"); return result
  elseif args.action=="catalog" then
   local catalog=require(game.ReplicatedStorage.Shared.KitchenCatalog)
   kitchen:setOpen(true); kitchen:openShop()

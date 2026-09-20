@@ -114,7 +114,13 @@ function Online:step(dt)
    local id=model:GetAttribute('OwnerId'); local origin=model:GetAttribute('Origin'); local index=model:GetAttribute('CafeIndex') or 0
    if id and origin then
     local key=Queue.key(id,index); seen[key]=true; owners[id]=true
-    if (id~=k.player.UserId or index>0) and not self.peers[key] then self:add(model) end
+    if id~=k.player.UserId or index>0 then
+     local peer=self.peers[key]
+     -- Между опросами хозяин может вернуться с тем же ключом комнаты.
+     -- Прежняя оболочка тогда хранит удалённую модель и старые координаты.
+     if peer and (peer.model~=model or peer.origin~=origin) then self:remove(key); peer=nil end
+     if not peer then self:add(model) end
+    end
    end
   end
   for key in self.peers do if not seen[key] then self:remove(key) end end
