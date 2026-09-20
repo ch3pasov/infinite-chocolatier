@@ -26,7 +26,7 @@ local function button(parent,name,caption)
  round(b); L.set(b,caption); return b
 end
 function Directory.new(kitchen)
- local self=setmetatable({kitchen=kitchen,entries={},elapsed=0},Directory)
+ local self=setmetatable({kitchen=kitchen,entries={},rows={},elapsed=0},Directory)
  self.remote=kitchen.atelier.remotes.cafeVisit
  local gui=Instance.new("ScreenGui"); gui.Name="CafeDirectory"; gui.IgnoreGuiInset=true
  gui.ResetOnSpawn=false; gui.DisplayOrder=30; gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.Parent=kitchen.gui.Parent; self.gui=gui
@@ -53,7 +53,7 @@ function Directory.new(kitchen)
  self.receive=self.remote.OnClientEvent:Connect(function(action)
   if action=="open" then self:open()
   elseif action=="unavailable" then
-   self.busy=false; self.key=nil; self:refresh()
+   self.busy=false; self:refresh()
    self.noticeUntil=os.clock()+3; L.set(self.status,"That cafe is no longer available. Choose another.")
   elseif action=="arrived" or action=="close" then self:close() end
  end)
@@ -72,7 +72,7 @@ function Directory:open()
  local k=self.kitchen
  if not k.opened or k.focus or k.shopping then return end
  k.browsing=true; k.controls:Disable(); self.busy=false; self.noticeUntil=nil
- self.overlay.Visible=true; self.key=nil; self:refresh()
+ self.overlay.Visible=true; self:refresh()
 end
 function Directory:close()
  self.overlay.Visible=false; self.busy=false
@@ -101,31 +101,58 @@ function Directory:refresh()
  self.next.Active=#self.entries>0; self.next.AutoButtonColor=#self.entries>0
  self.next.BackgroundColor3=if #self.entries>0 then Theme.accent else Theme.chocolateDark
  self.next.TextColor3=if #self.entries>0 then Theme.background else Theme.muted
- local key=""
- for _,entry in self.entries do key..=entry.owner..":"..entry.name..":"..entry.username..":"..entry.count.."/" end
- if self.key==key then return end; self.key=key
- for _,child in self.scroll:GetChildren() do if child:IsA("GuiObject") then child:Destroy() end end
+ -- Изменение размера фабрики не удаляет соседние карточки и их портреты.
+ -- Строку заменяем только после исчезновения владельца из доступного списка.
+ local present={}
+ for _,entry in self.entries do present[entry.owner]=true end
+ for owner,row in self.rows do
+  if not present[owner] then self.rows[owner]=nil; row.frame:Destroy() end
+ end
  for index,entry in self.entries do
-  local row=button(self.scroll,"Cafe_"..entry.owner,""); row.BackgroundColor3=Theme.chocolate; row.LayoutOrder=index; row.Size=UDim2.new(1,-8,0,88)
+  local row=self.rows[entry.owner] or self:createRow(entry)
+  row.frame.LayoutOrder=index
+  if row.displayName~=entry.name then
+   row.displayName=entry.name; row.name.Text=entry.name
+   row.initial.Text=string.sub(entry.name,1,(utf8.offset(entry.name,2) or (#entry.name+1))-1)
+  end
+  if row.usernameText~=entry.username then row.usernameText=entry.username; row.username.Text="@"..entry.username end
+  if row.cafeCount~=entry.count then
+   row.cafeCount=entry.count; L.set(row.count,"Factory: {count} cafes",{count=L.number(entry.count+1)})
+  end
+  self:requestPortrait(entry.owner,row)
+ end
+end
+function Directory:createRow(entry)
+  local row=button(self.scroll,"Cafe_"..entry.owner,""); row.BackgroundColor3=Theme.chocolate; row.Size=UDim2.new(1,-8,0,88)
   row.Activated:Connect(function() self:visit(entry.owner) end)
   local portrait=Instance.new("ImageLabel"); portrait.Name="Avatar"; portrait.BackgroundColor3=Theme.chocolateDark; portrait.BorderSizePixel=0
   portrait.Position=UDim2.fromOffset(10,16); portrait.Size=UDim2.fromOffset(56,56); portrait.Parent=row; round(portrait,28)
   local initial=label(portrait,"Initial",22,Theme.accentSoft); initial.Size=UDim2.fromScale(1,1); initial.TextXAlignment=Enum.TextXAlignment.Center
-  initial.Text=string.sub(entry.name,1,(utf8.offset(entry.name,2) or (#entry.name+1))-1); initial.AutoLocalize=false
+  initial.AutoLocalize=false
   portrait:GetPropertyChangedSignal("IsLoaded"):Connect(function() initial.Visible=not portrait.IsLoaded end)
-  local name=label(row,"Name",18,Theme.accentSoft); name.Position=UDim2.fromOffset(78,6); name.Size=UDim2.new(1,-116,0,27); name.Text=entry.name
-  local username=label(row,"Username",12,Theme.muted); username.Position=UDim2.fromOffset(78,33); username.Size=UDim2.new(1,-116,0,18); username.Text="@"..entry.username
+  local name=label(row,"Name",18,Theme.accentSoft); name.Position=UDim2.fromOffset(78,6); name.Size=UDim2.new(1,-116,0,27)
+  local username=label(row,"Username",12,Theme.muted); username.Position=UDim2.fromOffset(78,33); username.Size=UDim2.new(1,-116,0,18)
   name.AutoLocalize=false; username.AutoLocalize=false
   local count=label(row,"Factory",12,Theme.text); count.Position=UDim2.fromOffset(78,55); count.Size=UDim2.new(1,-116,0,24)
-  L.set(count,"Factory: {count} cafes",{count=L.number(entry.count+1)})
   local arrow=label(row,"Visit",25,Theme.accent); arrow.Position=UDim2.new(1,-32,0,26); arrow.Size=UDim2.fromOffset(24,34); arrow.Text="›"
+  local data={frame=row,portrait=portrait,initial=initial,name=name,username=username,count=count}
+  self.rows[entry.owner]=data
+  return data
+end
+function Directory:requestPortrait(owner,data)
+  -- Готовый портрет сохраняется, а временная ошибка повторяется с паузой,
+  -- пока меню открыто. Покупка кафе не запускает дополнительные запросы.
+  if data.portraitReady or data.loading or os.clock()<(data.retryAt or 0) then return end
+  data.loading=true
   task.spawn(function()
-   local ok,image=pcall(function() return Players:GetUserThumbnailAsync(entry.owner,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size100x100) end)
-   if ok and portrait.Parent then portrait.Image=image end
+   local ok,image,ready=pcall(function() return Players:GetUserThumbnailAsync(owner,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size100x100) end)
+   -- Поздний ответ для ушедшего игрока не меняет новую карточку после возвращения.
+   if self.rows[owner]~=data or not data.portrait.Parent then return end
+   data.loading=false; data.retryAt=os.clock()+15
+   if ok then data.portrait.Image=image; data.portraitReady=ready==true end
   end)
- end
 end
 function Directory:destroy()
- self.receive:Disconnect(); self.step:Disconnect(); self.input:Disconnect(); self:close(); self.gui:Destroy()
+ self.receive:Disconnect(); self.step:Disconnect(); self.input:Disconnect(); self:close(); self.rows={}; self.gui:Destroy()
 end
 return Directory

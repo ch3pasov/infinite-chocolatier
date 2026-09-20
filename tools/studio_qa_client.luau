@@ -92,6 +92,9 @@ local function dispatch(args)
   local sample=beforeCycle*.23
   local before=probe:cyclePhase(home,sample)
   local oldLevel=state.levels.speed
+  -- Предыдущий сценарий только что купил мастерство. Сервер отклоняет
+  -- покупки чаще 0.2 с; задержка теста не должна зависеть от скорости MCP.
+  task.wait(.25)
   remotes.purchase:FireServer('speed')
   assert(waitUntil(function()
    return atelier.state.levels.speed==oldLevel+1 and home:GetAttribute('CycleSeconds')==atelier.state.cycleSeconds
@@ -319,6 +322,36 @@ local function dispatch(args)
   fake:Destroy(); if replacement then replacement:Destroy() end
   kitchen:step(.5); kitchen:setOpen(false)
   assert(ok,result); assert(online.peers[key]==nil,"Temporary neighbor was not removed"); return result
+ elseif args.action=="directoryRefresh" then
+  kitchen:setOpen(true)
+  local d=kitchen.directory; local models={}; local created=0; local original=d.createRow
+  d.createRow=function(self,entry) created+=1; return original(self,entry) end
+  for i=1,8 do
+   local model=Instance.new('Model'); model.Name='DirectoryQA_'..i
+   for name,value in {OwnerId=-88000-i,CafeIndex=0,OwnerOnline=true,DisplayName='QA '..i,Username='qa'..i,
+    CafeCount=0,HasApprentice=false,CycleSeconds=10,Origin=kitchen.origin+Vector3.new(9000+i*256,0,0)} do model:SetAttribute(name,value) end
+   model.Parent=workspace.KitchenIslands; table.insert(models,model)
+  end
+  local ok,result=pcall(function()
+   d:open(); assert(created==8 and #d.entries==8,'Directory did not create eight visitors')
+   task.wait(.3); d.scroll.CanvasPosition=Vector2.new(0,80); task.wait(.1)
+   local scroll=d.scroll.CanvasPosition; local first=d.rows[-88001]; local other=d.rows[-88002]
+   models[1]:SetAttribute('CafeCount',99); models[1]:SetAttribute('DisplayName','Updated QA')
+   d:refresh(); task.wait(.1)
+   assert(d.rows[-88001]==first and d.rows[-88002]==other and created==8,'Count update recreated cards')
+   assert(first.name.Text=='Updated QA' and first.cafeCount==99,'Card contents were not updated')
+   assert(d.scroll.CanvasPosition==scroll,'Count update moved the scroll position')
+   d:close(); d:open(); assert(created==8 and d.rows[-88001]==first,'Reopening recreated cards')
+   models[1]:SetAttribute('OwnerOnline',false); d:refresh()
+   assert(first.frame.Parent==nil and not d.rows[-88001] and d.rows[-88002]==other,'Leaving removed the wrong cards')
+   models[1]:SetAttribute('OwnerOnline',true); d:refresh()
+   assert(created==9 and d.rows[-88001]~=first,'Returning did not create one new card')
+   return {ok=true,retainedCards=8,newCardsOnReturn=1,scrollY=scroll.Y,conditionalVisitors=true}
+  end)
+  d.createRow=original
+  for _,model in models do model:Destroy() end
+  d:refresh(); d:close(); kitchen:step(.5); kitchen:setOpen(false)
+  assert(ok,result); return result
  elseif args.action=="catalog" then
   local catalog=require(game.ReplicatedStorage.Shared.KitchenCatalog)
   kitchen:setOpen(true); kitchen:openShop()

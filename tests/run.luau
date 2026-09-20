@@ -34,6 +34,7 @@ require("./orders.spec")(harness)
 require("./bulk-purchase.spec")(harness)
 require("./upgrade-preview.spec")(harness)
 require("./cafe-factory.spec")(harness)
+require("./cafe-directory.spec")(harness)
 require("./kitchen-catalog.spec")(harness)
 require("./server-economy.spec")(harness)
 
