@@ -2,6 +2,7 @@
 -- Чистая модель: цены, доход и сброс одинаковы для сервера, UI и тестов.
 local Config = require("./Config")
 local Catalog = require("./KitchenCatalog")
+local Orders = require("./Orders")
 local E = Config.Economy
 local Economy = {}
 
@@ -35,6 +36,8 @@ function Economy.load(raw)
 		lifetime = number(raw.lifetime, 0, E.maxValue),
 		stars = math.floor(number(raw.stars, 0, 1000000)),
 		rounds = math.floor(number(raw.rounds, 0, E.maxValue)),
+		ordersCompleted = math.floor(number(raw.ordersCompleted, 0, 1e9)),
+		orderProgress = 0,
 		-- Старые workers сохраняются; остаток старого секундного цикла
 		-- становится той же долей нового полного фокуса. Деньги не списываются.
 		productionRemainder = number(raw.productionRemainder, 0, 0.999999999),
@@ -42,6 +45,7 @@ function Economy.load(raw)
 		decor = {},
         collectionVersion=2, owned={}, equipped={}, legacyWorkers=0,
 	}
+	data.orderProgress = math.floor(number(raw.orderProgress, 0, Orders.spec(data.ordersCompleted).rounds - 1))
 	for _, spec in E.upgrades do
 		data.levels[spec.id] = math.floor(number(levels[spec.id], 0, math.min(spec.maxLevel,1e9)))
         if spec.cosmetic then
@@ -139,7 +143,9 @@ end
 
 function Economy.round(data)
 	data.rounds = math.min(E.maxValue, data.rounds + 1)
-	return Economy.credit(data, Economy.manual(data))
+	local manual = Economy.manual(data)
+	local completed = Orders.advance(data, manual)
+	return Economy.credit(data, manual + (if completed then completed.bonus else 0)), completed
 end
 
 function Economy.tick(data, elapsed)
@@ -183,6 +189,8 @@ function Economy.prestige(data)
 	data.slices = 0
 	data.earned = 0
 	data.productionRemainder = 0
+	-- Престиж начинает заказ заново; число уже выполненных остаётся статистикой.
+	data.orderProgress = 0
 	-- Новый цикл начинается с пустой кухни, включая перенесённых старых стажёров.
 	for _, spec in E.upgrades do data.levels[spec.id] = 0 end
 	data.legacyWorkers = 0
@@ -199,6 +207,7 @@ function Economy.snapshot(data)
 	state.rate = Economy.rate(data)
 	state.cycleSeconds = Economy.cycleSeconds(data)
 	state.cycleReward = Economy.manual(data)
+	state.order = Orders.snapshot(data, state.manual)
 	state.prestigeGain = Economy.prestigeGain(data)
 	state.prices = {}
 	for _, spec in E.upgrades do state.prices[spec.id] = Economy.price(data, spec.id) end

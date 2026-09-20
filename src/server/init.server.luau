@@ -141,8 +141,10 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	if now - session.lastRound < Config.Payout.minInterval then return end
 	session.lastRound = now
 	accrue(session)
-	local amount = Economy.round(session.data)
-	send(player, {key="Trick complete! +{amount}",args={amount=amount}}, amount)
+	local amount, completed = Economy.round(session.data)
+	local notice = if completed then {key="Order packed! +{bonus} bonus pieces", args={bonus=completed.bonus}}
+		else {key="Trick complete! +{amount}",args={amount=amount}}
+	send(player, notice, amount)
 end)
 
 remotes.purchase.OnServerEvent:Connect(function(player, id)

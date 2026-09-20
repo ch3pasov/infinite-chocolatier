@@ -169,6 +169,23 @@ Config.Sliding = {
 
 Config.Feedback = { duration = 0.85, rise = 52, sparkCount = 8 }
 
+-- Небольшие цели поощряют ручную игру, не умножая автоматический доход.
+-- Бонус равен указанному числу ручных фокусов на момент выполнения заказа.
+Config.Orders = {
+	{ name = "Tasting box", rounds = 4, bonusRounds = 1 },
+	{ name = "Coffee break", rounds = 6, bonusRounds = 1 },
+	{ name = "Celebration box", rounds = 8, bonusRounds = 2 },
+}
+Config.JournalRanks = {
+	{ rounds = 0, name = "Curious chocolatier" },
+	{ rounds = 10, name = "First batch" },
+	{ rounds = 50, name = "Steady hands" },
+	{ rounds = 150, name = "Chocolate artisan" },
+	{ rounds = 500, name = "Master chocolatier" },
+	{ rounds = 1500, name = "Chocolate virtuoso" },
+	{ rounds = 5000, name = "Infinite chocolatier" },
+}
+
 Config.Payout = {
 	minInterval = 0.45,
 	-- Клиент отправляет только RoundComplete; это число читает только серверная

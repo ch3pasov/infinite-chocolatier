@@ -27,6 +27,7 @@ return function(h)
 			state = { ready = true }, sidebar = make(), metrics = make("TextLabel"),
 			open = make("TextButton"), close = make("TextButton"), overlay = make(), panel = make(),
 			panelBounds = make("UISizeConstraint"), title = make("TextLabel"), update = function() end,
+			journal = { fit = function() end },
 		}, Atelier)
 		for _, size in { R.Vector2.new(390, 844), R.Vector2.new(1440, 900), R.Vector2.new(844, 390), R.Vector2.new(390, 844) } do
 			root.AbsoluteSize = size
@@ -48,7 +49,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({journal={update=function() end},view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end

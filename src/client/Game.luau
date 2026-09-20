@@ -1017,7 +1017,7 @@ end
 
 function Game:bindInput()
 	self.began = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen then
+		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen then
 			return
 		end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then

@@ -45,6 +45,17 @@ local function fixture(studio, seed, userId)
 		record = function() return record end }
 end
 return function(h)
+ h.test("настоящий сервер выдаёт бонус заказа, не принимая повтор и размер награды от клиента",function()
+  local f=fixture(false)
+  for _=1,4 do f.events.roundComplete.OnServerEvent:Fire(f.player,999999); f.advance() end
+  h.equals(f.latest().slices,5); h.equals(f.latest().order.completed,1)
+  h.equals(f.latest().reward,2); h.equals(f.latest().notice.key,"Order packed! +{bonus} bonus pieces")
+  f.events.roundComplete.OnServerEvent:Fire(f.player); f.events.roundComplete.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().slices,6); h.equals(f.latest().order.progress,1)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().version,4); h.equals(f.record().data.ordersCompleted,1)
+  h.equals(f.record().data.orderProgress,1)
+ end)
  h.test("бонус престижа отключает только админ, звёзды сохраняются",function()
   local seed={stars=20,levels={workers=1}}
   local f=fixture(false,seed,Config.BalanceTesterUserId)

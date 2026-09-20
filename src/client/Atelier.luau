@@ -8,6 +8,7 @@ local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
 local Thumbnails = require(script.Parent.DecorThumbnails)
+local Journal = require(script.Parent.Journal)
 local Atelier = {}
 Atelier.__index = Atelier
 
@@ -270,6 +271,7 @@ function Atelier.new(gui, gameView, remotes)
 	self.sidebar = box(gameView.root, "Sidebar", Theme.panel)
 	self.sidebar.ZIndex = 900
 	self.sidebar.Visible = false
+	self.journal = Journal.new(gui,gameView)
 	gameView.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:fit() end)
 	self:fit()
 	return self
@@ -297,8 +299,9 @@ function Atelier:fit()
 		self.metrics.Size = UDim2.new(1, -24, 0, 54)
 		status.Parent = self.sidebar
 		status.AnchorPoint = Vector2.zero
-		status.Position = UDim2.fromOffset(12, 126)
-		status.Size = UDim2.new(1, -24, 0, math.max(40, height - (if mode.docked then 142 else 184)))
+		self.journal:fit(self.sidebar,false,UDim2.fromOffset(12,124),UDim2.new(1,-24,0,78))
+		status.Position = UDim2.fromOffset(12, 208)
+		status.Size = UDim2.new(1, -24, 0, math.max(40, height - (if mode.docked then 224 else 266)))
 		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = if size.Y < 500 then 18 else 22
 		self.open.Parent = self.sidebar
 		self.open.AnchorPoint = Vector2.new(0, 1)
@@ -317,9 +320,10 @@ function Atelier:fit()
 		status.Size = UDim2.new(0.94, 0, 0, Config.Board.viewportPadding.bottom - 24)
 		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = 28
 		self.open.Parent = self.view.root
-		self.open.AnchorPoint = Vector2.new(0.5, 0)
-		self.open.Position = UDim2.new(0.5, 0, 0, 90)
-		self.open.Size = UDim2.fromOffset(260, 38)
+		self.open.AnchorPoint = Vector2.new(1, 0)
+		self.open.Position = UDim2.new(1, -12, 0, 90)
+		self.open.Size = UDim2.fromOffset(120, 38)
+		self.journal:fit(self.view.root,true,UDim2.fromOffset(12,90),UDim2.new(1,-156,0,38))
 	end
 	-- На широком экране тот же магазин закреплён справа. Он не становится
 	-- модальным и не перехватывает жесты над шоколадкой в центре.
@@ -364,6 +368,7 @@ function Atelier:update(state)
 	if not state then return end
 	self.state = state
 	if not state.ready then return end
+	self.journal:update(state)
 	local kitchen=self.mode=='kitchen'
 	self.placeMap.Visible=kitchen and self.selectedPlace==nil
 	self.placesBack.Visible=kitchen and self.selectedPlace~=nil
