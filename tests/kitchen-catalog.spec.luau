@@ -19,7 +19,7 @@ return function(h)
   assert(E.buy(d,'workers_1')); assert(E.buy(d,'workers_1'))
   h.equals(d.equipped.workers,'workers_1'); h.equals(d.levels.workers,1)
   for i=2,5 do h.equals(E.buy(d,'workers_'..i),false) end
-  local before=d.slices; assert(E.buy(d,'cafes')); h.equals(d.slices,before-75)
+  local before=d.slices; assert(E.buy(d,'cafes')); h.equals(d.slices,before-1000)
   h.equals(d.levels.workers,3); h.equals(d.levels.cafes,1)
   h.equals(E.load(d).levels.workers,3)
  end)
