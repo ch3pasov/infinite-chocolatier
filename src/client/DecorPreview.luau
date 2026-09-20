@@ -2,10 +2,11 @@
 -- Предпросмотр не меняет профиль: подтверждением служит только снимок сервера.
 local Preview={}
 function Preview.begin(id,state)
- return {id=id,level=state.levels[id],equipped=state.decor[id],confirmed=false}
+ local group=string.match(id,'^([^_]+)')
+ return {id=id,group=group,owned=state.owned[id],equipped=state.equipped[group],confirmed=false}
 end
 function Preview.update(preview,state)
- if state.levels[preview.id]~=preview.level or state.decor[preview.id]~=preview.equipped then preview.confirmed=true end
+ if state.owned[preview.id]~=preview.owned or state.equipped[preview.group]~=preview.equipped then preview.confirmed=true end
  return if preview.confirmed then nil else preview.id
 end
 return Preview

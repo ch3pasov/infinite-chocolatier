@@ -5,10 +5,10 @@ local luau = require("@lune/luau")
 local R = require("@lune/roblox")
 local Config = require("../src/shared/Config")
 local Layout = require("../src/client/Layout")
-local modules = { Config = Config, Layout = Layout, Theme = {} }
+local modules = { Config = Config, Layout = Layout, Theme = {}, Localization={number=tostring,token=function(x) return x end,set=function(object,value) object.Text=value end}, KitchenCatalog=require("../src/shared/KitchenCatalog") }
 local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment = {
-	game = { GetService = function() return { WaitForChild = function() return { Config = "Config" } end } end },
-	script = { Parent = { Theme = "Theme", Layout = "Layout" } },
+	game = { GetService = function() return { WaitForChild = function() return { Config = "Config", KitchenCatalog="KitchenCatalog" } end } end },
+	script = { Parent = { Theme = "Theme", Layout = "Layout", Localization="Localization" } },
 	require = function(name) return modules[name] end,
 	Vector2 = R.Vector2, UDim2 = R.UDim2,
 }, injectGlobals = true })()
@@ -45,4 +45,27 @@ return function(h)
 		end
 		root:Destroy()
 	end)
+ h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
+  local E=require('../src/shared/Economy')
+  local C=require('../src/shared/KitchenCatalog')
+  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},metrics={},balance={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local specs={}
+  for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
+  for _,spec in C.items do table.insert(specs,spec) end
+  for _,spec in specs do ui.cards[spec.id]={spec=spec,frame={},description={},heading={},buy={}} end
+  local d=E.load({slices=25})
+  local function refresh(mode)
+   ui.mode=mode; local state=E.snapshot(d); state.ready=true; ui:update(state)
+  end
+  refresh('upgrades')
+  h.equals(ui.cards.kitchen.frame.Visible,true); h.equals(ui.cards.craft.frame.Visible,true)
+  h.equals(ui.cards.clock_1.frame.Visible,false); h.equals(ui.cards.speed.frame.Visible,false)
+  assert(E.buy(d,'kitchen')); refresh('upgrades'); h.equals(ui.cards.kitchen.frame.Visible,false)
+  refresh('kitchen')
+  for _,spec in C.items do h.equals(ui.cards[spec.id].frame.Visible,true) end
+  h.equals(ui.cards.craft.frame.Visible,false); h.equals(ui.cards.recipe.frame.Visible,false)
+  h.equals(ui.balance.Text,'3/3 · Preview Cocoa Apprentice, then tap Hire for free.')
+  assert(E.buy(d,'workers_1')); refresh('upgrades'); h.equals(ui.cards.speed.frame.Visible,true)
+ end)
+
 end

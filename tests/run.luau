@@ -25,6 +25,7 @@ require("./online-kitchen.spec")(harness)
 require("./friend-appearance.spec")(harness)
 require("./render.spec")(harness)
 require("./economy.spec")(harness)
+require("./kitchen-catalog.spec")(harness)
 require("./server-economy.spec")(harness)
 
 print(`\n{harness.passed} прошло, {harness.failed} упало`)

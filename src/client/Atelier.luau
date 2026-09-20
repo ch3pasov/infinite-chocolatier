@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared").Config)
+local Catalog = require(ReplicatedStorage:WaitForChild("Shared").KitchenCatalog)
 local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
@@ -110,7 +111,7 @@ function Atelier.new(gui, gameView, remotes)
 	bounds.Parent = panel
 	self.panelBounds = bounds
 	local title = text(panel, "Title", 23, Theme.accent)
-	L.set(title, "Infinite Chocolatier")
+	L.set(title, "Upgrades")
 	title.Position = UDim2.fromOffset(16, 12)
 	title.Size = UDim2.new(1, -80, 0, 56)
 	local close = button(panel, "Close", "×")
@@ -136,7 +137,11 @@ function Atelier.new(gui, gameView, remotes)
 	layout.Padding = UDim.new(0, 10)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = scroll
-	for index, spec in Config.Economy.upgrades do
+	local specs={}
+	for _,spec in Config.Economy.upgrades do if spec.id=="kitchen" or spec.maxLevel==math.huge then table.insert(specs,spec) end end
+	for _,spec in Catalog.items do table.insert(specs,spec) end
+	self.scroll=scroll
+	for index, spec in specs do
 		local card = box(scroll, spec.id, Theme.chocolate)
 		card.Size = UDim2.new(1, -8, 0, 138)
 		card.LayoutOrder = index
@@ -152,7 +157,7 @@ function Atelier.new(gui, gameView, remotes)
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		buy.Activated:Connect(function()
-            if spec.cosmetic and self.onPreview and self.state and self.state.ready then self.onPreview(spec.id); return end
+            if spec.group and self.onPreview and self.state and self.state.ready then self.onPreview(spec.id); return end
 			if self.state and self.state.ready and ((spec.cosmetic and self.state.levels[spec.id] > 0) or (self.state.prices[spec.id]
 				and self.state.slices >= self.state.prices[spec.id])) then
 				remotes.purchase:FireServer(spec.id)
@@ -161,6 +166,7 @@ function Atelier.new(gui, gameView, remotes)
 		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
+	self.prestigeCard=prestige
 	prestige.Size = UDim2.new(1, -8, 0, 242)
 	prestige.LayoutOrder = 100
 	local heading = text(prestige, "Title", 19, Theme.accent)
@@ -272,6 +278,16 @@ function Atelier:fit()
 	if self.state then self:update(self.state) end
 end
 
+function Atelier:setMode(mode)
+    self.scrollPositions=self.scrollPositions or {}
+    self.scrollPositions[self.mode or 'upgrades']=self.scroll.CanvasPosition
+    self.mode=mode
+    L.set(self.title,if mode=='kitchen' then 'My Kitchen' else 'Upgrades')
+    self.prestigeCard.Visible=mode~='kitchen'
+    self.scroll.CanvasPosition=self.scrollPositions[mode] or Vector2.zero
+    if self.state then self:update(self.state) end
+end
+
 function Atelier:setOpen(open)
 	if self.docked then return end
 	self.view:endDrag(true)
@@ -299,38 +315,40 @@ function Atelier:update(state)
 	end
 	L.set(self.balance, "Pieces: {amount}  ·  {rate} per second", {amount=format(state.slices),rate=format(state.rate)})
 	L.set(self.saved,state.saveStatus or "")
+    if self.mode=='kitchen' and not state.owned.workers_1 then
+        L.set(self.balance,'3/3 · Preview Cocoa Apprentice, then tap Hire for free.')
+    end
 	local affordable = 0
 	for id, card in self.cards do
-		card.frame.Visible = id ~= "speed" or state.levels.workers >= 1
-		local level = state.levels[id]
-		if id=="workers" then
-			L.set(card.description,"Each apprentice: +{reward} per {seconds}s cycle · offline up to 4h",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})
-		elseif id=="speed" then
-			L.set(card.description,"+20% cycle speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
-		end
-		L.set(card.heading, "{upgrade} · {level}", {upgrade=L.token(card.spec.name),level=level})
-		local price = state.prices[id]
-		local canBuy = price and state.slices >= price
-		if canBuy then affordable += 1 end
-		card.buy.BackgroundColor3 = if canBuy then Theme.accent else Theme.chocolateEdge
-		card.buy.TextColor3 = if canBuy then Theme.background else Theme.text
-		card.buy.AutoButtonColor = canBuy == true
-		if card.spec.cosmetic and self.onPreview then
-            card.buy.AutoButtonColor=true; card.buy.BackgroundColor3=Theme.accent; card.buy.TextColor3=Theme.background
-            L.set(card.buy,"Preview in kitchen")
-        elseif card.spec.cosmetic and level > 0 then
-            card.buy.AutoButtonColor = true; card.buy.BackgroundColor3 = Theme.accent
-            card.buy.TextColor3 = Theme.background
-            L.set(card.buy, if state.decor[id] then "Put away · owned" else "Place · owned")
-        elseif not price then L.set(card.buy,"Maximum level")
-		elseif canBuy then L.set(card.buy,"Buy · {price} pieces",{price=format(price)})
-		else L.set(card.buy,"Price {price} · need {missing} more",{price=format(price),missing=format(price-state.slices)}) end
+        local catalog=card.spec.group~=nil
+        card.frame.Visible=if self.mode=='kitchen' then catalog else not catalog and (id~='speed' or state.levels.workers>0) and (id~='kitchen' or state.levels.kitchen==0)
+        local level=state.levels[id] or 0
+        if id=='speed' then
+            L.set(card.description,"+20% cycle speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
+        elseif card.spec.group=='workers' then
+            L.set(card.description,"One apprentice · +{reward} per {seconds}s cycle",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})
+        end
+        if catalog or id=='kitchen' then L.set(card.heading,card.spec.name)
+        else L.set(card.heading,"{upgrade} · {level}",{upgrade=L.token(card.spec.name),level=level}) end
+        local price=state.prices[id]
+        local canBuy=price~=nil and state.slices>=price
+        if canBuy and card.frame.Visible then affordable+=1 end
+        card.buy.BackgroundColor3=if canBuy or catalog then Theme.accent else Theme.chocolateEdge
+        card.buy.TextColor3=if canBuy or catalog then Theme.background else Theme.text
+        card.buy.AutoButtonColor=canBuy or catalog
+        if catalog then
+            if state.owned[id] then L.set(card.buy,'View · owned')
+            elseif price==0 then L.set(card.buy,'Preview · free apprentice')
+            else L.set(card.buy,'Preview · {price} pieces',{price=format(price)}) end
+        elseif not price then L.set(card.buy,'Maximum level')
+        elseif canBuy then L.set(card.buy,'Buy · {price} pieces',{price=format(price)})
+        else L.set(card.buy,'Price {price} · need {missing} more',{price=format(price),missing=format(price-state.slices)}) end
 	end
 	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
 	local gain = state.prestigeGain
 	if gain < 1 then self.confirmed = false end
-	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces and production upgrades? Stars and decorations stay. Gain {stars} stars (+25% income each).",{stars=gain})
-	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Pieces and production reset; decorations stay.",{earned=format(state.earned)}) end
+	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces and infinite upgrades? Your kitchen collection and stars stay. Gain {stars} stars (+25% income each).",{stars=gain})
+	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Pieces and infinite upgrades reset; your kitchen collection stays.",{earned=format(state.earned)}) end
 	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
 	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
 	elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})

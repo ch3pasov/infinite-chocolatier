@@ -4,6 +4,7 @@
 local RunService = game:GetService("RunService")
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Catalog = require(Shared.KitchenCatalog)
 local Action = require(script.Parent.WorkstationAction)
 local Station=require(script.Parent.WorkstationView)
 local Shell=require(script.Parent.KitchenShell)
@@ -77,7 +78,7 @@ function Kitchen.new(view,atelier)
   local state=self.state; local id=self.preview and self.preview.id
   if not id or os.clock()<(self.previewNextBuy or 0) then return end
   local price=state.prices[id]
-  if state.levels[id]>0 or (price and state.slices>=price) then
+  if state.owned[id] or (price and state.slices>=price) then
    self.previewNextBuy=os.clock()+.5; atelier.remotes.purchase:FireServer(id)
   end
  end)
@@ -108,8 +109,9 @@ function Kitchen.new(view,atelier)
  part(world,'CatalogStand',Vector3.new(1.6,1.7,1),self.origin+Vector3.new(-8,.75,8),cocoa)
  local book=part(world,'KitchenCatalog',Vector3.new(1.9,.18,1.3),self.origin+Vector3.new(-8,1.75,8),gold)
  book.CFrame*=CFrame.Angles(math.rad(15),0,0)
+ self.catalogBook=book
  part(world,'CatalogPages',Vector3.new(1.7,.12,1.1),self.origin+Vector3.new(-8,1.9,8),cream)
- prompt('Kitchen upgrades','Shop & decorate',Vector3.new(-8,2.5,8),function() self:openShop() end)
+ prompt('Kitchen upgrades','My Kitchen',Vector3.new(-8,2.5,8),function() self:openShop() end)
  self.characterConnection=player.CharacterAdded:Connect(function(char)
   local humanoid=char:WaitForChild('Humanoid')
   self.walkCamera.CameraSubject=humanoid
@@ -142,11 +144,12 @@ function Kitchen:setWalking()
  self.atelier.remotes.kitchenMode:FireServer('walk')
 end
 function Kitchen:openShop()
+ if not self.state or self.state.levels.kitchen<1 then return end
  self.shopping=true; self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  local shop=self.atelier
- shop.external=true; shop.overlay.Parent=self.gui; shop:fit(); shop:setOpen(true)
+ shop.external=true; shop:setMode('kitchen'); shop.overlay.Parent=self.gui; shop:fit(); shop:setOpen(true)
  shop.onClose=function()
-  shop.onClose=nil; shop.external=false; shop.overlay.Parent=self.view.gui; shop:fit()
+  shop.onClose=nil; shop:setMode('upgrades'); shop.external=false; shop.overlay.Parent=self.view.gui; shop:fit()
   self:setWalking()
  end
 end
@@ -168,16 +171,19 @@ function Kitchen:setOpen(open)
  for name,prompt in self.prompts do prompt.Enabled=open and (name~='Apprentice worktable' or self.state.levels.workers>0) end
 end
 function Kitchen:update(state)
+ local justUnlocked=self.state and self.state.levels.kitchen==0 and state.levels.kitchen>0
  self.state=state; self.syncedAt=os.clock()
+ if justUnlocked and not self.opened then self.atelier:setOpen(false) end
  if state.ready then
   if self.preview then self:updatePreview() else Decor.update(self,state) end
  end
 end
 function Kitchen:step(dt)
  self.online:step(dt)
+ self:updateOnboarding()
  if not self.opened or not self.state then return end
  local state=self.state; local working=state.levels.workers>0
- for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and (name~='Apprentice worktable' or working) end
+ for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
  self.panel.Visible=self.focus
  self.stations[1].actor:setVisible(false)
  if not working and self.focus and not self.watchPeer then self:setWalking() end
@@ -188,8 +194,8 @@ function Kitchen:step(dt)
  local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(-3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
  local lookOffset
  if self.preview then
-  local shots={plant={Vector3.new(8.5,1.5,9),Vector3.new(-3,2,5)},rug={Vector3.new(0,0,9),Vector3.new(0,8,5)},art={Vector3.new(-10.1,4,8),Vector3.new(6,1,1)}}
-  local shot=shots[self.preview.id]; target=self.origin+shot[1]; lookOffset=shot[2]
+  local shots={workers={Vector3.new(3.7,3,-2),Vector3.new(0,3,7)},temper={Vector3.new(-6,3,-5),Vector3.new(2,2,5)},library={Vector3.new(-4,4,-6),Vector3.new(1,1,5)},clock={Vector3.new(6,5.6,-6),Vector3.new(-1,0,5)},plant={Vector3.new(8.5,1.5,9),Vector3.new(-3,2,5)},rug={Vector3.new(0,0,9),Vector3.new(0,8,5)},art={Vector3.new(-10.1,4,8),Vector3.new(6,1,1)}}
+  local shot=shots[self.previewSpec.group]; target=self.origin+shot[1]; lookOffset=shot[2]
  end
  local distance=if self.focus then 8 else 16
  distance*=math.max(1,1.5/aspect)
@@ -201,18 +207,20 @@ function Kitchen:step(dt)
  self.camera.CFrame=if dt==0 then cf else self.camera.CFrame:Lerp(cf,1-math.exp(-dt*7))
  self.camera.Focus=CFrame.new(target)
  end
- self.stations[2].actor:setVisible(working)
+ local previewId=if self.preview then Preview.update(self.preview,state) else nil
+ local variant=Catalog.selected(state,'workers',previewId)
+ self.stations[2].actor:setStyle(variant)
+ self.stations[2].actor:setVisible(variant>0)
  if self.watchPeer then
   L.set(self.info,if self.watchPeer.player:GetAttribute("KitchenMode")=="cut" then "Watching {name} · live" else "{name} is away from their worktable",{name=self.watchPeer.player.DisplayName})
  elseif working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})
  else L.set(self.info,"Hire your first apprentice in the workshop") end
  local t=((state.productionRemainder or 0)+(os.clock()-(self.syncedAt or os.clock()))/state.cycleSeconds)%1
  self.stations[1]:pose(Action.player(self.view),true,dt)
- self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides),working,dt)
+ self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides),working or variant>0,dt)
 end
 function Kitchen:previewDecor(id)
- local spec
- for _,item in Config.Economy.upgrades do if item.id==id and item.cosmetic then spec=item end end
+ local spec=Catalog.byId[id]
  if not spec or not self.state or not self.state.ready then return end
  if self.atelier.external then self.atelier:setOpen(false) end
  if not self.opened then self:setOpen(true) end
@@ -226,18 +234,42 @@ function Kitchen:updatePreview()
  local state=self.state; local id=self.preview.id
  Decor.update(self,state,Preview.update(self.preview,state))
  L.set(self.previewTitle,self.previewSpec.name)
- local owned=state.levels[id]>0
- local installed=state.decor[id]==true
- L.set(self.previewInfo,if not owned then 'Preview · not purchased' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Decoration put away')
+ local owned=state.owned[id]==true
+ local installed=state.equipped[self.previewSpec.group]==id
+ L.set(self.previewInfo,if id=='workers_1' and not owned then '3/3 · Hire your prepaid apprentice below.' elseif not owned then 'Preview · not purchased' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Put away · purchase bonuses remain')
  local price=state.prices[id]
  local available=owned or (price and state.slices>=price)
  self.previewBuy.AutoButtonColor=available==true
  self.previewBuy.BackgroundColor3=if available then gold else cocoa
  self.previewBuy.TextColor3=if available then cocoa else cream
  if owned then L.set(self.previewBuy,if installed then 'Put away · owned' else 'Place · owned')
+ elseif available and price==0 then L.set(self.previewBuy,'Hire for free · prepaid')
  elseif available then L.set(self.previewBuy,'Buy · {price} pieces',{price=L.number(price)})
  else L.set(self.previewBuy,'Price {price} · need {missing} more',{price=L.number(price or 0),missing=L.number(math.max(0,(price or 0)-state.slices))}) end
 end
+-- Подсказка восстанавливается после входа: оплата и первый найм хранятся на сервере.
+function Kitchen:updateOnboarding()
+ local state=self.state
+ local active=state and state.ready and state.levels.kitchen>0 and not state.owned.workers_1
+ if not self.guide then
+  self.guide=label(self.gui,'KitchenGuide',UDim2.new(.5,-170,0,180),UDim2.fromOffset(340,80))
+  self.guide.AnchorPoint=Vector2.new(.5,0)
+  self.guide.Size=UDim2.new(1,-24,0,80)
+  local bounds=Instance.new('UISizeConstraint'); bounds.MaxSize=Vector2.new(340,80); bounds.Parent=self.guide
+  self.guide.BackgroundColor3=cocoa; self.guide.BackgroundTransparency=.1
+  local mark=Instance.new('BillboardGui'); mark.Name='FirstApprenticeGuide'; mark.Size=UDim2.fromOffset(180,60)
+  mark.StudsOffset=Vector3.new(0,3,0); mark.AlwaysOnTop=true; mark.Adornee=self.catalogBook; mark.Parent=self.gui
+  local caption=label(mark,'Label',UDim2.fromScale(0,0),UDim2.fromScale(1,1)); L.set(caption,'2 · Open this book')
+  self.bookGuide=mark
+ end
+ self.guide.Visible=active==true and not self.shopping
+ self.bookGuide.Enabled=active==true and self.opened and not self.shopping
+ if not active then return end
+ local source=if not self.opened then '1/3 · Tap Walk around kitchen above to meet your apprentice.' elseif self.shopping then '3/3 · Preview Cocoa Apprentice, then tap Hire for free.' else '2/3 · Walk to the golden book on the left and open My Kitchen.'
+ L.set(self.guide,source)
+ self.guide.Position=if self.opened then UDim2.new(.5,0,0,70) else UDim2.new(.5,0,0,180)
+end
+
 function Kitchen:watchPlayer(peer)
  if not self.opened or self.shopping then return end
  self.watchPeer=peer; self.focus=true
