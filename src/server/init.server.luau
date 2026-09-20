@@ -20,8 +20,7 @@ if Config.Kitchen.enabled and Config.Scene3D.enabled then
  require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock)
 end
 local studio = RunService:IsStudio()
-local storage = if studio then nil else ProfileStore.new(DataStoreService:GetDataStore("ChocolateAtelier_v1"), Economy,
-	Config.Economy, HttpService:GenerateGUID(false), os.time)
+local dataStore = if studio then nil else DataStoreService:GetDataStore("ChocolateAtelier_v1")
 local sessions = {}
 local loading = {}
 local requests = {}
@@ -66,7 +65,7 @@ local function save(player, release)
 	end
 	session.saving = true
 	local ok, written = pcall(function()
-		return storage:save(tostring(player.UserId), session.data, release)
+		return session.storage:save(tostring(player.UserId), session.data, release)
 	end)
 	session.saving = false
 	if ok and written then
@@ -79,11 +78,11 @@ local function save(player, release)
 		warn("Chocolate profile save failed", player.UserId)
 	end
 	if release then
-		-- Выход повторяется без снятия блокировки чужого сервера.
+		-- Выход повторяется без снятия блокировки другого входа игрока.
 		if not ok then
 			for _ = 1, 2 do
 				task.wait(1)
-				local retryOK, retryWritten = pcall(function() return storage:save(tostring(player.UserId), session.data, true) end)
+				local retryOK, retryWritten = pcall(function() return session.storage:save(tostring(player.UserId), session.data, true) end)
 				if retryOK and retryWritten then break end
 			end
 		end
@@ -99,6 +98,11 @@ end
 local function join(player)
 	if loading[player] or sessions[player] or closing then return end
 	loading[player] = true
+	-- Один сервер может ещё сохранять предыдущий Player этого же UserId.
+	-- Поэтому аренда принадлежит входу, а повторные попытки загрузки этого
+	-- входа используют тот же токен и не конфликтуют сами с собой.
+	local storage = if studio then nil else ProfileStore.new(dataStore, Economy,
+		Config.Economy, HttpService:GenerateGUID(false), os.time)
 	local data, offline, offlineReport
 	if studio then
 		data, offline = Economy.load(nil), 0
@@ -114,7 +118,7 @@ local function join(player)
 		if player.Parent then player:Kick(Catalog.format("Could not load your progress. Wait a moment and rejoin. Your save has not been changed.", nil, player.LocaleId)) end
 		return
 	end
-	sessions[player] = { data = data, offline = offline, offlineReport = offlineReport, tick = os.clock(), lastRound = -math.huge,
+	sessions[player] = { data = data, storage = storage, offline = offline, offlineReport = offlineReport, tick = os.clock(), lastRound = -math.huge,
 		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
 	loading[player] = nil

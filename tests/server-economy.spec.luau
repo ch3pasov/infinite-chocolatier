@@ -11,25 +11,35 @@ local function signal()
 	return { Connect = function(_, fn) table.insert(callbacks, fn) end,
 		Fire = function(_, ...) for _, fn in callbacks do fn(...) end end }
 end
-local function fixture(studio, seed, userId, savedAt)
+local function makePlayer(userId)
+	return { UserId = userId or 123, Parent = true, Kick = function(self, message) self.kicked = message end }
+end
+local function fixture(studio, seed, userId, savedAt, options)
 	local now = 1000
 	local sent = {}
 	local events = {}
 	for _, name in { "stateSync", "requestState", "roundComplete", "purchase", "prestige" } do
 		events[name] = { OnServerEvent = signal(), FireClient = function(_, _, state) table.insert(sent, state) end }
 	end
-	local player = { UserId = userId or 123, Parent = true, Kick = function(self, message) self.kicked = message end }
+	local player = makePlayer(userId)
 	local players = { PlayerAdded = signal(), PlayerRemoving = signal(), GetPlayers = function() return {} end }
 	local record = if seed then { data = seed, savedAt = savedAt or now } else nil
+	local beforeUpdate
 	local store = { UpdateAsync = function(_, _, callback)
+		-- Однократная задержка запроса позволяет воспроизвести другой вход
+		-- до выполнения callback старого сохранения без настоящего DataStore.
+		local hook = beforeUpdate; beforeUpdate = nil
+		if hook then hook() end
 		local nextRecord = callback(record)
 		if nextRecord then record = nextRecord end
+		if options and options.afterUpdate then options.afterUpdate(nextRecord) end
 		return nextRecord
 	end }
 	local modules = { KitchenRelay = {start=function() end}, KitchenRooms = {start=function() end}, LocalizationCatalog = require("../src/shared/LocalizationCatalog"), Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
+	local nextToken = 0
 	local services = {
 		Players = players, ReplicatedStorage = { WaitForChild = function() return { LocalizationCatalog = "LocalizationCatalog", Config = "Config", Economy = "Economy", Remotes = "Remotes" } end },
-		HttpService = { GenerateGUID = function() return "server" end },
+		HttpService = { GenerateGUID = function() nextToken += 1; return "session-" .. nextToken end },
 		RunService = { IsStudio = function() return studio end },
 		DataStoreService = { GetDataStore = function() assert(not studio, "Studio обратился к настоящим сохранениям"); return store end },
 	}
@@ -41,10 +51,60 @@ local function fixture(studio, seed, userId, savedAt)
 	}, injectGlobals = true })()
 	players.PlayerAdded:Fire(player)
 	return { player = player, events = events, players = players, sent = sent,
-		advance = function() now += 1 end, latest = function() return sent[#sent] end,
+		advance = function(seconds) now += seconds or 1 end, latest = function() return sent[#sent] end,
+		beforeUpdate = function(hook) beforeUpdate = hook end,
 		record = function() return record end }
 end
 return function(h)
+ h.test("потерянный ответ загрузки повторяется с той же арендой и не удваивает доход",function()
+  local replies=0
+  local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,900,{
+   afterUpdate=function(record)
+    replies+=1
+    if replies==1 then assert(record.owner); error("Ответ потерян после успешной записи") end
+   end,
+  })
+  h.equals(replies,2); h.equals(f.player.kicked,nil)
+  h.equals(f.latest().ready,true); h.equals(f.latest().slices,10)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().data.slices,10); h.equals(f.record().owner,nil)
+ end)
+ h.test("повторный вход на тот же сервер не забирает ещё занятую запись",function()
+  local f=fixture(false,{slices=100})
+  local owner=f.record().owner
+  local newcomer=makePlayer(f.player.UserId)
+  f.players.PlayerAdded:Fire(newcomer)
+  assert(newcomer.kicked,"Второй вход принял ещё занятую запись")
+  h.equals(f.record().owner,owner)
+  f.events.purchase.OnServerEvent:Fire(f.player,"craft")
+  f.players.PlayerRemoving:Fire(f.player)
+  local nextPlayer=makePlayer(f.player.UserId)
+  f.players.PlayerAdded:Fire(nextPlayer)
+  h.equals(nextPlayer.kicked,nil); h.equals(f.latest().levels.craft,1)
+  assert(f.record().owner~=owner,"Новый вход должен получить собственную аренду")
+ end)
+ h.test("задержавшееся сохранение вышедшего игрока не перезаписывает новую сессию",function()
+  local f=fixture(false,{slices=100})
+  local oldOwner=f.record().owner
+  f.events.purchase.OnServerEvent:Fire(f.player,"craft")
+  local newcomer=makePlayer(f.player.UserId)
+  local newOwner
+  f.beforeUpdate(function()
+   f.advance(Config.Economy.leaseSeconds+1)
+   f.players.PlayerAdded:Fire(newcomer)
+   h.equals(newcomer.kicked,nil)
+   newOwner=f.record().owner
+   f.events.roundComplete.OnServerEvent:Fire(newcomer)
+  end)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().owner,newOwner)
+  assert(newOwner~=oldOwner,"Аренда ошибочно общая на весь сервер")
+  h.equals(f.record().data.levels.craft,0)
+  f.players.PlayerRemoving:Fire(newcomer)
+  h.equals(f.record().owner,nil)
+  h.equals(f.record().data.slices,101)
+  h.equals(f.record().data.levels.craft,0)
+ end)
  h.test("сервер сохраняет офлайн-отчёт на весь вход без повторного начисления при запросах",function()
   local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,900)
   h.equals(f.latest().offline,10); h.equals(f.latest().offlineReport.seconds,100)
