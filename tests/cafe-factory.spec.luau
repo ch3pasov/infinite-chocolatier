@@ -3,6 +3,18 @@ local Q=require('../src/shared/CafeQueue')
 local R=require('../src/shared/StaffRoster')
 local E=require('../src/shared/Economy')
 return function(h)
+ h.test('список для визита содержит только уникальные доступные дома с данными владельцев',function()
+  local records={{owner=10,index=0,online=true,name='Me',count=1000000},
+   {owner=20,index=1,online=true},{owner=20,index=0,online=true,name='Friend',count=7},
+   {owner=30,index=0,online=false},{owner=40,index=0,online=true,name='Other',count=3},
+   {owner=20,index=0,online=true,name='Duplicate'}, {owner=50,index=0,online=true,name='Current'}}
+  local result=Q.visitors(records,10,50); h.equals(#result,2)
+  h.equals(result[1].owner,20); h.equals(result[1].name,'Friend'); h.equals(result[1].count,7)
+  h.equals(result[2].owner,40)
+  records[3].online=false; records[6].online=false
+  result=Q.visitors(records,10,50); h.equals(#result,1); h.equals(result[1].owner,40)
+  h.equals(#Q.visitors({records[1]},10,10),0)
+ end)
  h.test('чередование без пропусков и повторов при разных размерах фабрик',function()
   for a=0,4 do for b=0,4 do for c=0,3 do
    local segments=Q.build({{owner=1,index=0,online=true,count=a},{owner=2,index=0,online=true,count=b},{owner=3,index=0,online=true,count=c}})

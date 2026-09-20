@@ -2,6 +2,14 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Choose a cafe"]="Выбрать кафе",
+ ["Visit a cafe"]="В гости в кафе",
+ ["Players to visit: {count}"]="К кому можно зайти: {count}",
+ ["Other players' cafes will appear here when they join this server."]="Здесь появятся кафе для посещения, когда на сервер придут другие игроки.",
+ ["Next cafe →"]="Следующее кафе →",
+ ["Factory: {count} cafes"]="Кафе на фабрике: {count}",
+ ["Visiting cafe…"]="Отправляемся в кафе…",
+ ["That cafe is no longer available. Choose another."]="Это кафе уже недоступно. Выбери другое.",
  ["MAX"]="МАКС",
  ["Buy ×{count} · {price} pieces"]="Купить ×{count} · {price} долек",
  ["×10: {price} · need {missing} more"]="×10: {price} · не хватает {missing}",

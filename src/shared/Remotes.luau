@@ -12,6 +12,7 @@ Remotes.Names = {
 	Prestige = "Prestige",
 	KitchenMode = "KitchenMode",
 	KitchenAction = "KitchenAction",
+	CafeVisit = "CafeVisit",
 }
 
 function Remotes.ensure(parent: Instance)
@@ -40,6 +41,7 @@ function Remotes.ensure(parent: Instance)
 		prestige = getEvent(Remotes.Names.Prestige),
 	kitchenMode = getEvent(Remotes.Names.KitchenMode),
 		kitchenAction = getEvent(Remotes.Names.KitchenAction),
+		cafeVisit = getEvent(Remotes.Names.CafeVisit),
 	}
 end
 

@@ -16,7 +16,7 @@ local ProfileStore = require(script.ProfileStore)
 local remotes = Remotes.ensure(ReplicatedStorage)
 local kitchens
 if Config.Kitchen.enabled and Config.Scene3D.enabled then
- kitchens=require(script.KitchenRooms).start(remotes.kitchenMode)
+ kitchens=require(script.KitchenRooms).start(remotes.kitchenMode,remotes.cafeVisit)
  require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock)
 end
 local studio = RunService:IsStudio()

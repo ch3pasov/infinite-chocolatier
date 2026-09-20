@@ -9,7 +9,7 @@ local Players=game:GetService('Players')
 local Workspace=game:GetService('Workspace')
 local RunService=game:GetService('RunService')
 local Rooms={}
-function Rooms.start(remote)
+function Rooms.start(remote,visitRemote)
  local homes,slots,visitors,byKey,pools={},{},{},{},{}
  local directory=Instance.new('Folder'); directory.Name='KitchenIslands'; directory.Parent=Workspace
  local function solid(parent,name,size,position)
@@ -39,11 +39,6 @@ function Rooms.start(remote)
     room.model:SetAttribute('Staff'..side,id); room.model:SetAttribute('StaffSeed'..side,seed)
    end
   end
- end
- local function records()
-  local records={}
-  for _,room in slots do table.insert(records,{owner=room.id,index=room.index,online=room.owner~=nil,count=room.count}) end
-  return records
  end
  local function enter(player,room)
   local previous=visitors[player]; visitors[player]=room
@@ -77,20 +72,32 @@ function Rooms.start(remote)
    stroke(Vector3.new(.65,.22,.2),Vector3.new(.7,.16,.08),-math.pi/4)
    stroke(Vector3.new(.65,-.22,.2),Vector3.new(.7,.16,.08),math.pi/4)
   end
-  local prompt=Instance.new('ProximityPrompt'); prompt.Name=name..'Prompt'; prompt.ActionText=if home then 'Return home' else 'Next cafe'
+  local prompt=Instance.new('ProximityPrompt'); prompt.Name=name..'Prompt'; prompt.ActionText=if home then 'Return home' else 'Choose a cafe'
   prompt.ObjectText='Infinite Chocolatier'; prompt.MaxActivationDistance=7; prompt.RequiresLineOfSight=false; prompt.Parent=board
   prompt.Triggered:Connect(function(player)
    local own=homes[player]; local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
    if not own or own.mode~='walk' or not root or (root.Position-board.Position).Magnitude>9 or visitors[player]~=room then return end
-   local now=os.clock(); if now<(own.nextVisit or 0) then return end; own.nextVisit=now+.5
-   if home then enter(player,own); return end
-   local id=Queue.nextVisitor(records(),player.UserId,room.id)
-   if not id then return end
-   local target=byKey[Queue.key(id,0)]
-   if not target or not target.owner then return end
-   enter(player,target)
+   local now=os.clock(); if now<(own.nextVisit or 0) then return end
+   if home then own.nextVisit=now+.5; enter(player,own); return end
+   if now<(own.nextDirectory or 0) then return end
+   own.nextDirectory=now+.5; visitRemote:FireClient(player,'open')
   end)
  end
+ -- Выбор из меню не даёт обходить физическую стрелку, режим прогулки
+ -- или уход владельца. Только его домашнее кафе может стать назначением.
+ visitRemote.OnServerEvent:Connect(function(player,id)
+  if type(id)~='number' or id~=id or id==math.huge or id%1~=0 or id==player.UserId then return end
+  local own=homes[player]; local room=visitors[player]
+  local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+  local board=room and room.model:FindFirstChild('NextCafeArrow')
+  if not own or own.mode~='walk' or not root or not board or (root.Position-board.Position).Magnitude>9 then
+   visitRemote:FireClient(player,'close'); return
+  end
+  local now=os.clock(); if now<(own.nextVisit or 0) then return end; own.nextVisit=now+.5
+  local target=byKey[Queue.key(id,0)]
+  if not target or not target.owner or target==room then visitRemote:FireClient(player,'unavailable'); return end
+  enter(player,target); visitRemote:FireClient(player,'arrived')
+ end)
  create=function(player,index,source)
   local id=player.UserId; local key=Queue.key(id,index)
   if byKey[key] then return byKey[key] end

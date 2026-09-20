@@ -28,16 +28,20 @@ function Queue.next(segments,owner,index)
  return nil
 end
 -- Посещения отделены от декоративной очереди: только дома других игроков онлайн.
-function Queue.nextVisitor(records,viewer,current)
- local ids={}; local seen={}
+function Queue.visitors(records,viewer,current)
+ local result={}; local seen={}
  for _,r in records do
   if r.index==0 and r.online and r.owner~=viewer and r.owner~=current and not seen[r.owner] then
-   seen[r.owner]=true; table.insert(ids,r.owner)
+   seen[r.owner]=true; table.insert(result,r)
   end
  end
- table.sort(ids)
- for _,id in ids do if id>current then return id end end
- return ids[1]
+ table.sort(result,function(a,b) return a.owner<b.owner end)
+ return result
+end
+function Queue.nextVisitor(records,viewer,current)
+ local entries=Queue.visitors(records,viewer,current)
+ for _,entry in entries do if entry.owner>current then return entry.owner end end
+ return if entries[1] then entries[1].owner else nil
 end
 -- Свои стажёры чередуются с чужими кабинетами; чужие владельцы идут
 -- по кругу, чтобы большая фабрика одного игрока не заслоняла остальных.

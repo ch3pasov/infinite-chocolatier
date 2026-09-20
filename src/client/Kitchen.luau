@@ -16,6 +16,7 @@ local Decor=require(script.Parent.KitchenDecor)
 local Preview=require(script.Parent.DecorPreview)
 local AvatarVisibility=require(script.Parent.AvatarVisibility)
 local WalkCamera=require(script.Parent.WalkCamera)
+local CafeDirectory=require(script.Parent.CafeDirectory)
 local Kitchen = {}
 local cocoa = Color3.fromRGB(71,38,27)
 local cream = Color3.fromRGB(255,232,192)
@@ -63,7 +64,7 @@ function Kitchen.new(view,atelier)
  local world=self.stage:createWorld("KitchenStations"); self.world=world
  local camera=self.stage:createCamera("KitchenCamera",45); self.camera=camera
  self.walkCamera=self.stage:createCamera("KitchenWalkCamera",70)
- self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping and not view.diagnosticsOpen end)
+ self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping and not self.browsing and not view.diagnosticsOpen end)
  Shell.new(world,self.origin)
  self.stations={Station.new(view,world,self.origin,-3.7,true),Station.new(view,world,self.origin,3.7,false)}
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
@@ -98,7 +99,7 @@ function Kitchen.new(view,atelier)
   local anchor=part(world,name,Vector3.new(.2,.2,.2),self.origin+position,cocoa); anchor.Transparency=1
   local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(caption); prompt.ObjectText=L.text(name)
   prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
-  prompt.Triggered:Connect(function() if self.opened and not self.focus and not self.shopping then callback() end end)
+  prompt.Triggered:Connect(function() if self.opened and not self.focus and not self.shopping and not self.browsing then callback() end end)
   self.prompts[name]=prompt
  end
  prompt('My worktable','Cut chocolate',Vector3.new(-3.7,2,3),function() self:setOpen(false) end)
@@ -119,11 +120,13 @@ function Kitchen.new(view,atelier)
   if self.opened and not self.focus and not self.shopping then self:setWalking() else self.controls:Disable() end
  end)
  self.online=Online.new(self)
+ self.directory=CafeDirectory.new(self)
  self.render=RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
  gui.Destroying:Connect(function()
   self.render:Disconnect(); self.walkController:destroy()
   self.characterConnection:Disconnect(); self:setAvatarVisible(true); self.controls:Enable()
   self.online:destroy()
+  self.directory:destroy()
   for _,station in self.stations do station:destroy() end
  end)
  view.gui.Destroying:Connect(function() gui:Destroy() end)
@@ -133,6 +136,7 @@ function Kitchen:setAvatarVisible(visible)
  self.avatarVisibility:set(self.player.Character,visible)
 end
 function Kitchen:setWalking()
+ if self.directory then self.directory:close() end
  self.preview=nil
  if self.previewPanel then self.previewPanel.Visible=false end
  if self.state and self.state.ready then Decor.update(self,self.state) end
@@ -184,7 +188,7 @@ function Kitchen:step(dt)
  self:updateOnboarding()
  if not self.opened or not self.state then return end
  local state=self.state; local working=state.levels.workers>0
- for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
+ for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and not self.browsing and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
  self.panel.Visible=self.focus
  self.stations[1].actor:setVisible(false)
  if not working and self.focus and not self.watchPeer then self:setWalking() end

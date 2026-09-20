@@ -47,7 +47,7 @@ function Online:add(model)
  local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(if peer.staff then 'Watch apprentices' else 'Watch player')
  prompt.ObjectText=author.DisplayName..(if peer.staff then ' · '..index else ' (@'..author.Name..')')
  prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor; peer.prompt=prompt
- prompt.Triggered:Connect(function() if k.opened and not k.focus and not k.shopping and peer.station then k:watchPlayer(peer) end end)
+ prompt.Triggered:Connect(function() if k.opened and not k.focus and not k.shopping and not k.browsing and peer.station then k:watchPlayer(peer) end end)
  return peer
 end
 function Online:clearQueue()
@@ -98,7 +98,7 @@ function Online:step(dt)
   elseif not near and peer.station then
    for _,station in peer.stations do station:destroy() end; peer.stations={}; peer.station=nil
   end
-  peer.prompt.Enabled=near and not k.focus and not k.shopping
+  peer.prompt.Enabled=near and not k.focus and not k.shopping and not k.browsing
   if peer.station then
    local packet=self.packets[peer.player.UserId]
    local cycle=math.max(.01,peer.model:GetAttribute('CycleSeconds') or 10)
@@ -145,8 +145,8 @@ function Online:updateIslands(models)
  -- полсекунды перезапускало встроенную подсказку и скрывало значок клавиши.
  for _,entry in prompts do
   local prompt=entry.prompt; local home=prompt.Name=='HomeCafePrompt'
-  local enabled=entry.current and k.opened and not k.focus and not k.shopping and (not home or owner~=k.player.UserId or index~=0)
-  local text=L.text(if home then 'Return home' elseif entry.current and not Queue.nextVisitor(records,k.player.UserId,owner) then 'Waiting for another cafe' else 'Next cafe')
+  local enabled=entry.current and k.opened and not k.focus and not k.shopping and not k.browsing and (not home or owner~=k.player.UserId or index~=0)
+  local text=L.text(if home then 'Return home' elseif entry.current and not Queue.nextVisitor(records,k.player.UserId,owner) then 'Waiting for another cafe' else 'Choose a cafe')
   if prompt.ActionText~=text then prompt.ActionText=text end
   if prompt.Enabled~=enabled then prompt.Enabled=enabled end
  end

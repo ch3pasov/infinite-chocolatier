@@ -14,6 +14,7 @@ return function(h)
   local players={PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function() return {} end}
   function players:GetFriendsAsync() return {IsFinished=true,GetCurrentPage=function() return {{Id=1001},{Id=1002},{Id=1003},{Id=1004}} end} end
   local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}; local prompts={}; local now=0
+  local visitRemote={OnServerEvent=signal(),FireClient=function(_,player,action) player.directoryAction=action end}
   local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'):gsub('prompt.Triggered:Connect%(', 'connectPrompt(prompt,'),{environment={
    game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(_,name) return if name=='Shared' then {WaitForChild=function(_,module) return module end} else name end} else world end},
    require=function(name) return require("../src/shared/"..name) end,
@@ -21,7 +22,7 @@ return function(h)
    os={clock=function() return now end},connectPrompt=function(prompt,fn) prompts[prompt]=fn end,
    task={spawn=function(fn) fn() end,delay=function(_,fn) table.insert(delayed,fn) end},
   },injectGlobals=true})()
-  local controller=Rooms.start(remote)
+  local controller=Rooms.start(remote,visitRemote)
   local function player(id)
    local p={UserId=id,Parent=true,CharacterAdded=signal()}
    function p:SetAttribute(k,v) self[k]=v end
@@ -43,7 +44,14 @@ return function(h)
    now+=1
    local board=directory['KitchenRoom_'..roomId][if home then 'HomeCafeArrow' else 'NextCafeArrow']
    p.root.Position=board.Position
+   p.directoryAction=nil
    prompts[board:FindFirstChildOfClass('ProximityPrompt')](p)
+   if not home and p.directoryAction=='open' then
+    local records={}
+    for _,model in directory:GetChildren() do table.insert(records,{owner=model:GetAttribute('OwnerId'),index=model:GetAttribute('CafeIndex'),online=model:GetAttribute('OwnerOnline')}) end
+    local id=require('../src/shared/CafeQueue').nextVisitor(records,p.UserId,p.VisitingKitchen)
+    if id then visitRemote.OnServerEvent:Fire(p,id) end
+   end
   end
   -- Сравниваем реальные результаты обоих строителей, включая перенос комнаты.
   local source=fs.readFile('src/client/KitchenShell.luau'):gsub('world:PivotTo%([^\n]+','')
@@ -103,6 +111,15 @@ return function(h)
   local arrow=directory.KitchenRoom_1.NextCafeArrow
   local trigger=prompts[arrow:FindFirstChildOfClass('ProximityPrompt')]
   a.root.Position=a.KitchenOrigin; trigger(a); h.equals(a.VisitingKitchen,1)
+  visitRemote.OnServerEvent:Fire(a,2); h.equals(a.VisitingKitchen,1); h.equals(a.directoryAction,'close')
+  remote.OnServerEvent:Fire(a,'cut'); a.root.Position=arrow.Position
+  visitRemote.OnServerEvent:Fire(a,2); h.equals(a.VisitingKitchen,1)
+  remote.OnServerEvent:Fire(a,'walk'); now+=1; trigger(a)
+  h.equals(a.directoryAction,'open'); h.equals(a.VisitingKitchen,1,'меню само не телепортирует')
+  for _,bad in {1,{},0/0,math.huge,'2',2.5} do visitRemote.OnServerEvent:Fire(a,bad); h.equals(a.VisitingKitchen,1) end
+  visitRemote.OnServerEvent:Fire(a,99999); h.equals(a.directoryAction,'unavailable')
+  now+=1; visitRemote.OnServerEvent:Fire(a,2); h.equals(a.VisitingKitchen,2); h.equals(a.directoryAction,'arrived')
+  visit(a,2,true); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'cut'); visit(a,1,false); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'walk'); visit(a,1,false)
   h.equals(a.VisitingKitchen,2); h.equals(a.position,b.KitchenOrigin+R.Vector3.new(0,3,12))
@@ -110,6 +127,9 @@ return function(h)
   players.PlayerRemoving:Fire(b); assert(directory:FindFirstChild('KitchenRoom_2'))
   h.equals(directory.KitchenRoom_2:GetAttribute('OwnerOnline'),false)
   local c=player(3); assert(c.KitchenOrigin~=b.KitchenOrigin,'занятое гостем место переиспользовано')
+  remote.OnServerEvent:Fire(c,'walk'); c.root.Position=directory.KitchenRoom_3.NextCafeArrow.Position
+  now+=1; visitRemote.OnServerEvent:Fire(c,2)
+  h.equals(c.VisitingKitchen,3); h.equals(c.directoryAction,'unavailable','ушедший хозяин не принимает нового гостя')
   remote.OnServerEvent:Fire(c,'walk'); visit(c,3,false); visit(c,1,false)
   h.equals(c.VisitingKitchen,1,'кафе ушедшего владельца недоступно новым гостям')
   -- Возвращение владельца использует сохранённый остров без дубликатов.
