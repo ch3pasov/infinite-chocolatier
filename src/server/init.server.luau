@@ -36,6 +36,8 @@ local function send(player, notice, reward)
 	local state = Economy.snapshot(session.data)
  if kitchens then kitchens:sync(player,state) end
 	state.ready = true
+	state.canTestBalance = player.UserId == Config.BalanceTesterUserId
+	state.prestigeDisabled = session.data.ignorePrestige == true
 	state.offline = session.offline
 	state.notice = if type(notice)=="string" then {key=notice} else notice
 	state.reward = reward
@@ -150,6 +152,13 @@ remotes.purchase.OnServerEvent:Connect(function(player, id)
 	if now - session.lastAction < 0.2 then return end
 	session.lastAction = now
 	accrue(session)
+	-- Режим только текущей сессии: Economy.load исключает флаг из сохранений.
+	if id == "admin_toggle_prestige" then
+		if player.UserId ~= Config.BalanceTesterUserId then return end
+		session.data.ignorePrestige = not session.data.ignorePrestige
+		send(player)
+		return
+	end
 	local bought = Economy.buy(session.data, id)
 	send(player, if bought then "Upgrade purchased" else "Cannot purchase: check your balance and upgrade level")
 end)

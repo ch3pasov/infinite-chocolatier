@@ -97,7 +97,7 @@ function Economy.load(raw)
 end
 
 function Economy.multiplier(data)
-	return (1 + data.levels.recipe * E.recipeBonus) * (1 + data.stars * E.starBonus) * (1 + data.levels.temper * E.temperBonus)
+	return (1 + data.levels.recipe * E.recipeBonus) * (1 + (if data.ignorePrestige then 0 else data.stars) * E.starBonus) * (1 + data.levels.temper * E.temperBonus)
 end
 
 function Economy.manual(data)

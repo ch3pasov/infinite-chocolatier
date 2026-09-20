@@ -199,6 +199,16 @@ function Atelier.new(gui, gameView, remotes)
 			self:update(self.state)
 		end
 	end)
+	self.balanceTest=box(scroll,"BalanceTest",Theme.chocolateDark)
+	self.balanceTest.Size=UDim2.new(1,-8,0,112)
+	self.balanceTest.LayoutOrder=101
+	self.balanceTest.Visible=false
+	local testInfo=text(self.balanceTest,"Info",14,Theme.muted)
+	testInfo.Position=UDim2.fromOffset(12,8); testInfo.Size=UDim2.new(1,-24,0,44)
+	L.set(testInfo,"Admin · session only. Stored stars are kept.")
+	self.togglePrestige=button(self.balanceTest,"TogglePrestige","Disable prestige bonus")
+	self.togglePrestige.Position=UDim2.fromOffset(12,60); self.togglePrestige.Size=UDim2.new(1,-24,0,40)
+	self.togglePrestige.Activated:Connect(function() remotes.purchase:FireServer("admin_toggle_prestige") end)
 	self.saved = text(panel, "SaveStatus", 12, Theme.muted)
 	self.saved.Position = UDim2.new(0, 16, 1, -34)
 	self.saved.Size = UDim2.new(1, -32, 0, 24)
@@ -302,6 +312,8 @@ function Atelier:update(state)
 	if not state then return end
 	self.state = state
 	if not state.ready then return end
+	self.balanceTest.Visible=state.canTestBalance==true and self.mode~='kitchen'
+	L.set(self.togglePrestige,if state.prestigeDisabled then "Prestige bonus OFF · enable" else "Disable prestige bonus")
 	self.view.inputBlocked = self.overlay.Visible and not self.docked
 	L.set(self.view.counter, "PIECES  {amount}", {amount=format(state.slices)})
 	if state.notice then

@@ -11,14 +11,14 @@ local function signal()
 	return { Connect = function(_, fn) table.insert(callbacks, fn) end,
 		Fire = function(_, ...) for _, fn in callbacks do fn(...) end end }
 end
-local function fixture(studio, seed)
+local function fixture(studio, seed, userId)
 	local now = 1000
 	local sent = {}
 	local events = {}
 	for _, name in { "stateSync", "requestState", "roundComplete", "purchase", "prestige" } do
 		events[name] = { OnServerEvent = signal(), FireClient = function(_, _, state) table.insert(sent, state) end }
 	end
-	local player = { UserId = 123, Parent = true, Kick = function(self, message) self.kicked = message end }
+	local player = { UserId = userId or 123, Parent = true, Kick = function(self, message) self.kicked = message end }
 	local players = { PlayerAdded = signal(), PlayerRemoving = signal(), GetPlayers = function() return {} end }
 	local record = if seed then { data = seed, savedAt = now } else nil
 	local store = { UpdateAsync = function(_, _, callback)
@@ -45,6 +45,27 @@ local function fixture(studio, seed)
 		record = function() return record end }
 end
 return function(h)
+ h.test("бонус престижа отключает только админ, звёзды сохраняются",function()
+  local seed={stars=20,levels={workers=1}}
+  local f=fixture(false,seed,Config.BalanceTesterUserId)
+  local boosted=f.latest().manual
+  assert(f.latest().canTestBalance)
+  f.events.purchase.OnServerEvent:Fire(f.player,'admin_toggle_prestige')
+  h.equals(f.latest().prestigeDisabled,true); h.equals(f.latest().stars,20)
+  h.near(f.latest().manual*6,boosted)
+  f.advance(); f.events.prestige.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().prestigeDisabled,true)
+  f.advance(); f.events.purchase.OnServerEvent:Fire(f.player,'admin_toggle_prestige')
+  h.equals(f.latest().prestigeDisabled,false); h.near(f.latest().manual,boosted)
+  local other=fixture(false,seed,456)
+  h.equals(other.latest().canTestBalance,false)
+  other.events.purchase.OnServerEvent:Fire(other.player,'admin_toggle_prestige')
+  other.advance(); other.events.requestState.OnServerEvent:Fire(other.player)
+  h.equals(other.latest().prestigeDisabled,false); h.near(other.latest().manual,boosted)
+  local loaded=Economy.load({stars=20,ignorePrestige=true})
+  h.equals(loaded.ignorePrestige,nil); h.equals(loaded.stars,20)
+ end)
+
 	h.test("локальный Studio запускается без доступа к DataStore", function()
 		local f = fixture(true)
 		h.equals(f.latest().ready, true)

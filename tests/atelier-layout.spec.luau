@@ -48,7 +48,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},metrics={},balance={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end

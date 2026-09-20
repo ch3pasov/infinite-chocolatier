@@ -2,6 +2,9 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Admin · session only. Stored stars are kept."]="Админ · только до выхода из игры. Накопленные звёзды сохраняются.",
+ ["Disable prestige bonus"]="Отключить бонус престижа",
+ ["Prestige bonus OFF · enable"]="Бонус престижа ВЫКЛ · включить",
  ["Reset pieces, all upgrades, apprentices and furniture? Only stars and lifetime stats stay. Gain {stars} stars (+25% income each)."] = "Сбросить дольки, все улучшения, стажёров и мебель? Останутся только звёзды и общая статистика. Получишь {stars} звёзд (+25% дохода за каждую).",
  ["Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Resets pieces, all upgrades, apprentices and furniture."] = "Заработано: {earned}. Звёзды: одна за 5 тыс., две за 20 тыс. (+25% дохода за каждую). Сбросятся дольки, все улучшения, стажёры и мебель.",
  ["+20% trick reward · bonus while owned"] = "+20% к награде за фокус · бонус за владение",
