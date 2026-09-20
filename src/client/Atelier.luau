@@ -440,6 +440,13 @@ function Atelier:updateCollection(state)
 	end
 end
 
+function Atelier:updateSaveStatus(state)
+ local age=state.saveAge or 0
+ if state.saveStatus=="Progress saved" and age>=1 then
+  L.set(self.saved,"Saved {seconds}s ago",{seconds=L.number(age)})
+ else L.set(self.saved,state.saveStatus or "") end
+end
+
 function Atelier:update(state)
 	if not state then return end
 	self.state = state
@@ -481,7 +488,7 @@ function Atelier:update(state)
 		L.set(self.metrics,"+{manual} per trick  ·  {rate}/s  ·  ★ {stars}",{manual=format(state.manual),rate=format(state.rate),stars=format(state.stars)})
 	end
 	L.set(self.balance, "Pieces: {amount}  ·  {rate} per second", {amount=format(state.slices),rate=format(state.rate)})
-	L.set(self.saved,state.saveStatus or "")
+	self:updateSaveStatus(state)
     if self.mode=='kitchen' and not state.owned.workers_1 then
         L.set(self.balance,'3/3 · Choose the apprentice spot, then hire for free.')
     end

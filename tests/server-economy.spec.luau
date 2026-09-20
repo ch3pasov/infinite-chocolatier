@@ -47,7 +47,9 @@ local function fixture(studio, seed, userId, savedAt, options)
 		game = { GetService = function(_, name) return services[name] end, BindToClose = function() end },
 		script = { ProfileStore = "ProfileStore", KitchenRooms = "KitchenRooms", KitchenRelay = "KitchenRelay" }, require = function(name) return modules[name] end,
 		os = { clock = function() return now end, time = function() return now end },
-		task = { spawn = function() end, wait = function() end }, warn = function() end,
+		task = { spawn = function(fn, ...)
+			if options and options.runSaves and select("#",...)>0 then fn(...) end
+		end, wait = function() end }, warn = function() end,
 	}, injectGlobals = true })()
 	players.PlayerAdded:Fire(player)
 	return { player = player, events = events, players = players, sent = sent,
@@ -56,6 +58,24 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test("время сохранения отсчитывается от подтверждения и не скрывает задержку",function()
+  local fail=false
+  local f=fixture(false,{slices=100,earned=5000},123,nil,{
+   runSaves=true, afterUpdate=function() if fail then error('Temporary save error') end end,
+  })
+  h.equals(f.latest().saveStatus,'Progress saved'); h.equals(f.latest().saveAge,0)
+  f.advance(20); f.events.purchase.OnServerEvent:Fire(f.player,'craft')
+  h.equals(f.latest().saveAge,20,'покупка не означает запись прогресса')
+  f.events.requestState.OnServerEvent:Fire(f.player); h.equals(f.latest().saveAge,20)
+  f.advance(1); f.events.prestige.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().saveAge,0); h.equals(f.latest().saveStatus,'Progress saved')
+  f.advance(7); f.events.requestState.OnServerEvent:Fire(f.player); h.equals(f.latest().saveAge,7)
+  local delayed=fixture(false,{earned=5000},123,nil,{runSaves=true,afterUpdate=function() if fail then error('Temporary save error') end end})
+  fail=true; delayed.advance(5); delayed.events.prestige.OnServerEvent:Fire(delayed.player)
+  h.equals(delayed.latest().saveStatus,'Saving delayed · retrying'); h.equals(delayed.latest().saveAge,5)
+  local localTest=fixture(true,nil); localTest.advance(10); localTest.events.requestState.OnServerEvent:Fire(localTest.player)
+  h.equals(localTest.latest().saveAge,nil); h.equals(localTest.latest().saveStatus,'Test session · progress is not saved')
+ end)
  h.test("потерянный ответ загрузки повторяется с той же арендой и не удваивает доход",function()
   local replies=0
   local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,900,{

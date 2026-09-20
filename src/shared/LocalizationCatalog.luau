@@ -218,6 +218,7 @@ Catalog.entries = {
 	["Piece collected — the chocolate bar stays whole"] = "Долька собрана — плитка остаётся целой без обратной перемотки",
 	["Price {price} · need {missing} more"] = "Цена {price} · не хватает {missing}",
 	["Progress saved"] = "Прогресс сохранён",
+	["Saved {seconds}s ago"] = "Сохранено {seconds} с назад",
 	["Recipe"] = "Рецептура",
 	["Release to finish the cut"] = "Отпусти, чтобы завершить разрез",
 	["Reset your pieces and all upgrades? Your stars stay. Gain {stars} more; each permanently adds +25% income."] = "Сбросить дольки и все улучшения? Звёзды сохранятся. Получишь ещё {stars}; каждая навсегда даёт +25% к доходу.",

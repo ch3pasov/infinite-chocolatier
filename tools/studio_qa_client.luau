@@ -249,6 +249,18 @@ local function dispatch(args)
    local card=atelier.cards[id]; checked+=checkText(card.frame)
    assert(card.buy.AbsolutePosition.Y>=card.waitHint.AbsolutePosition.Y+card.waitHint.AbsoluteSize.Y,"Purchase label overlaps button")
   end
+  local saveChecks=0
+  for _,status in {'Progress saved','Saving delayed · retrying','Test session · progress is not saved'} do
+   local snapshot=table.clone(state); snapshot.saveStatus=status; snapshot.saveAge=29
+   atelier:update(snapshot)
+   local L=require(script.Localization)
+   local expected=if status=='Progress saved' then L.text('Saved {seconds}s ago',{seconds=L.number(29)}) else L.text(status)
+   assert(atelier.saved.Text==expected,'Save status did not prioritize error or Studio')
+   local size=game:GetService('TextService'):GetTextSize(expected,atelier.saved.TextSize,atelier.saved.Font,Vector2.new(atelier.saved.AbsoluteSize.X,1000))
+   assert(size.Y<=atelier.saved.AbsoluteSize.Y,'Save status overflows footer')
+   saveChecks+=1
+  end
+  atelier:update(state)
   local title=atelier.journal.panel.Title.Text
   if args.locale=="ru-ru" then assert(title=="Дневник шоколатье","Static title was not translated") end
   atelier.journal:close(); atelier:setOpen(false)
@@ -256,7 +268,7 @@ local function dispatch(args)
   assert(kitchen.journalButton.Position.Y.Offset>=64,'Narrow journal button overlaps Roblox controls')
   assert(kitchen.journalButton.TextFits,'Journal button text overflows')
   kitchen:setOpen(false)
-  return {ok=true,locale=args.locale,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
+  return {ok=true,locale=args.locale,saveChecks=saveChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)
   -- При блокировке macOS RenderStepped может не работать. Вызываем тот же

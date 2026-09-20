@@ -184,6 +184,7 @@ Key,Source,Context,Example,ru
 "Return home","Return home","","","Вернуться домой"
 "Return to the highlighted point — your cut progress is saved","Return to the highlighted point — your cut progress is saved","","","Вернись к подсвеченной точке — прогресс сохранён"
 "Reward: +{bonus} bonus pieces","Reward: +{bonus} bonus pieces","","","Награда: +{bonus} долек"
+"Saved {seconds}s ago","Saved {seconds}s ago","","","Сохранено {seconds} с назад"
 "Saving delayed · retrying","Saving delayed · retrying","","","Сохранение задерживается · повторяем"
 "Select apprentice","Select apprentice","","","Выбрать стажёра"
 "Select the report text and copy it into your message. A screenshot with the version badge also helps.","Select the report text and copy it into your message. A screenshot with the version badge also helps.","","","Нажми на текст, скопируй и приложи к сообщению. Можно просто прислать скриншот с отметкой версии."

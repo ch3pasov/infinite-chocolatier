@@ -5,7 +5,7 @@ local luau = require("@lune/luau")
 local R = require("@lune/roblox")
 local Config = require("../src/shared/Config")
 local Layout = require("../src/client/Layout")
-local modules = { Config = Config, Layout = Layout, Theme = {}, Economy=require("../src/shared/Economy"), Localization={number=tostring,token=function(x) return x end,set=function(object,value) object.Text=value end}, KitchenCatalog=require("../src/shared/KitchenCatalog") }
+local modules = { Config = Config, Layout = Layout, Theme = {}, Economy=require("../src/shared/Economy"), Localization={number=tostring,token=function(x) return x end,set=function(object,value,args) object.Text=value; object.Args=args end}, KitchenCatalog=require("../src/shared/KitchenCatalog") }
 local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment = {
 	game = { GetService = function() return { WaitForChild = function() return { Config = "Config", KitchenCatalog="KitchenCatalog", Economy="Economy" } end } end },
 	script = { Parent = { Theme = "Theme", Layout = "Layout", Localization="Localization" } },
@@ -14,6 +14,19 @@ local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment 
 }, injectGlobals = true })()
 
 return function(h)
+ h.test('статус сохранения показывает возраст, но не скрывает ошибку или Studio',function()
+  local ui=setmetatable({saved={}},Atelier)
+  ui:updateSaveStatus({saveStatus='Progress saved',saveAge=0})
+  h.equals(ui.saved.Text,'Progress saved')
+  ui:updateSaveStatus({saveStatus='Progress saved',saveAge=29})
+  h.equals(ui.saved.Text,'Saved {seconds}s ago'); h.equals(ui.saved.Args.seconds,'29')
+  ui:updateSaveStatus({saveStatus='Saving delayed · retrying',saveAge=80})
+  h.equals(ui.saved.Text,'Saving delayed · retrying')
+  ui:updateSaveStatus({saveStatus='Test session · progress is not saved',saveAge=80})
+  h.equals(ui.saved.Text,'Test session · progress is not saved')
+  ui:updateSaveStatus({saveStatus='Progress saved'})
+  h.equals(ui.saved.Text,'Progress saved','старый снимок без возраста остаётся совместимым')
+ end)
  h.test('ответ загрузки блокирует ручной ввод и отменяет активное перетаскивание',function()
   local cancelled=false; local journalState
   local ui=setmetatable({state={ready=true},view={inputBlocked=false,endDrag=function(_,cancel) cancelled=cancel end},

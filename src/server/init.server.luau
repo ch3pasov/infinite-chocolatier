@@ -43,6 +43,8 @@ local function send(player, notice, reward)
 	state.notice = if type(notice)=="string" then {key=notice} else notice
 	state.reward = reward
 	state.saveStatus = if studio then "Test session · progress is not saved" else session.saveStatus
+	-- Возраст последнего подтверждения не маскируется новыми покупками.
+	state.saveAge = if studio then nil else math.max(0, math.floor(os.clock() - session.lastSave))
 	remotes.stateSync:FireClient(player, state)
 end
 
