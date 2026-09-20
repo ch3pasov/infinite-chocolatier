@@ -56,7 +56,7 @@ function Online:add(model)
 end
 function Online:clearQueue()
  for _,entry in self.queueStations or {} do entry.station:destroy() end
- self.queueStations={}; self.queueDecor={}
+ self.queueStations={}; self.queueDecor={}; self.queueRooms={}; self.queueKey=nil; self.queueAnchor=nil
  if self.queue then self.queue:Destroy(); self.queue=nil end
 end
 function Online:updateDecor(room,source)
@@ -240,62 +240,93 @@ function Online:updateIslands(models)
  self:updateLocalVisibility(origin)
  local key=currentKey..':'..tostring(origin)
  for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
- -- Список друзей не меняет стены, мебель и шоколадки. Обновляем только
- -- назначения и ссылки на источники, даже если их Instance был заменён.
- if self.queueKey==key then self:refreshQueueStaff(sources); self:refreshQueueDecor(sources); return end; self.queueKey=key
- self:clearQueue()
- self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
- local function part(name,size,position,color)
-  local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position; p.Color=color
-  p.Anchored=true; p.CanCollide=false; p.CanQuery=false; p.CanTouch=false
-  p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth; p.Parent=self.queue; return p
+ if self.queueKey==key then self:refreshQueueStaff(sources); self:refreshQueueDecor(sources); return end
+ local anchor=currentKey..':'..tostring(origin)
+ if self.queueAnchor~=anchor then
+  self:clearQueue(); self.queueAnchor=anchor
  end
+ self.queueKey=key
+ if not self.queue then
+  self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
+ end
+ -- Позиция в очереди — отдельное место. Покупка или вход соседа заменяет
+ -- только изменившиеся места; прежние аватары, ножи и куски не создаются заново.
+ local previous=self.queueRooms or {}; local rooms={}
+ self.queueStations={}; self.queueDecor={}
  for offset,entry in preview do
   local rear=offset>ahead
+  local slot=if rear then -(offset-ahead) else offset
   local detailed,animated=Queue.detail(offset,ahead)
-  -- До двух последних кабинетов видимой очереди расположены за спиной.
-  -- Ближайший попадает в кадр крупно: ему нужны настоящие стажёры и столы.
-  local location=origin+Vector3.new(0,0,if rear then 38*(offset-ahead) else -38*offset)
-  if detailed then
-   Shell.new(self.queue,location)
-   if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index))
-   else
-    local room={world=self.queue,origin=location,owner=entry.owner}
-    table.insert(self.queueDecor,room); self:updateDecor(room,sources[entry.owner])
-   end
-   -- Полные станции есть в трёх передних комнатах и одной ближайшей задней.
-   -- Количество станций ограничено независимо от числа купленных кафе.
-   if animated then
-    for side,x in {-3.7,3.7} do
-     local isPlayer=entry.index==0 and side==1
-     local station=Station.new(k.view,self.queue,location,x,isPlayer,entry.owner)
-     table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side,rear=rear})
-    end
-   end
-  else
-   for name,spec in {DistantFloor=Structure.floor,DistantFoundation=Structure.foundation} do
-    part(name,Vector3.new(table.unpack(spec.size)),location+Vector3.new(table.unpack(spec.position)),
-     if name=='DistantFloor' then Color3.fromRGB(181,160,130) else Color3.fromRGB(194,173,142))
-   end
-   for _,wall in Structure.walls do
-    part('DistantWall',Vector3.new(table.unpack(wall.size)),location+Vector3.new(table.unpack(wall.position)),Color3.fromRGB(83,112,97))
-   end
-   for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
+  local source=sources[entry.owner]
+  local roomKey=Queue.key(entry.owner,entry.index)..':'..tostring(source:GetAttribute('HasApprentice'))..':'..tostring(detailed)..':'..tostring(animated)
+  local room=previous[slot]; previous[slot]=nil
+  if room and room.key~=roomKey then self:destroyQueueRoom(room); room=nil end
+  if not room then
+   local location=origin+Vector3.new(0,0,-38*slot)
+   room=self:buildQueueRoom(entry,source,location,detailed,animated,rear,slot)
+   room.key=roomKey
   end
-  if not animated then
+  rooms[slot]=room
+  for _,station in room.stations do table.insert(self.queueStations,station) end
+  if room.decor then table.insert(self.queueDecor,room.decor) end
+ end
+ for _,room in previous do self:destroyQueueRoom(room) end
+ self.queueRooms=rooms
+ self:refreshQueueStaff(sources); self:refreshQueueDecor(sources)
+end
+function Online:destroyQueueRoom(room)
+ for _,entry in room.stations do entry.station:destroy() end
+ room.world:Destroy()
+end
+function Online:buildQueueRoom(entry,source,location,detailed,animated,rear,slot)
+ local k=self.kitchen
+ local world=Instance.new('Model'); world.Name='QueueRoom_'..slot; world.Parent=self.queue
+ local room={world=world,stations={}}
+ local function part(parent,name,size,position,color)
+  local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position; p.Color=color
+  p.Anchored=true; p.CanCollide=false; p.CanQuery=false; p.CanTouch=false
+  p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth; p.Parent=parent; return p
+ end
+ if detailed then
+  Shell.new(room.world,location)
+  if entry.index>0 then Decor.update({world=room.world,origin=location},Queue.decor(entry.owner,entry.index))
+  else
+   room.decor={world=room.world,origin=location,owner=entry.owner}
+   self:updateDecor(room.decor,source)
+  end
+  -- Полные станции есть в трёх передних комнатах и одной ближайшей задней.
+  -- Количество станций ограничено независимо от числа купленных кафе.
+  if animated then
    for side,x in {-3.7,3.7} do
-    part('DistantChocolate',Vector3.new(1.5,.12,2.4),location+Vector3.new(x,2.4,0),Color3.fromRGB(87,43,25))
-    if entry.index>0 or (side==2 and sources[entry.owner]:GetAttribute('HasApprentice')) then
-     local color=Color3.fromHSV(((entry.owner*131+entry.index*7919+side*997)%360)/360,.35,.85)
-     part('DistantWorkerBody',Vector3.new(1.5,1.6,.8),location+Vector3.new(x,3.2,-2.9),color)
-     part('DistantWorkerHead',Vector3.new(.8,.8,.8),location+Vector3.new(x,4.4,-2.9),Color3.fromRGB(207,159,119))
-     for _,dx in {-.95,.95} do part('DistantWorkerArm',Vector3.new(.5,.5,1.5),location+Vector3.new(x+dx,2.9,-2),Color3.fromRGB(207,159,119)) end
-    end
+    local isPlayer=entry.index==0 and side==1
+    local station=Station.new(k.view,room.world,location,x,isPlayer,entry.owner)
+    table.insert(room.stations,{station=station,source=source,owner=entry.owner,index=entry.index,side=side,rear=rear})
+   end
+  end
+ else
+  for name,spec in {DistantFloor=Structure.floor,DistantFoundation=Structure.foundation} do
+   part(room.world,name,Vector3.new(table.unpack(spec.size)),location+Vector3.new(table.unpack(spec.position)),
+    if name=='DistantFloor' then Color3.fromRGB(181,160,130) else Color3.fromRGB(194,173,142))
+  end
+  for _,wall in Structure.walls do
+   part(room.world,'DistantWall',Vector3.new(table.unpack(wall.size)),location+Vector3.new(table.unpack(wall.position)),Color3.fromRGB(83,112,97))
+  end
+  for _,x in {-3.7,3.7} do part(room.world,'DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
+ end
+ if not animated then
+  for side,x in {-3.7,3.7} do
+   part(room.world,'DistantChocolate',Vector3.new(1.5,.12,2.4),location+Vector3.new(x,2.4,0),Color3.fromRGB(87,43,25))
+   if entry.index>0 or (side==2 and source:GetAttribute('HasApprentice')) then
+    local color=Color3.fromHSV(((entry.owner*131+entry.index*7919+side*997)%360)/360,.35,.85)
+    part(room.world,'DistantWorkerBody',Vector3.new(1.5,1.6,.8),location+Vector3.new(x,3.2,-2.9),color)
+    part(room.world,'DistantWorkerHead',Vector3.new(.8,.8,.8),location+Vector3.new(x,4.4,-2.9),Color3.fromRGB(207,159,119))
+    for _,dx in {-.95,.95} do part(room.world,'DistantWorkerArm',Vector3.new(.5,.5,1.5),location+Vector3.new(x+dx,2.9,-2),Color3.fromRGB(207,159,119)) end
    end
   end
  end
- self:refreshQueueStaff(sources)
+ return room
 end
+
 function Online:destroy()
  self.receive:Disconnect(); self:clearQueue(); self.kitchen.watchPeer=nil
  for key in self.peers do self:remove(key) end

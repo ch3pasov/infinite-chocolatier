@@ -130,7 +130,7 @@ return function(h)
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
   local modules={Catalog=require('../src/shared/KitchenCatalog'),Structure=require("../src/shared/KitchenStructure"),Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function(room,state) room.testEquipped=state.equipped end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
    local s={actor={setIdentity=function(self,id) self.identity=id end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
-   if parent.Name~="DistantCafeQueue" then table.insert(stations,s) end; return s
+   if not string.match(parent.Name or "","^QueueRoom_") then table.insert(stations,s) end; return s
   end}}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
    game={GetService=function(_,n) return if n=='Players' then players elseif n=='Workspace' then world else {WaitForChild=function() return {KitchenCatalog='Catalog',WorkstationWire='Wire',CafeQueue='Queue',StaffRoster='Roster',Config='Config',KitchenStructure='Structure'} end} end},
@@ -163,6 +163,10 @@ return function(h)
   now=2.4; online:step(.1)
   local faster=Action.cycle(.23+.17+.1/5,Config,k.view.recipe.slides)
   assert(Wire.samePose(faster,online.queueStations[1].station.action),'следующий шаг должен идти с новой скоростью')
+  local retainedOnPurchase=online.queueStations[1].station
+  home:SetAttribute('CafeCount',2); online:step(.5)
+  h.equals(online.queueStations[1].station,retainedOnPurchase,'покупка второго кафе не заменяет первый кабинет')
+  assert(not retainedOnPurchase.destroyed,'неизменившаяся станция была удалена')
   local oldQueueStation=online.queueStations[1].station
   h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
   online:step(.5); h.equals(#writes,1)
@@ -203,7 +207,7 @@ return function(h)
   home:SetAttribute('StaffRoster','1001,3002,3003'); online:step(.5)
   h.equals(stationBefore.actor.identity,3002); h.equals(#objects,createdBefore)
   home:SetAttribute('HasApprentice',true); online:step(.5)
-  assert(stationBefore.destroyed and online.queue~=queueBefore,'изменение состава комнаты пересобирает её')
+  assert(stationBefore.destroyed and online.queue==queueBefore,'изменение состава заменяет комнату внутри общей очереди')
   home:SetAttribute("CafeCount",0); online:step(.5)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)

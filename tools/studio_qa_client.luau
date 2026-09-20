@@ -271,6 +271,70 @@ local function dispatch(args)
   end
   kitchen:setOpen(false)
   return {ok=true,queueStations=8,loadedAvatars=loaded,expectedAvatars=9,frames="explicit"}
+ elseif args.action=="queueGrowth" then
+  local Online=require(script.OnlineKitchen)
+  local source=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId):Clone()
+  source:SetAttribute('StaffRoster','')
+  local world=Instance.new('Model'); world.Name='QueueGrowthQA'; world.Parent=workspace
+  local probe=setmetatable({kitchen={view=gameView,world=world,player=player,origin=kitchen.origin},queueStations={},cycles={}},Online)
+  local function geometryCount(root)
+   local count=if root:IsA('BasePart') then 1 else 0
+   for _,child in root:GetChildren() do
+    if not child:IsA('Model') or not child:FindFirstChildOfClass('Humanoid') then count+=geometryCount(child) end
+   end
+   return count
+  end
+  local function grow(count)
+   source:SetAttribute('CafeCount',count); probe:updateIslands({source})
+   local rooms=0; for _ in probe.queueRooms do rooms+=1 end
+   assert(rooms<=Config.Kitchen.queueLimit,'Queue allocated unbounded rooms')
+   assert(#probe.queueStations<=8,'Queue allocated unbounded full stations')
+   return geometryCount(world)
+  end
+  local ok,result=pcall(function()
+   grow(12)
+   local before={}; for _,entry in probe.queueStations do before[entry.station]=true end
+   local first=probe.queueStations[1].station
+   local Action=require(script.WorkstationAction)
+   first:pose(Action.cycle(.55,Config,gameView.recipe.slides,gameView.tileWidth,gameView.tileHeight),true,0)
+   local frames={}
+   for _,piece in first.parts do for _,part in piece:GetDescendants() do
+    if part:IsA('BasePart') then frames[part]={part.CFrame,part.Transparency} end
+   end end
+   local replaced=probe.queueRooms[-1].world
+   grow(13)
+   local retained=0
+   for _,entry in probe.queueStations do if before[entry.station] then retained+=1 end end
+   assert(retained==6,'Buying one cafe rebuilt unchanged front stations: '..retained)
+   for part,old in frames do assert(part.Parent and part.CFrame==old[1] and part.Transparency==old[2],'Retained chocolate moved during purchase') end
+   assert(replaced.Parent==nil and #replaced:GetDescendants()==0,'Replaced room retained geometry')
+   local full= grow(100); local maximum=probe.queue; local rooms=table.clone(probe.queueRooms)
+   local million=grow(1000000)
+   assert(full==million and maximum==probe.queue,'Huge factory allocated more visible geometry')
+   for slot,room in rooms do assert(probe.queueRooms[slot]==room,'Offscreen purchase rebuilt a visible room') end
+   local moved=source:GetAttribute('Origin')+Vector3.new(256,0,0)
+   source:SetAttribute('Origin',moved); grow(1000000)
+   assert(maximum.Parent==nil and probe.queue~=maximum,'Changing the current room retained the old queue origin')
+   for slot,room in probe.queueRooms do
+    for _,entry in room.stations do
+     local x=if entry.side==1 then -3.7 else 3.7
+     local expected=moved+Vector3.new(x-.75,2.37,-38*slot-.3)
+     assert((entry.station.origin-expected).Magnitude<.001,'Station moved to the wrong queue slot')
+    end
+   end
+   rooms=table.clone(probe.queueRooms)
+   local reduced=grow(1)
+   assert(#probe.queueStations==2 and reduced<full,'Shrinking factory retained distant stations')
+   for _,room in rooms do
+    if probe.queueRooms[1]~=room then assert(room.world.Parent==nil,'Removed room stayed alive') end
+   end
+   grow(0); assert(#world:GetDescendants()==1,'Empty factory retained queue rooms')
+   probe:clearQueue(); assert(#world:GetDescendants()==0,'Queue cleanup leaked descendants')
+   task.wait(.2); assert(#world:GetDescendants()==0,'Late avatar returned after cleanup')
+   return {ok=true,retainedStations=retained,changedStations=2,fullGeometry=full,millionGeometry=million,oneCafeGeometry=reduced,originChanged=true,cleaned=true}
+  end)
+  probe:clearQueue(); world:Destroy(); source:Destroy()
+  assert(ok,result); return result
  elseif args.action=="rearDetail" then
   kitchen:setOpen(true); kitchen:step(.5)
   local rear={}
@@ -280,7 +344,7 @@ local function dispatch(args)
   for _,entry in rear do
    local station=entry.station
    assert(station.actor.visible and station.actor.rig:FindFirstChild('Humanoid'),"Rear apprentice is a placeholder")
-   assert(station.world.Parent==kitchen.online.queue,"Rear station has the wrong parent")
+   assert(station.world:IsDescendantOf(kitchen.online.queue),"Rear station has the wrong parent")
    local z=station.actor.rig:GetPivot().Position.Z-kitchen.origin.Z
    assert(z>31 and z<55,"Detailed apprentice is not in the nearest rear cafe")
    assert(station.whole and station.knife and next(station.parts),"Rear workstation is incomplete")
