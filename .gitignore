@@ -11,6 +11,7 @@ local-recovery-backups/
 
 # macOS
 .DS_Store
+__pycache__/
 
 # Codex local Git metadata
 .git-codex/

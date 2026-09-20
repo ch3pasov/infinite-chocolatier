@@ -36,6 +36,9 @@ jobs:
       - name: Запустить тесты
         run: lune run tests/run
 
+      - name: Проверить локальный инструмент Studio QA
+        run: python3 -m unittest discover -s tests -p 'test_studio_qa.py'
+
       - name: Собрать place
         run: rojo build --output "$RELEASE_FILE"
 
