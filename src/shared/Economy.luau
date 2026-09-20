@@ -40,7 +40,7 @@ function Economy.load(raw)
 		slices = number(raw.slices, 0, E.maxValue),
 		earned = number(raw.earned, 0, E.maxValue),
 		lifetime = number(raw.lifetime, 0, E.maxValue),
-		stars = math.floor(number(raw.stars, 0, 1000000)),
+		stars = math.floor(number(raw.stars, 0, E.maxStars)),
 		rounds = math.floor(number(raw.rounds, 0, E.maxValue)),
 		ordersCompleted = math.floor(number(raw.ordersCompleted, 0, 1e9)),
 		orderProgress = 0,
@@ -239,12 +239,25 @@ function Economy.buy(data, id, quantity)
 end
 
 function Economy.prestigeGain(data)
-	return math.floor(math.sqrt(data.earned / E.prestigeTarget))
+	return math.min(math.floor(math.sqrt(data.earned / E.prestigeTarget)), math.max(0, E.maxStars - data.stars))
+end
+
+-- Шкала идёт от текущей звезды к следующей; после первой награды она
+-- не остаётся навсегда полной. Возле лимита не обещаем недостижимую звезду.
+function Economy.prestigeProgress(data)
+ local gain = Economy.prestigeGain(data)
+ local target = (gain + 1)^2 * E.prestigeTarget
+ if data.stars + gain >= E.maxStars or target > E.maxValue then
+  return { gain = gain, progress = 1 }
+ end
+ local previous = gain^2 * E.prestigeTarget
+ return { gain = gain, target = target, remaining = math.max(0, target - data.earned),
+  progress = math.clamp((data.earned - previous) / (target - previous), 0, 1) }
 end
 
 function Economy.prestige(data)
 	local gain = Economy.prestigeGain(data)
-	if gain < 1 or data.stars + gain > 1000000 then return false end
+	if gain < 1 or data.stars + gain > E.maxStars then return false end
 	data.stars += gain
 	data.slices = 0
 	data.earned = 0

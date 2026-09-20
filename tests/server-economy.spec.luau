@@ -58,6 +58,13 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('сервер начисляет остаток звёзд и объясняет отказ на общем пределе',function()
+  local f=fixture(false,{stars=Config.Economy.maxStars-1,earned=20000})
+  f.events.prestige.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().stars,Config.Economy.maxStars); h.equals(f.latest().notice.args.stars,1)
+  f.advance(1); f.events.prestige.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().notice.key,'Cocoa star limit reached'); h.equals(f.latest().stars,Config.Economy.maxStars)
+ end)
  h.test('запоздалое подтверждение записи не продлевает истёкшую аренду в памяти',function()
   local f=fixture(false,{earned=5000},123,nil,{runSaves=true})
   f.beforeUpdate(function() f.advance(Config.Economy.leaseSeconds+1) end)

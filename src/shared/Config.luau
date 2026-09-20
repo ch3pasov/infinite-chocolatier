@@ -226,6 +226,7 @@ Config.Economy = {
     clockBonus = 0.1,
     starBonus = 0.25,
     prestigeTarget = 5000,
+    maxStars = 1000000,
     offlineLimit = 4 * 60 * 60,
     maxValue = 1e15,
     saveInterval = 30,

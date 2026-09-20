@@ -14,6 +14,16 @@ local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment 
 }, injectGlobals = true })()
 
 return function(h)
+ h.test('карточка престижа обновляет следующую звезду и снимает подтверждение на пределе',function()
+  local ui=setmetatable({prestigeInfo={},prestigeNext={},fill={},ascend={},cancel={}},Atelier)
+  local state=modules.Economy.snapshot(modules.Economy.load({earned=10000}))
+  ui:updatePrestige(state)
+  h.near(ui.fill.Size.X.Scale,1/3); h.equals(ui.prestigeNext.Args.remaining,'10000'); h.equals(ui.prestigeNext.Args.target,'20000')
+  ui.confirmed=true; ui:updatePrestige(state); h.equals(ui.cancel.Visible,true)
+  h.equals(ui.ascend.Text,'Confirm reset · +{stars} ★'); h.equals(ui.ascend.Args.stars,1)
+  state.stars=Config.Economy.maxStars; ui:updatePrestige(state)
+  h.equals(ui.confirmed,false); h.equals(ui.cancel.Visible,false); h.equals(ui.ascend.Text,'Cocoa star limit reached')
+ end)
  h.test('статус сохранения показывает возраст, но не скрывает ошибку или Studio',function()
   local ui=setmetatable({saved={}},Atelier)
   ui:updateSaveStatus({saveStatus='Progress saved',saveAge=0})
@@ -94,7 +104,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({quantityBar={},quantityButtons={},journal={update=function() end},view={counter={},endDrag=function() end},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({quantityBar={},quantityButtons={},journal={update=function() end},view={counter={},endDrag=function() end},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},prestigeNext={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end

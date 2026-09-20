@@ -260,7 +260,21 @@ local function dispatch(args)
    assert(size.Y<=atelier.saved.AbsoluteSize.Y,'Save status overflows footer')
    saveChecks+=1
   end
-  atelier:update(state)
+  local prestigeChecks=0
+  local Economy=require(game.ReplicatedStorage.Shared.Economy)
+  for _,sample in {{earned=2500,stars=0},{earned=10000,stars=0},{earned=20000,stars=Config.Economy.maxStars-1},{earned=5000,stars=Config.Economy.maxStars}} do
+   local snapshot=table.clone(state); snapshot.earned=sample.earned; snapshot.stars=sample.stars
+   snapshot.prestigeGain=Economy.prestigeGain(snapshot)
+   for _,confirmed in {false,true} do
+    atelier.confirmed=confirmed; atelier:update(snapshot)
+    local preview=Economy.prestigeProgress(snapshot)
+    assert(math.abs(atelier.fill.Size.X.Scale-preview.progress)<.001,'Prestige bar targets the wrong star')
+    assert(atelier.cancel.Visible==(confirmed and preview.gain>0),'Invalid prestige confirmation remains visible')
+    prestigeChecks+=checkText(atelier.prestigeCard)
+    assert(atelier.ascend.AbsolutePosition.Y>=atelier.fill.Parent.AbsolutePosition.Y+atelier.fill.Parent.AbsoluteSize.Y,'Prestige button overlaps the progress bar')
+   end
+  end
+  atelier.confirmed=false; atelier:update(state)
   local title=atelier.journal.panel.Title.Text
   if args.locale=="ru-ru" then assert(title=="Дневник шоколатье","Static title was not translated") end
   atelier.journal:close(); atelier:setOpen(false)
@@ -268,7 +282,7 @@ local function dispatch(args)
   assert(kitchen.journalButton.Position.Y.Offset>=64,'Narrow journal button overlaps Roblox controls')
   assert(kitchen.journalButton.TextFits,'Journal button text overflows')
   kitchen:setOpen(false)
-  return {ok=true,locale=args.locale,saveChecks=saveChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
+  return {ok=true,locale=args.locale,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)
   -- При блокировке macOS RenderStepped может не работать. Вызываем тот же

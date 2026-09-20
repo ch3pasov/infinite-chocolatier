@@ -254,7 +254,7 @@ function Atelier.new(gui, gameView, remotes)
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	self.prestigeCard=prestige
-	prestige.Size = UDim2.new(1, -8, 0, 242)
+	prestige.Size = UDim2.new(1, -8, 0, 286)
 	prestige.LayoutOrder = 100
 	local heading = text(prestige, "Title", 19, Theme.accent)
 	L.set(heading, "New Workshop")
@@ -263,8 +263,14 @@ function Atelier.new(gui, gameView, remotes)
 	self.prestigeInfo = text(prestige, "Progress", 14, Theme.muted)
 	self.prestigeInfo.Position = UDim2.fromOffset(12, 40)
 	self.prestigeInfo.Size = UDim2.new(1, -24, 0, 80)
+ self.prestigeInfo.TextScaled=true
+ local infoSize=Instance.new('UITextSizeConstraint'); infoSize.MinTextSize=11; infoSize.MaxTextSize=14; infoSize.Parent=self.prestigeInfo
+ self.prestigeNext=text(prestige,'NextStar',13,Theme.accentSoft)
+ self.prestigeNext.Position=UDim2.fromOffset(12,126); self.prestigeNext.Size=UDim2.new(1,-24,0,34)
+ self.prestigeNext.TextScaled=true
+ local nextSize=Instance.new('UITextSizeConstraint'); nextSize.MinTextSize=10; nextSize.MaxTextSize=13; nextSize.Parent=self.prestigeNext
 	local track = box(prestige, "ProgressTrack", Theme.background)
-	track.Position = UDim2.fromOffset(12, 126)
+	track.Position = UDim2.fromOffset(12, 170)
 	track.Size = UDim2.new(1, -24, 0, 8)
 	self.fill = box(track, "Fill", Theme.accent)
 	self.fill.Size = UDim2.fromScale(0, 1)
@@ -440,6 +446,26 @@ function Atelier:updateCollection(state)
 	end
 end
 
+function Atelier:updatePrestige(state)
+ local preview=Economy.prestigeProgress(state); local gain=preview.gain
+ if gain<1 then self.confirmed=false end
+ if self.confirmed then
+  L.set(self.prestigeInfo,"Reset pieces, upgrades, cafes, apprentices and furniture? Stars and lifetime stats stay. Gain {stars} stars (+25% income each).",{stars=gain})
+ else
+  L.set(self.prestigeInfo,"Each star adds 25% income. Pieces, upgrades, cafes, apprentices and furniture reset. Stars and lifetime stats stay.")
+ end
+ if preview.target then
+  L.set(self.prestigeNext,"Next star: {remaining} more pieces · goal {target}",{remaining=format(preview.remaining),target=format(preview.target)})
+ else L.set(self.prestigeNext,if gain>0 then "Maximum available stars" else "Cocoa star limit reached") end
+ self.fill.Size=UDim2.fromScale(preview.progress,1)
+ if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
+ elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})
+ elseif state.stars>=Config.Economy.maxStars then L.set(self.ascend,"Cocoa star limit reached")
+ else L.set(self.ascend,"Goal · earn 5K pieces") end
+ self.ascend.BackgroundColor3=if gain>0 then Theme.accent else Theme.chocolateEdge
+ self.cancel.Visible=self.confirmed
+end
+
 function Atelier:updateSaveStatus(state)
  local age=state.saveAge or 0
  if state.saveStatus=="Progress saved" and age>=1 then
@@ -544,16 +570,7 @@ function Atelier:update(state)
         else L.set(card.buy,if quantity==10 then '×10: {price} · need {missing} more' else 'Price {price} · need {missing} more',{price=format(price),missing=format(math.max(0,price-state.slices))}) end
 	end
 	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
-	local gain = state.prestigeGain
-	if gain < 1 then self.confirmed = false end
-	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces, all upgrades, apprentices and furniture? Only stars and lifetime stats stay. Gain {stars} stars (+25% income each).",{stars=gain})
-	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Resets pieces, all upgrades, apprentices and furniture.",{earned=format(state.earned)}) end
-	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
-	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
-	elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})
-	else L.set(self.ascend,"Goal · earn 5K pieces") end
-	self.ascend.BackgroundColor3 = if gain > 0 then Theme.accent else Theme.chocolateEdge
-	self.cancel.Visible = self.confirmed
+	self:updatePrestige(state)
 	if not self.welcomed then
 		self.welcomed = true
 		if (state.offline or 0) >= 0.1 then
