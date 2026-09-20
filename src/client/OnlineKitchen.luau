@@ -78,7 +78,7 @@ function Online:step(dt)
  for _,entry in self.queueStations or {} do
   local cycle=math.max(.01,entry.source:GetAttribute('CycleSeconds') or 10)
   local working=entry.index>0 or (entry.side==2 and entry.source:GetAttribute('HasApprentice')==true)
-  local action=Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides)
+  local action=Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight)
   if entry.index==0 and entry.side==1 then
    local player=Players:GetPlayerByUserId(entry.owner)
    local packet=self.packets[entry.owner]
@@ -116,7 +116,7 @@ function Online:step(dt)
      local staffSide=if peer.staff then side else 1
      station.actor:setIdentity(peer.model:GetAttribute('Staff'..staffSide),peer.model:GetAttribute('StaffSeed'..staffSide))
      station.actor:setVisible(working)
-     station:pose(Action.cycle((os.clock()/cycle+side*.17)%1,Config,k.view.recipe.slides),working,dt)
+     station:pose(Action.cycle((os.clock()/cycle+side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight),working,dt)
     end
    end
   end

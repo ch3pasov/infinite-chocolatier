@@ -222,7 +222,7 @@ function Kitchen:step(dt)
  else L.set(self.info,"Hire your first apprentice in the workshop") end
  local t=((state.productionRemainder or 0)+(os.clock()-(self.syncedAt or os.clock()))/state.cycleSeconds)%1
  self.stations[1]:pose(Action.player(self.view),true,dt)
- self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides),working or variant>0,dt)
+ self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides,self.view.tileWidth,self.view.tileHeight),working or variant>0,dt)
 end
 function Kitchen:previewDecor(id)
  local spec=Catalog.byId[id]
