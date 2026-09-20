@@ -50,22 +50,22 @@ function Rooms.start(remote)
   player:SetAttribute('VisitingKitchen',room.id); player:SetAttribute('VisitingCafeIndex',room.index)
   local char=player.Character; local root=char and char:FindFirstChild('HumanoidRootPart')
   if root then
-   char:PivotTo(CFrame.new(room.origin+Vector3.new(0,3,19)))
+   char:PivotTo(CFrame.new(room.origin+Vector3.new(0,3,12)))
    root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyAngularVelocity=Vector3.zero
   end
   if previous and previous~=room then cleanup(previous) end
  end
  local create
  local function sign(room,name,x,home)
-  local position=room.origin+Vector3.new(x,2,22)
-  local post=solid(room.model,name,Vector3.new(.25,3,.25),position-Vector3.new(0,.5,0))
-  post.Transparency=0; post.Color=Color3.fromRGB(71,38,27)
+  local position=room.origin+Vector3.new(x,2,11)
+  local rotation=CFrame.Angles(0,if x<0 then math.pi/2 else -math.pi/2,0)
   local board=solid(room.model,name..'Arrow',Vector3.new(3.6,1.3,.3),position+Vector3.new(0,1,0))
+  board.CFrame=CFrame.new(board.Position)*rotation
   board.Transparency=0; board.Color=Color3.fromRGB(255,194,64)
   local function stroke(offset,size,angle)
    local mark=solid(room.model,name..'Mark',size,board.Position+offset)
-   mark.Transparency=0; mark.Color=post.Color; mark.CanCollide=false; mark.CanQuery=false
-   mark.CFrame*=CFrame.Angles(0,0,angle or 0)
+   mark.Transparency=0; mark.Color=Color3.fromRGB(71,38,27); mark.CanCollide=false; mark.CanQuery=false
+   mark.CFrame=board.CFrame*CFrame.new(offset)*CFrame.Angles(0,0,angle or 0)
   end
   if home then
    stroke(Vector3.new(-.25,.22,.2),Vector3.new(.65,.13,.08),math.pi/4)
@@ -106,17 +106,15 @@ function Rooms.start(remote)
   model:SetAttribute('HasApprentice',index>0)
   local foundation=solid(model,'Foundation',Vector3.new(22,1,24),origin+Vector3.new(0,-.85,5))
   foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
-  local hall=solid(model,'HallFloor',Vector3.new(22,1,11),origin+Vector3.new(0,-.6,22.5))
-  hall.Transparency=0; hall.Color=Color3.fromRGB(151,126,98)
   for _,boundary in {
-   {Vector3.new(23,64,1),Vector3.new(0,31,28)}, {Vector3.new(23,64,1),Vector3.new(0,31,-7)},
-   {Vector3.new(1,64,35),Vector3.new(-11,31,10.5)}, {Vector3.new(1,64,35),Vector3.new(11,31,10.5)},
+   {Vector3.new(23,64,1),Vector3.new(0,31,17)}, {Vector3.new(23,64,1),Vector3.new(0,31,-7)},
+   {Vector3.new(1,64,24),Vector3.new(-11,31,5)}, {Vector3.new(1,64,24),Vector3.new(11,31,5)},
   } do solid(model,'IslandBoundary',boundary[1],origin+boundary[2]) end
   solid(model,'Floor',Vector3.new(22,1,24),origin+Vector3.new(0,-.6,5))
   for _,wall in Structure.walls do solid(model,wall.name,Vector3.new(table.unpack(wall.size)),origin+Vector3.new(table.unpack(wall.position))) end
   for _,x in {-3.7,3.7} do solid(model,'Worktable',Vector3.new(6.8,2.3,5.8),origin+Vector3.new(x,1,0)) end
   solid(model,'Cabinets',Vector3.new(18,2.3,1.8),origin+Vector3.new(0,1,-5))
-  sign(room,'NextCafe',6,false); sign(room,'HomeCafe',-6,true); refreshStaff()
+  sign(room,'NextCafe',10.25,false); sign(room,'HomeCafe',-10.25,true); refreshStaff()
   return room
  end
  local function mode(player,value)
@@ -147,7 +145,7 @@ function Rooms.start(remote)
   for player,own in homes do
    local room=visitors[player] or own; local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
    if root then local p=root.Position-room.origin
-    if p.Y< -8 or math.abs(p.X)>11 or p.Z< -7 or p.Z>28 then enter(player,room) end
+    if p.Y< -8 or math.abs(p.X)>11 or p.Z< -7 or p.Z>17 then enter(player,room) end
    end
   end
  end)
@@ -181,7 +179,7 @@ function Rooms.start(remote)
   player.CharacterAdded:Connect(function(char)
    local root=char:WaitForChild('HumanoidRootPart',10); local humanoid=char:FindFirstChildOfClass('Humanoid')
    if not root or not homes[player] then return end
-   char:PivotTo(CFrame.new((visitors[player] or room).origin+Vector3.new(0,3,19))); mode(player,room.mode)
+   char:PivotTo(CFrame.new((visitors[player] or room).origin+Vector3.new(0,3,12))); mode(player,room.mode)
    if humanoid then humanoid.Died:Connect(function() task.delay(3,spawn) end) end
   end)
   task.spawn(spawn)

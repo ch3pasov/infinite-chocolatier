@@ -68,7 +68,7 @@ return function(h)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
   remote.OnServerEvent:Fire(a,'bogus'); h.equals(a.root.Anchored,false)
   a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
-  h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,19))).Magnitude,0)
+  h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,12))).Magnitude,0)
   local hall=directory.KitchenRoom_1; local boundaries={}
   for _,part in hall:GetChildren() do if part.Name=='IslandBoundary' then
    table.insert(boundaries,part); assert(part.Transparency==1 and part.CanCollide and part.Anchored)
@@ -77,25 +77,16 @@ return function(h)
   h.equals(#boundaries,4)
   -- Проверяем покрытие всех краёв всего фундамента, а не только коридора.
   assert(hall.Foundation.Position.Y+hall.Foundation.Size.Y/2<-.3)
-  h.near(hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2,1017)
-  h.equals(hall.HallFloor.TopSurface,R.Enum.SurfaceType.Smooth)
+  h.equals(hall:FindFirstChild('HallFloor'),nil)
   local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2
-  local max=R.Vector3.new(foundation.Position.X+foundation.Size.X/2,0,hall.HallFloor.Position.Z+hall.HallFloor.Size.Z/2)
-  -- Плиты стыкуются без щели и без объёмного пересечения: тогда их
-  -- внешние боковые грани не могут конкурировать за один пиксель.
-  h.near(foundation.Position.Z+foundation.Size.Z/2,hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2)
-  local opaque={}
-  for _,part in hall:GetChildren() do if part.Name=='Foundation' or part.Name=='HallFloor' then table.insert(opaque,part) end end
-  for i=1,#opaque do for j=i+1,#opaque do
-   local a,b=opaque[i],opaque[j]
-   local overlap=true
-   for _,axis in {'X','Y','Z'} do
-    local depth=math.min(a.Position[axis]+a.Size[axis]/2,b.Position[axis]+b.Size[axis]/2)-math.max(a.Position[axis]-a.Size[axis]/2,b.Position[axis]-b.Size[axis]/2)
-    if depth<=.0001 then overlap=false end
-   end
-   assert(not overlap,'видимые плиты платформы пересекаются')
-  end end
-  for _,edge in {{'X',min.X,'Z',35},{'X',max.X,'Z',35},{'Z',min.Z,'X',foundation.Size.X},{'Z',max.Z,'X',foundation.Size.X}} do
+  local max=foundation.Position+foundation.Size/2
+  for _,name in {'HomeCafeArrow','NextCafeArrow'} do
+   local board=hall[name]
+   h.near(math.abs(board.Position.X-a.KitchenOrigin.X),10.25)
+   h.near(board.Position.Z-a.KitchenOrigin.Z,11)
+   assert(math.abs(board.CFrame.LookVector.X)>.99)
+  end
+  for _,edge in {{'X',min.X,'Z',24},{'X',max.X,'Z',24},{'Z',min.Z,'X',foundation.Size.X},{'Z',max.Z,'X',foundation.Size.X}} do
    local covered=false
    for _,part in boundaries do if math.abs(part.Position[edge[1]]-edge[2])<.01 and part.Size[edge[3]]>=edge[4] then covered=true end end
    assert(covered,'открытая внешняя граница')
@@ -103,7 +94,7 @@ return function(h)
   for _,outside in {R.Vector3.new(0,-9,1008),R.Vector3.new(-12,3,1000),R.Vector3.new(max.X+1,3,1020),R.Vector3.new(0,3,992),R.Vector3.new(0,3,1029)} do
    a.root.Position=outside; a.root.AssemblyLinearVelocity=R.Vector3.new(0,-100,0)
    run.Heartbeat:Fire(.25)
-   h.equals(a.position,a.KitchenOrigin+R.Vector3.new(0,3,19))
+   h.equals(a.position,a.KitchenOrigin+R.Vector3.new(0,3,12))
    h.equals(a.root.AssemblyLinearVelocity,R.Vector3.zero); h.equals(a.KitchenMode,'walk')
   end
   -- Нельзя вызвать переход издалека или во время нарезки.
@@ -112,7 +103,7 @@ return function(h)
   a.root.Position=a.KitchenOrigin; trigger(a); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'cut'); visit(a,1,false); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'walk'); visit(a,1,false)
-  h.equals(a.VisitingKitchen,2); h.equals(a.position,b.KitchenOrigin+R.Vector3.new(0,3,19))
+  h.equals(a.VisitingKitchen,2); h.equals(a.position,b.KitchenOrigin+R.Vector3.new(0,3,12))
   -- Последний гость удерживает остров после выхода владельца.
   players.PlayerRemoving:Fire(b); assert(directory:FindFirstChild('KitchenRoom_2'))
   h.equals(directory.KitchenRoom_2:GetAttribute('OwnerOnline'),false)

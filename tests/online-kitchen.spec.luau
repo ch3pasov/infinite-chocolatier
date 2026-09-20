@@ -66,8 +66,14 @@ return function(h)
   home:SetAttribute('CafeCount',0); online:step(.5)
   h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
   assert(oldQueueStation.destroyed); h.equals(#online.queueStations,0)
+  local firstObject=#objects+1
   home:SetAttribute("CafeCount",1000000); online:step(.5)
   h.equals(#online.queueStations,6,"число подробных станций не растёт с покупками")
+  local behind=0
+  for i=firstObject,#objects do local p=objects[i]
+   if p.Name=='DistantFloor' and p.Position.Z>k.origin.Z then behind+=1 end
+  end
+  h.equals(behind,2,'за камерой не больше двух облегчённых кабинетов')
   home:SetAttribute("CafeCount",0); online:step(.5)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)
