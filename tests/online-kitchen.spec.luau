@@ -137,6 +137,25 @@ return function(h)
    if p.Name=='DistantFloor' and p.Position.Z>k.origin.Z then behind+=1 end
   end
   h.equals(behind,2,'за камерой не больше двух облегчённых кабинетов')
+  local queueBefore=online.queue; local stationBefore=online.queueStations[1].station
+  local createdBefore=#objects
+  home:SetAttribute('StaffRoster','1001,2002,2003'); online:step(.5)
+  h.equals(#objects,createdBefore,'смена друзей не должна пересоздавать геометрию очереди')
+  h.equals(online.queue,queueBefore); h.equals(online.queueStations[1].station,stationBefore)
+  h.equals(stationBefore.actor.identity,2002); h.equals(online.queueStations[2].station.actor.identity,2003)
+  home:SetAttribute('StaffRoster',''); online:step(.5)
+  h.equals(stationBefore.actor.identity,0,'исчезнувший друг заменяется запасным персонажем')
+  h.equals(#objects,createdBefore); assert(not stationBefore.destroyed)
+  -- Источник с тем же ключом может прийти новым Instance после повторного
+  -- входа. Старые станции сохраняются, атрибуты читаются уже из новой модели.
+  home=model(1,k.origin,{sign}); home:SetAttribute('CafeCount',1000000)
+  home:SetAttribute('StaffRoster',''); home:SetAttribute('CycleSeconds',5)
+  models={home}; online:step(.5)
+  h.equals(online.queue,queueBefore); h.equals(online.queueStations[1].source,home)
+  home:SetAttribute('StaffRoster','1001,3002,3003'); online:step(.5)
+  h.equals(stationBefore.actor.identity,3002); h.equals(#objects,createdBefore)
+  home:SetAttribute('HasApprentice',true); online:step(.5)
+  assert(stationBefore.destroyed and online.queue~=queueBefore,'изменение состава комнаты пересобирает её')
   home:SetAttribute("CafeCount",0); online:step(.5)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)

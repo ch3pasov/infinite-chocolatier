@@ -219,6 +219,46 @@ local function dispatch(args)
   end
   kitchen:setOpen(false)
   return {ok=true,queueStations=6,loadedAvatars=loaded,expectedAvatars=7,frames="explicit"}
+ elseif args.action=="rosterRefresh" then
+  local Appearance=require(script.FriendAppearance)
+  local original=Appearance.createRig; local qaId=2147482999; local loads=0
+  kitchen:setOpen(true); kitchen:step(.5)
+  local online=kitchen.online; local models=workspace.KitchenIslands:GetChildren()
+  local home=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId)
+  local before=online.queue; local count=#before:GetDescendants(); local geometry=before:GetChildren()
+  local entries=table.clone(online.queueStations); local unchanged={}
+  for i,entry in entries do unchanged[i]=entry.station.actor.identity end
+  assert(entries[1].owner==player.UserId and entries[1].index==1,"Unexpected first cafe")
+  local savedRoster=home:GetAttribute('StaffRoster')
+  local roster={}; for id in string.gmatch(savedRoster or '', '%d+') do table.insert(roster,tonumber(id)) end
+  while #roster<7 do table.insert(roster,0) end; roster[2]=qaId
+  local raw=table.concat(roster,',')
+  -- Только тестовый id использует локальную сборку R6. Настоящие аккаунты
+  -- не запрашиваются от имени выдуманного друга, остальные загрузки обычные.
+  Appearance.createRig=function(players,description,id,rigType,current)
+   if id==qaId then
+    loads+=1
+    local ok,rig=original(players,description,0,rigType,current)
+    return ok,rig,ok
+   end
+   return original(players,description,id,rigType,current)
+  end
+  local ok,result=pcall(function()
+   home:SetAttribute('StaffRoster',raw); online:updateIslands(models)
+   assert(online.queue==before,"Friend change rebuilt the room queue")
+   for i,entry in online.queueStations do
+    assert(entry.station==entries[i].station and entry.source==home,"Station or source was not retained")
+    if i>1 then assert(entry.station.actor.identity==unchanged[i],"Unchanged apprentice was reassigned") end
+   end
+   local actor=entries[1].station.actor
+   assert(waitUntil(function() return actor.rig and actor.rig:GetAttribute('AssignedUserId')==qaId end,15),"Replacement avatar did not load")
+   assert(loads==1 and online.queue==before and before.Parent~=nil,"Replacement rebuilt geometry")
+   for _,object in geometry do assert(object.Parent==before,"Existing room geometry was removed") end
+   return {ok=true,queueRetained=true,stationsRetained=#entries,replacementLoads=loads,queueObjects=count,controlledRoster=true}
+  end)
+  Appearance.createRig=original
+  home:SetAttribute('StaffRoster',savedRoster); online:updateIslands(models); kitchen:setOpen(false)
+  assert(ok,result); return result
  elseif args.action=="catalog" then
   local catalog=require(game.ReplicatedStorage.Shared.KitchenCatalog)
   kitchen:setOpen(true); kitchen:openShop()

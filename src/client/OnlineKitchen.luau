@@ -58,6 +58,25 @@ function Online:clearQueue()
  self.queueStations={}
  if self.queue then self.queue:Destroy(); self.queue=nil end
 end
+function Online:refreshQueueStaff(sources)
+ local rosters={}
+ for _,entry in self.queueStations or {} do
+  local source=sources[entry.owner]; entry.source=source
+  if entry.index>0 or entry.side==2 then
+   local raw=source:GetAttribute('StaffRoster') or ''
+   if entry.staffKey~=raw then
+    local roster=rosters[entry.owner]
+    if not roster then
+     roster={}; rosters[entry.owner]=roster
+     for id in string.gmatch(raw,'%d+') do table.insert(roster,tonumber(id)) end
+    end
+    local ordinal=if entry.index>0 then entry.index*2+entry.side-1 else 1
+    local id,seed=Roster.identity(rosters,entry.owner,ordinal)
+    entry.station.actor:setIdentity(id,seed); entry.staffKey=raw
+   end
+  end
+ end
+end
 function Online:publishPlayer()
  local action=Action.player(self.kitchen.view); local now=os.clock()
  -- Редкое повторение восстанавливает последнюю позу, если сервер отбросил
@@ -200,8 +219,10 @@ function Online:updateIslands(models)
  local origin=current:GetAttribute('Origin')
  self:updateLocalVisibility(origin)
  local key=currentKey..':'..tostring(origin)
- for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..(sources[entry.owner]:GetAttribute('StaffRoster') or '')..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
- if self.queueKey==key then return end; self.queueKey=key
+ for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
+ -- Список друзей не меняет стены, мебель и шоколадки. Обновляем только
+ -- назначения и ссылки на источники, даже если их Instance был заменён.
+ if self.queueKey==key then self:refreshQueueStaff(sources); return end; self.queueKey=key
  self:clearQueue()
  self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
  local function part(name,size,position,color)
@@ -220,13 +241,9 @@ function Online:updateIslands(models)
    -- Только ближайшие три комнаты содержат полную анимацию плиток и аватары.
    -- Количество станций ограничено независимо от числа купленных кафе.
    if offset<=Config.Kitchen.queueAnimated then
-    local roster={}; for id in string.gmatch(sources[entry.owner]:GetAttribute('StaffRoster') or '', '%d+') do table.insert(roster,tonumber(id)) end
     for side,x in {-3.7,3.7} do
      local isPlayer=entry.index==0 and side==1
      local station=Station.new(k.view,self.queue,location,x,isPlayer,entry.owner)
-     local ordinal=if entry.index>0 then entry.index*2+side-1 else 1
-     local id,seed=Roster.identity({[entry.owner]=roster},entry.owner,ordinal)
-     if not isPlayer then station.actor:setIdentity(id,seed) end
      table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side})
     end
    end
@@ -252,6 +269,7 @@ function Online:updateIslands(models)
    end
   end
  end
+ self:refreshQueueStaff(sources)
 end
 function Online:destroy()
  self.receive:Disconnect(); self:clearQueue(); self.kitchen.watchPeer=nil
