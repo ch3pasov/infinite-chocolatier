@@ -31,6 +31,8 @@ function Rooms.start(remote)
   for player in homes do online[player.UserId]=true end
   local rosters=Roster.build(pools,online)
   for _,room in slots do
+   -- Дальние копии получают те же назначения, что посещаемая комната.
+   room.model:SetAttribute("StaffRoster",table.concat(rosters[room.id] or {},","))
    for side=1,2 do
     local ordinal=if room.index==0 then 1 else room.index*2+side-1
     local id,seed=Roster.identity(rosters,room.id,ordinal)

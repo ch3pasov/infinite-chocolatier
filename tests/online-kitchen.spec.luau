@@ -34,12 +34,12 @@ return function(h)
    state={ready=true},atelier={remotes={kitchenAction=remote}}}
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
-  local modules={Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function() end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function()
+  local modules={Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function() end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
    local s={actor={setIdentity=function(self,id) self.identity=id end,setStyle=function() end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
-   table.insert(stations,s); return s
+   if parent.Name~="DistantCafeQueue" then table.insert(stations,s) end; return s
   end}}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
-   game={GetService=function(_,n) return if n=='Players' then players elseif n=='Workspace' then world else {WaitForChild=function() return {WorkstationWire='Wire',CafeQueue='Queue',Config='Config'} end} end},
+   game={GetService=function(_,n) return if n=='Players' then players elseif n=='Workspace' then world else {WaitForChild=function() return {WorkstationWire='Wire',CafeQueue='Queue',StaffRoster='Roster',Config='Config'} end} end},
    script={Parent={WorkstationAction='Action',WorkstationView='Station',KitchenShell='Shell',KitchenDecor='Decor',Localization='Localization'}},
    require=function(id) return modules[id] end,Instance={new=new},Vector3=R.Vector3,UDim2=R.UDim2,Color3=R.Color3,
    Enum=R.Enum,os={clock=function() return now end},
@@ -57,11 +57,18 @@ return function(h)
   online:step(.5); h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
   for _=1,8 do online:step(.5) end
   h.equals(#writes,1,'ожидающая подсказка не должна обновляться каждый опрос')
-  home:SetAttribute('CafeCount',1); online:step(.5)
+  home:SetAttribute('StaffRoster','1001,1002,1003'); home:SetAttribute('CafeCount',1); online:step(.5)
+  h.equals(#online.queueStations,2); h.equals(online.queueStations[1].station.actor.identity,1002); h.equals(online.queueStations[2].station.actor.identity,1003)
+  h.equals(online.queueStations[1].station.actor.visible,true)
+  local oldQueueStation=online.queueStations[1].station
   h.equals(sign.ActionText,'Next cafe'); h.equals(#writes,2)
   online:step(.5); h.equals(#writes,2)
   home:SetAttribute('CafeCount',0); online:step(.5)
   h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,3)
+  assert(oldQueueStation.destroyed); h.equals(#online.queueStations,0)
+  home:SetAttribute("CafeCount",1000000); online:step(.5)
+  h.equals(#online.queueStations,6,"число подробных станций не растёт с покупками")
+  home:SetAttribute("CafeCount",0); online:step(.5)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)
   attrs.KitchenOrigin=R.Vector3.new(24,0,1000)

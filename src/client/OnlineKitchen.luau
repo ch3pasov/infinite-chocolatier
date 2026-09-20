@@ -6,6 +6,7 @@ local Players=game:GetService('Players')
 local Shared=game:GetService('ReplicatedStorage'):WaitForChild('Shared')
 local Wire=require(Shared.WorkstationWire)
 local Queue=require(Shared.CafeQueue)
+local Roster=require(Shared.StaffRoster)
 local Config=require(Shared.Config)
 local Action=require(script.Parent.WorkstationAction)
 local Station=require(script.Parent.WorkstationView)
@@ -48,6 +49,11 @@ function Online:add(model)
  prompt.Triggered:Connect(function() if k.opened and not k.focus and not k.shopping and peer.station then k:watchPlayer(peer) end end)
  return peer
 end
+function Online:clearQueue()
+ for _,entry in self.queueStations or {} do entry.station:destroy() end
+ self.queueStations={}
+ if self.queue then self.queue:Destroy(); self.queue=nil end
+end
 function Online:step(dt)
  local k=self.kitchen; self.elapsed+=dt; self.scan+=dt
  if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then self.elapsed=0; self.remote:FireServer(Action.player(k.view)) end
@@ -67,6 +73,12 @@ function Online:step(dt)
   for key in self.peers do if not seen[key] then self:remove(key) end end
   for id in self.packets do if not owners[id] then self.packets[id]=nil end end
   self:updateIslands(models)
+ end
+ for _,entry in self.queueStations or {} do
+  local cycle=math.max(.01,entry.source:GetAttribute('CycleSeconds') or 10)
+  local working=entry.index>0 or (entry.side==2 and entry.source:GetAttribute('HasApprentice')==true)
+  entry.station.actor:setVisible(working)
+  entry.station:pose(Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides),working,dt)
  end
  local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart'); local position=if root then root.Position else k.origin
  for _,peer in self.peers do
@@ -136,9 +148,9 @@ function Online:updateIslands(models)
   if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1 end
  end
  local key=currentKey..':'..tostring(origin)
- for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index) end
+ for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..(sources[entry.owner]:GetAttribute('StaffRoster') or '')..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
  if self.queueKey==key then return end; self.queueKey=key
- if self.queue then self.queue:Destroy() end
+ self:clearQueue()
  self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
  local function part(name,size,position,color)
   local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position; p.Color=color
@@ -152,6 +164,18 @@ function Online:updateIslands(models)
   if offset<=6 then
    Shell.new(self.queue,location)
    if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index)) end
+   -- Только ближайшие три комнаты содержат полную анимацию плиток и аватары.
+   -- Количество станций ограничено независимо от числа купленных кафе.
+   if offset<=3 then
+    local roster={}; for id in string.gmatch(sources[entry.owner]:GetAttribute('StaffRoster') or '', '%d+') do table.insert(roster,tonumber(id)) end
+    for side,x in {-3.7,3.7} do
+     local station=Station.new(k.view,self.queue,location,x,false)
+     local ordinal=if entry.index>0 then entry.index*2+side-1 else 1
+     local id,seed=Roster.identity({[entry.owner]=roster},entry.owner,ordinal)
+     station.actor:setIdentity(id,seed); station.actor:setStyle(1+(entry.index+side)%5)
+     table.insert(self.queueStations,{station=station,source=sources[entry.owner],index=entry.index,side=side})
+    end
+   end
   else
    part('DistantFloor',Vector3.new(22,.3,24),location+Vector3.new(0,-.2,5),Color3.fromRGB(181,160,130))
    for _,wall in {{Vector3.new(22,7,.6),Vector3.new(0,3,-6.2)},{Vector3.new(.6,7,23.5),Vector3.new(-10.7,3,5.25)},{Vector3.new(.6,7,23.5),Vector3.new(10.7,3,5.25)}} do
@@ -159,10 +183,21 @@ function Online:updateIslands(models)
    end
    for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
   end
+  if offset>3 then
+   for side,x in {-3.7,3.7} do
+    part('DistantChocolate',Vector3.new(1.5,.12,2.4),location+Vector3.new(x,2.4,0),Color3.fromRGB(87,43,25))
+    if entry.index>0 or (side==2 and sources[entry.owner]:GetAttribute('HasApprentice')) then
+     local color=Color3.fromHSV(((entry.owner*131+entry.index*7919+side*997)%360)/360,.35,.85)
+     part('DistantWorkerBody',Vector3.new(1.5,1.6,.8),location+Vector3.new(x,3.2,-2.9),color)
+     part('DistantWorkerHead',Vector3.new(.8,.8,.8),location+Vector3.new(x,4.4,-2.9),Color3.fromRGB(207,159,119))
+     for _,dx in {-.95,.95} do part('DistantWorkerArm',Vector3.new(.5,.5,1.5),location+Vector3.new(x+dx,2.9,-2),Color3.fromRGB(207,159,119)) end
+    end
+   end
+  end
  end
 end
 function Online:destroy()
- self.receive:Disconnect(); if self.queue then self.queue:Destroy() end; self.kitchen.watchPeer=nil
+ self.receive:Disconnect(); self:clearQueue(); self.kitchen.watchPeer=nil
  for key in self.peers do self:remove(key) end
 end
 return Online
