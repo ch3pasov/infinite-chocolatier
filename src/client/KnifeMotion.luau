@@ -4,8 +4,10 @@
 local Knife = {}
 Knife.tip = Vector3.new(0, 0, -.95)
 Knife.handle = Vector3.new(-.23, .025, .94)
-Knife.cutRoll = math.rad(-38)
-Knife.restRoll = math.rad(-8)
+-- Профиль модели лежит в XZ: четверть оборота ставит лезвие ребром к доске.
+-- До касания сохраняем тот же хват, чтобы начало жеста не переворачивало нож.
+Knife.cutRoll = math.rad(-90)
+Knife.restRoll = Knife.cutRoll
 -- Профиль сантоку: прямой режущий край и плавно опускающийся к носику обух.
 Knife.profile = {
  Vector3.new(0,0,-.95), Vector3.new(-.20,0,-.85),
@@ -16,7 +18,9 @@ function Knife.frame(point, direction, settings, roll)
  local scale=settings.renderScale*settings.knifeScale
  -- Жест задаёт путь кончика, но рукоять идёт впереди: нож тянут, а не толкают.
  local yaw=math.atan2(direction.X,direction.Z)
- local rotation=CFrame.Angles(0,yaw,0)*CFrame.Angles(0,0,roll)*CFrame.Angles(math.rad(-5),0,0)
+ -- Подъём рукояти применяется после установки на ребро: иначе этот поворот
+ -- уводит режущую кромку вбок от линии вместо небольшого подъёма над плиткой.
+ local rotation=CFrame.Angles(0,yaw,0)*CFrame.Angles(math.rad(-5),0,0)*CFrame.Angles(0,0,roll)
  return CFrame.new(point)*rotation*CFrame.new(-Knife.tip*scale)
 end
 function Knife.grip(frame,settings)
