@@ -169,6 +169,27 @@ return function(h)
 			Store.new(fake, E, Config.Economy, "B", function() return now end),
 			function(t) now = t end, function() return record end
 	end
+	h.test("аренда учитывает задержку ответа, сбой продления и освобождение",function()
+  local now=1000; local record; local delay=0; local fail=false
+  local memory={UpdateAsync=function(_,_,transform)
+   local updated=transform(record); if updated then record=updated end
+   now+=delay; if fail then error('Lost response') end
+   return updated
+  end}
+  local storage=Store.new(memory,E,Config.Economy,'deadline',function() return now end)
+  h.equals(storage:hasLease('u',30),false)
+  delay=Config.Economy.leaseSeconds+1
+  local data=storage:claim('u'); h.equals(storage:hasLease('u',30),false,'задержка не добавляет время аренде')
+  delay=0; assert(storage:save('u',data,false)); h.equals(storage:hasLease('u',30),true)
+  h.equals(storage:hasLease('other',30),false,'аренда не переносится между ключами')
+  now+=50; fail=true
+  h.equals(pcall(function() storage:save('u',data,false) end),false)
+  h.equals(storage:hasLease('u',30),true,'сбой ответа не отменяет прежнее подтверждение')
+  now+=Config.Economy.leaseSeconds-50
+  h.equals(storage:hasLease('u',0),false,'сбой ответа не подтверждает новый срок')
+  fail=false; assert(storage:save('u',data,false)); h.equals(storage:hasLease('u',30),true)
+  assert(storage:save('u',data,true)); h.equals(storage:hasLease('u',0),false)
+ end)
 	h.test("второй сервер не захватывает активное сохранение", function()
 		local a, b = fixture()
 		local d = a:claim("user")

@@ -20,4 +20,22 @@ assert(data.slices==12 and amount==10 and report.seconds==100,'Offline receipt w
 local repeated,extra,nextReport=store:claim('qa')
 assert(repeated.slices==12 and extra==0 and nextReport.seconds==0,'Successful claim retained a stale receipt')
 assert(next(store.pendingClaims)==nil,'Settled receipt was retained')
-return {ok=true,balance=data.slices,offline=amount,offlineSeconds=report.seconds,repeatedOffline=extra,storage='in-memory'}
+local leaseNow=2000; local leaseRecord; local delay=Config.Economy.leaseSeconds+1; local fail=false
+local leaseMemory={UpdateAsync=function(_,_,transform)
+ local updated=transform(leaseRecord); if updated then leaseRecord=updated end
+ leaseNow+=delay
+ if fail then error('Simulated lost renewal reply') end
+ return updated
+end}
+local lease=Store.new(leaseMemory,Economy,Config.Economy,'lease-deadline-qa',function() return leaseNow end)
+local profile=lease:claim('lease')
+assert(not lease:hasLease('lease',30),'Slow claim reply extended the stored expiry')
+delay=0; assert(lease:save('lease',profile,false) and lease:hasLease('lease',30),'Normal save did not renew the lease')
+leaseNow+=50; fail=true
+assert(not pcall(function() lease:save('lease',profile,false) end),'Renewal reply was not interrupted')
+assert(lease:hasLease('lease',30),'Network error erased the previous valid confirmation')
+leaseNow+=Config.Economy.leaseSeconds-50
+assert(not lease:hasLease('lease',0),'Unconfirmed renewal extended the lease')
+fail=false; assert(lease:save('lease',profile,false)); assert(lease:hasLease('lease',30))
+assert(lease:save('lease',profile,true)); assert(not lease:hasLease('lease',0),'Released profile remained writable')
+return {ok=true,balance=data.slices,offline=amount,offlineSeconds=report.seconds,repeatedOffline=extra,leaseDeadline=true,unconfirmedRenewalRejected=true,storage='in-memory'}

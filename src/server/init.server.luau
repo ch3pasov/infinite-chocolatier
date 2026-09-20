@@ -27,12 +27,23 @@ local loading = {}
 local requests = {}
 local closing = false
 
+local function activeSession(player, session)
+ if session.closing then return false end
+ if not studio and not session.storage:hasLease(tostring(player.UserId), 30) then
+  session.closing = true
+  player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId))
+  return false
+ end
+ return true
+end
+
 local function send(player, notice, reward)
 	local session = sessions[player]
 	if not session then
 		remotes.stateSync:FireClient(player, { ready = false })
 		return
 	end
+	if not activeSession(player, session) then return end
 	local state = Economy.snapshot(session.data)
  if kitchens then kitchens:sync(player,state) end
 	state.ready = true
@@ -90,10 +101,7 @@ local function save(player, release)
 			end
 		end
 		sessions[player] = nil
-	elseif (ok and not written) or os.clock() - session.lastSave > Config.Economy.leaseSeconds - 30 then
-		session.closing = true
-		player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId))
-	elseif player.Parent then
+	elseif activeSession(player, session) and player.Parent then
 		send(player)
 	end
 end
@@ -121,6 +129,13 @@ local function join(player)
 		if player.Parent then player:Kick(Catalog.format("Could not load your progress. Wait a moment and rejoin. Your save has not been changed.", nil, player.LocaleId)) end
 		return
 	end
+ -- Даже успешный claim может вернуться уже после окончания аренды.
+ -- Не открываем такой профиль для игры и не перезаписываем его при выходе.
+ if not studio and not storage:hasLease(tostring(player.UserId), 30) then
+  loading[player] = nil
+  if player.Parent then player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId)) end
+  return
+ end
 	sessions[player] = { data = data, storage = storage, offline = offline, offlineReport = offlineReport, tick = os.clock(), lastRound = -math.huge,
 		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
@@ -144,7 +159,7 @@ end)
 
 remotes.roundComplete.OnServerEvent:Connect(function(player)
 	local session = sessions[player]
-	if not session or session.closing then return end
+	if not session or not activeSession(player, session) then return end
 	local now = os.clock()
 	if now - session.lastRound < Config.Payout.minInterval then return end
 	session.lastRound = now
@@ -157,7 +172,7 @@ end)
 
 remotes.purchase.OnServerEvent:Connect(function(player, id, quantity)
 	local session = sessions[player]
-	if not session or session.closing or type(id) ~= "string" then return end
+	if not session or not activeSession(player, session) or type(id) ~= "string" then return end
 	local now = os.clock()
 	if now - session.lastAction < 0.2 then return end
 	session.lastAction = now
@@ -176,7 +191,7 @@ end)
 
 remotes.prestige.OnServerEvent:Connect(function(player)
 	local session = sessions[player]
-	if not session or session.closing then return end
+	if not session or not activeSession(player, session) then return end
 	local now = os.clock()
 	if now - session.lastAction < 0.2 then return end
 	session.lastAction = now
@@ -191,7 +206,7 @@ task.spawn(function()
 	while not closing do
 		task.wait(1)
 		for player, session in sessions do
-			if not session.closing then
+			if activeSession(player, session) then
 				accrue(session)
 				send(player)
 				if not session.saving and os.clock() >= session.nextSave then

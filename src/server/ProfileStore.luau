@@ -5,7 +5,13 @@ local ProfileStore = {}
 ProfileStore.__index = ProfileStore
 
 function ProfileStore.new(store, economy, settings, token, now)
-	return setmetatable({ store = store, economy = economy, settings = settings, token = token, now = now, pendingClaims = {} }, ProfileStore)
+	return setmetatable({ store = store, economy = economy, settings = settings, token = token, now = now, pendingClaims = {}, leases = {} }, ProfileStore)
+end
+
+-- Срок берётся из подтверждённой записи. Время ожидания ответа уже
+-- потрачено и не должно выдавать сессии новую аренду поверх старой.
+function ProfileStore:hasLease(key, reserve)
+ return (self.leases[key] or 0) - self.now() > (reserve or 0)
 end
 
 -- Версия 4 не даёт старому серверу стереть прогресс заказов новым сохранением.
@@ -40,7 +46,8 @@ function ProfileStore:claim(key)
 	-- Только неопределённый сетевой исход оставляет отчёт следующей попытке.
 	-- После обычного ответа повторный claim не показывает старую выплату.
 	self.pendingClaims[key] = nil
-	if not record or record.owner ~= self.token then return nil end
+	if not record or record.owner ~= self.token then self.leases[key] = nil; return nil end
+	self.leases[key] = record.expires
 	return self.economy.load(record.data), offline, away
 end
 
@@ -49,7 +56,7 @@ function ProfileStore:save(key, data, release)
 	-- Снимок делается до сетевого запроса: callback UpdateAsync может повториться.
 	local snapshot = self.economy.load(data)
 	local written = false
-	self.store:UpdateAsync(key, function(old)
+	local record = self.store:UpdateAsync(key, function(old)
 		written = false
 		if type(old) ~= "table" or old.owner ~= self.token then return nil end
 		written = true
@@ -57,6 +64,7 @@ function ProfileStore:save(key, data, release)
 			expires = if release then 0 else now + self.settings.leaseSeconds,
 			savedAt = now, data = snapshot }
 	end)
+	self.leases[key] = if written and not release and record and record.owner == self.token then record.expires else nil
 	return written
 end
 

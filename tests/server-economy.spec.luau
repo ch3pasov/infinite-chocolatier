@@ -32,7 +32,7 @@ local function fixture(studio, seed, userId, savedAt, options)
 		if hook then hook() end
 		local nextRecord = callback(record)
 		if nextRecord then record = nextRecord end
-		if options and options.afterUpdate then options.afterUpdate(nextRecord) end
+		if options and options.afterUpdate then options.afterUpdate(nextRecord,function(seconds) now += seconds end) end
 		return nextRecord
 	end }
 	local modules = { KitchenRelay = {start=function() end}, KitchenRooms = {start=function() end}, LocalizationCatalog = require("../src/shared/LocalizationCatalog"), Config = Config, Economy = Economy, ProfileStore = ProfileStore, Remotes = { ensure = function() return events end } }
@@ -58,6 +58,39 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('запоздалое подтверждение записи не продлевает истёкшую аренду в памяти',function()
+  local f=fixture(false,{earned=5000},123,nil,{runSaves=true})
+  f.beforeUpdate(function() f.advance(Config.Economy.leaseSeconds+1) end)
+  f.events.prestige.OnServerEvent:Fire(f.player)
+  assert(f.player.kicked,'Истёкшая аренда была принята как свежая после долгого ответа')
+  local sent=#f.sent
+  f.advance(1); f.events.roundComplete.OnServerEvent:Fire(f.player)
+  h.equals(#f.sent,sent,'Закрытая сессия продолжает выдавать награды')
+ end)
+ h.test('сессия не выдаёт награды во время зависшего продления аренды',function()
+  local f=fixture(false,{earned=5000},123,nil,{runSaves=true})
+  local sent
+  f.beforeUpdate(function()
+   f.advance(Config.Economy.leaseSeconds-29); sent=#f.sent
+   f.events.roundComplete.OnServerEvent:Fire(f.player)
+   h.equals(#f.sent,sent,'Награда выдана по старой истёкшей аренде во время запроса')
+  end)
+  f.events.prestige.OnServerEvent:Fire(f.player)
+  assert(f.player.kicked)
+  f.advance(1); f.events.purchase.OnServerEvent:Fire(f.player,'craft')
+  f.events.requestState.OnServerEvent:Fire(f.player)
+  h.equals(#f.sent,sent,'Закрытая сессия снова стала готовой')
+ end)
+ h.test('истёкший ответ начальной загрузки не открывает профиль и не записывается при выходе',function()
+  local calls=0
+  local f=fixture(false,{slices=40},123,nil,{afterUpdate=function(_,advance)
+   calls+=1; advance(Config.Economy.leaseSeconds+1)
+  end})
+  assert(f.player.kicked); h.equals(#f.sent,0,'Просроченный профиль показан как ready')
+  local record=f.record(); f.players.PlayerRemoving:Fire(f.player)
+  h.equals(calls,1,'Выход перезаписал отклонённый профиль')
+  h.equals(f.record(),record); h.equals(record.data.slices,40)
+ end)
  h.test("время сохранения отсчитывается от подтверждения и не скрывает задержку",function()
   local fail=false
   local f=fixture(false,{slices=100,earned=5000},123,nil,{
