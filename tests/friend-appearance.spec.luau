@@ -29,4 +29,26 @@ return function(h)
    h.equals(ok,true); h.equals(rig,'defaultRig'); h.equals(destroyed,not fetchFails)
   end
  end)
+ h.test('временная ошибка внешности не кэшируется как успешный случайный стажёр',function()
+  local calls=0; local desc={Destroy=function() end}
+  local players={GetHumanoidDescriptionFromUserIdAsync=function()
+   calls+=1; if calls==1 then error('temporary timeout') end; return desc
+  end,CreateHumanoidModelFromDescriptionAsync=function(_,d) return if d==desc then 'friend' else 'fallback' end}
+  local ok,rig,loaded,err=A.createRig(players,{},8001,'R6')
+  assert(ok and rig=='fallback' and loaded==false and tostring(err):find('temporary timeout'))
+  ok,rig,loaded=A.createRig(players,{},8001,'R6')
+  assert(ok and rig=='friend' and loaded==true); h.equals(calls,2)
+ end)
+ h.test('копии друга повторно используют описание, но создают независимые модели',function()
+  local calls=0; local descriptions={}
+  local function description()
+   return {Clone=function() return description() end,Destroy=function() end}
+  end
+  local players={GetHumanoidDescriptionFromUserIdAsync=function() calls+=1; return description() end,
+   CreateHumanoidModelFromDescriptionAsync=function(_,d) table.insert(descriptions,d); return {} end}
+  local _,a=A.createRig(players,{},8002,'R6')
+  local _,b=A.createRig(players,{},8002,'R6')
+  h.equals(calls,1); assert(a~=b and descriptions[1]~=descriptions[2])
+ end)
+
 end

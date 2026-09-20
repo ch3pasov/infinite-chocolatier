@@ -114,7 +114,7 @@ function Online:step(dt)
      local working=peer.staff or peer.model:GetAttribute('HasApprentice')==true
      local staffSide=if peer.staff then side else 1
      station.actor:setIdentity(peer.model:GetAttribute('Staff'..staffSide),peer.model:GetAttribute('StaffSeed'..staffSide))
-     station.actor:setStyle(1+(peer.index+side)%5); station.actor:setVisible(working)
+     station.actor:setVisible(working)
      station:pose(Action.cycle((os.clock()/cycle+side*.17)%1,Config,k.view.recipe.slides),working,dt)
     end
    end
@@ -183,7 +183,7 @@ function Online:updateIslands(models)
      local station=Station.new(k.view,self.queue,location,x,isPlayer,entry.owner)
      local ordinal=if entry.index>0 then entry.index*2+side-1 else 1
      local id,seed=Roster.identity({[entry.owner]=roster},entry.owner,ordinal)
-     if not isPlayer then station.actor:setIdentity(id,seed); station.actor:setStyle(1+(entry.index+side)%5) end
+     if not isPlayer then station.actor:setIdentity(id,seed) end
      table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side})
     end
    end

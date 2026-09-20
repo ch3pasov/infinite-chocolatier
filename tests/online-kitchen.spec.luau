@@ -35,7 +35,7 @@ return function(h)
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
   local modules={Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function() end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
-   local s={actor={setIdentity=function(self,id) self.identity=id end,setStyle=function() end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
+   local s={actor={setIdentity=function(self,id) self.identity=id end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
    if parent.Name~="DistantCafeQueue" then table.insert(stations,s) end; return s
   end}}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={

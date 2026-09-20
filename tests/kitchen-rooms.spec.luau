@@ -146,5 +146,21 @@ return function(h)
   assert(directory:FindFirstChild('KitchenRoom_10'))
   visit(f,10,true); h.equals(directory:FindFirstChild('KitchenRoom_10'),nil)
   players.PlayerRemoving:Fire(f); h.equals(#directory:GetChildren(),0)
+  -- Ошибка при входе не закрепляет пустой список на весь сеанс.
+  local fetch=players.GetFriendsAsync; local attempts=0
+  players.GetFriendsAsync=function(self)
+   attempts+=1; if attempts==1 then error('temporary friends failure') end
+   return fetch(self)
+  end
+  local pending=#delayed
+  local retryOwner=player(30)
+  h.equals(directory.KitchenRoom_30:GetAttribute('Staff1'),0)
+  h.equals(directory.KitchenRoom_30:GetAttribute('FriendListStatus'),'retrying')
+  delayed[pending+1]()
+  h.equals(attempts,2)
+  h.equals(directory.KitchenRoom_30:GetAttribute('Staff1'),1001)
+  h.equals(directory.KitchenRoom_30:GetAttribute('FriendListStatus'),'ready')
+  players.PlayerRemoving:Fire(retryOwner)
+
  end)
 end

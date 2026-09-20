@@ -213,7 +213,6 @@ function Kitchen:step(dt)
  local directory=workspace:FindFirstChild('KitchenIslands')
  local home=directory and directory:FindFirstChild('KitchenRoom_'..self.player.UserId)
  if home then self.stations[2].actor:setIdentity(home:GetAttribute('Staff1'),home:GetAttribute('StaffSeed1')) end
- self.stations[2].actor:setStyle(variant)
  self.stations[2].actor:setVisible(variant>0)
  if self.watchPeer and self.watchPeer.staff then
   L.set(self.info,"Watch apprentices")

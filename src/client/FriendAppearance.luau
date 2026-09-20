@@ -20,20 +20,37 @@ function Appearance.pickFriend(players,userId,random)
  end)
  return if ok then selected else nil
 end
-function Appearance.createRig(players,defaultDescription,userId,rigType)
- local appearance
- if userId and userId>0 then
-  local ok,result=pcall(function() return players:GetHumanoidDescriptionFromUserIdAsync(userId) end)
-  if ok then appearance=result end
+-- Повторные видимые копии используют один запрос описания на пользователя.
+-- Кэш ограничен; модели и их суставы остаются отдельными у каждой станции.
+local cache={}
+local pending={}
+local order={}
+local function description(players,userId)
+ while pending[userId] do task.wait() end
+ if cache[userId] then return cache[userId]:Clone() end
+ pending[userId]=true
+ local ok,result=pcall(function() return players:GetHumanoidDescriptionFromUserIdAsync(userId) end)
+ pending[userId]=nil
+ if not ok then return nil,result end
+ -- Тестовые описания без Clone не попадают в кэш Roblox-объектов.
+ if type(result.Clone)=='function' then
+  cache[userId]=result:Clone(); table.insert(order,userId)
+  if #order>64 then local id=table.remove(order,1); cache[id]:Destroy(); cache[id]=nil end
  end
+ return result
+end
+function Appearance.createRig(players,defaultDescription,userId,rigType)
+ local appearance,loadError
+ if userId and userId>0 then appearance,loadError=description(players,userId) end
  local ok,rig=pcall(function()
   return players:CreateHumanoidModelFromDescriptionAsync(appearance or defaultDescription,rigType)
  end)
+ local friendLoaded=appearance~=nil and ok
  if appearance then appearance:Destroy() end
- -- Неудачный аксессуар не должен оставлять станцию без персонажа.
  if not ok and appearance then
+  loadError=rig
   ok,rig=pcall(function() return players:CreateHumanoidModelFromDescriptionAsync(defaultDescription,rigType) end)
  end
- return ok,rig
+ return ok,rig,friendLoaded,loadError
 end
 return Appearance

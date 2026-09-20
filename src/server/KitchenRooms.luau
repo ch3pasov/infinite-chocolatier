@@ -156,9 +156,10 @@ function Rooms.start(remote)
   player:SetAttribute('VisitingKitchen',room.id); player:SetAttribute('VisitingCafeIndex',0)
   player:SetAttribute('KitchenMode','cut'); player:SetAttribute('KitchenOrigin',room.origin)
   refreshStaff()
-  task.spawn(function()
+  local function loadFriends(attempt)
+   if homes[player]~=room then return end
    local friends={}
-   local ok=pcall(function()
+   local ok,err=pcall(function()
     if player.UserId<=0 then return end
     local pages=Players:GetFriendsAsync(player.UserId)
     while true do
@@ -167,8 +168,17 @@ function Rooms.start(remote)
     end
    end)
    if homes[player]~=room then return end
-   pools[player.UserId]=if ok then friends else {}; refreshStaff()
-  end)
+   -- Даже при ошибке следующей страницы уже полученные друзья полезны.
+   if ok or #friends>#(pools[player.UserId] or {}) then pools[player.UserId]=friends end
+   room.model:SetAttribute('FriendListStatus',if ok then 'ready' else 'retrying')
+   refreshStaff()
+   if not ok then
+    warn('Apprentice friends '..player.UserId..': '..tostring(err))
+    if attempt<3 then task.delay(({5,20,60})[attempt+1],function() loadFriends(attempt+1) end)
+    else room.model:SetAttribute('FriendListStatus','unavailable') end
+   end
+  end
+  task.spawn(function() loadFriends(0) end)
   local function spawn()
    if not player.Parent or not homes[player] then return end
    local ok=pcall(function() player:LoadCharacterAsync() end)

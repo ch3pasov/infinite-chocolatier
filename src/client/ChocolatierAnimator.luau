@@ -7,12 +7,12 @@ local Animator = {}
 Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
  local self=setmetatable({alive=true,visible=false,x=x,generation=0},Animator)
- function self:setIdentity(nextId,seed)
+ function self:setIdentity(nextId,seed,retry)
   nextId=nextId or 0; seed=seed or 1
   local key=tostring(nextId)..':'..tostring(seed)
-  if self.identity==key then return end
+  if self.identity==key and not retry then return end
   self.identity=key; self.generation+=1; local generation=self.generation
-  if self.rig then self.rig:Destroy(); self.rig=nil; self.apron=nil; self.apronStyle=nil end
+  if self.rig then self.rig:Destroy(); self.rig=nil end
   task.spawn(function()
   local description=Instance.new("HumanoidDescription")
   description.HeadColor=Color3.fromRGB(223,176,130)
@@ -29,11 +29,22 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   end
   if not self.alive then description:Destroy(); return end
   -- R6 сохраняет общие суставы и позы игрока и стажёра.
-  local ok,rig=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6)
+  local ok,rig,friendLoaded,loadError=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6)
   description:Destroy()
+  -- Временный сбой Roblox не закрепляет случайного персонажа навсегда.
+  -- Повтор отменяется вместе со станцией или сменой назначенного друга.
+  if nextId>0 and not friendLoaded then
+   local attempt=retry or 0
+   warn("Apprentice avatar "..nextId..": "..tostring(loadError or rig))
+   if attempt<3 then task.delay(({5,20,60})[attempt+1],function()
+    if self.alive and self.generation==generation then self:setIdentity(nextId,seed,attempt+1) end
+   end) end
+  end
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
   if not self.alive or generation~=self.generation or not parent.Parent then rig:Destroy(); return end
   rig.Name=name; rig:ScaleTo(.8)
+  rig:SetAttribute("AppearanceUserId",if friendLoaded then nextId else 0)
+  rig:SetAttribute("AssignedUserId",nextId)
   self.rig=rig; self.rest={}; self.motors={}
   local root=rig:FindFirstChild("HumanoidRootPart")
   -- Сгенерированная модель может иметь pivot не в корне; иначе персонаж
@@ -52,37 +63,11 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   end
   rig.Parent=parent
   rig:PivotTo(CFrame.new((roomOrigin or Vector3.zero)+Vector3.new(x,2.4,-2.9))*CFrame.Angles(0,math.pi,0))
-  self:setStyle(self.style or 0)
   self:setVisible(self.visible)
   end)
  end
  self:setIdentity(if isPlayer then userId else 0,1)
  return self
-end
--- Фартук отличает варианты ученика, сохраняя внешность друга и общие суставы.
-function Animator:setStyle(variant)
- self.style=variant
- if not self.rig or self.apronStyle==variant then return end
- self.apronStyle=variant
- if self.apron then
-  for _,p in self.apron:GetChildren() do self.rest[p]=nil end
-  self.apron:Destroy()
- end
- if variant==0 then return end
- local torso=self.rig:FindFirstChild('Torso')
- if not torso then return end
- local colors={Color3.fromRGB(108,62,39),Color3.fromRGB(232,175,85),Color3.fromRGB(94,159,130),Color3.fromRGB(155,77,114),Color3.fromRGB(255,217,117)}
- local model=Instance.new('Model'); model.Name='ApprenticeApron'; model.Parent=self.rig; self.apron=model
- local function piece(name,size,offset,color)
-  local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Color=color
-  p.CanCollide=false; p.CanTouch=false; p.CanQuery=false; p.Massless=true
-  p.CFrame=torso.CFrame*CFrame.new(offset); p.Parent=model
-  local weld=Instance.new('WeldConstraint'); weld.Part0=torso; weld.Part1=p; weld.Parent=p
-  self.rest[p]=0; p.Transparency=if self.visible then 0 else 1
- end
- piece('Collar',Vector3.new(1.55,.28,.95),Vector3.new(0,.55,0),colors[variant])
- piece('Apron',Vector3.new(1.1,1.3,.1),Vector3.new(0,-.2,-.43),colors[variant])
- for i=1,variant do piece('Badge',Vector3.new(.09,.1,.04),Vector3.new(-.36+(i-1)*.18,.23,-.51),Color3.fromRGB(255,244,220)) end
 end
 function Animator:setVisible(visible)
  self.visible=visible
