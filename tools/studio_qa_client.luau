@@ -217,7 +217,27 @@ local function dispatch(args)
   journal:update(saved)
   atelier.journal:close()
   assert(not gameView.journalOpen and not atelier.journal.overlay.Visible,"Journal did not close")
-  return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds,factoryCafes=13,apprentices=25,emptyFactory=true}
+  local cut,progress=gameView.cutIndex,gameView.cutProgress
+  kitchen:setOpen(true); kitchen:step(0)
+  assert(kitchen.journalButton.Visible,'Walking has no journal entry')
+  journal:open(); kitchen:step(0)
+  assert(journal.overlay.Visible and not kitchen.journalButton.Visible,'Walking journal did not open')
+  assert(kitchen.controls.controlsEnabled==false,'Walking remained active while reading')
+  for _,prompt in kitchen.prompts do assert(not prompt.Enabled,'Journal left a worktable prompt active') end
+  for _,entry in workspace.KitchenIslands:GetDescendants() do
+   if entry:IsA('ProximityPrompt') then assert(not entry.Enabled,'Journal left a visit arrow active') end
+  end
+  kitchen.directory:open(); kitchen:openShop(); kitchen:watchPlayer({})
+  assert(not kitchen.browsing and not kitchen.shopping and not kitchen.focus,'Another menu overlapped the journal')
+  journal:close(); kitchen:step(0)
+  assert(kitchen.controls.controlsEnabled and kitchen.journalButton.Visible,'Walking did not resume')
+  kitchen:openShop(); journal:open()
+  assert(not journal.overlay.Visible,'Journal overlapped the catalog')
+  atelier:setOpen(false)
+  journal:open(); kitchen:setOpen(false)
+  assert(not journal.overlay.Visible and not gameView.journalOpen and not kitchen.controls.controlsEnabled,'Return to cutting left journal or movement active')
+  assert(gameView.cutIndex==cut and gameView.cutProgress==progress,'Reading changed the manual cut')
+  return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds,factoryCafes=13,apprentices=25,emptyFactory=true,walkingJournal=true,movementRestored=true,cutPreserved=true}
  elseif args.action=="layout" then
   require(script.Localization).__qaLocale(args.locale)
   gameView.root.Size=UDim2.fromOffset(360,780); atelier:fit(); atelier:setOpen(true)
@@ -232,6 +252,10 @@ local function dispatch(args)
   local title=atelier.journal.panel.Title.Text
   if args.locale=="ru-ru" then assert(title=="Дневник шоколатье","Static title was not translated") end
   atelier.journal:close(); atelier:setOpen(false)
+  kitchen:setOpen(true); kitchen:step(0); task.wait(.1)
+  assert(kitchen.journalButton.Position.Y.Offset>=64,'Narrow journal button overlaps Roblox controls')
+  assert(kitchen.journalButton.TextFits,'Journal button text overflows')
+  kitchen:setOpen(false)
   return {ok=true,locale=args.locale,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)

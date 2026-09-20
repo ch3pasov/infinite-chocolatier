@@ -16,7 +16,7 @@ return function(h)
  h.test('кухня переживает ответ загрузки без levels и последующий готовый профиль',function()
   decorated=0
   local closed=0
-  local k=setmetatable({opened=false,prompts={{Enabled=true}},guide={},bookGuide={},
+  local k=setmetatable({opened=false,view={},prompts={{Enabled=true}},guide={},bookGuide={},
    online={step=function() end},atelier={setOpen=function() closed+=1 end}},{__index=Kitchen})
   k:update({ready=false}); k:step(0); k:openShop(); k:setOpen(true); k:watchPlayer({})
   h.equals(k.opened,false); h.equals(k.shopping,nil); h.equals(k.focus,nil)

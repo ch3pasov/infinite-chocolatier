@@ -27,4 +27,22 @@ return function(h)
   h.equals(ui.productionCount.args.cafes,1); h.equals(ui.productionCount.args.workers,0); h.equals(ui.productionCycle.Visible,false)
   ui:updateProduction({ready=false}); h.equals(ui.productionCard.Visible,false)
  end)
+ h.test('дневник отклоняет конфликтующее меню и один раз восстанавливает ввод',function()
+  local stub=setmetatable({},{__index=function(_,name) return name end})
+  local Journal=luau.load(fs.readFile('src/client/Journal.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},script={Parent=stub},require=function() return {} end,
+  },injectGlobals=true})()
+  local allowed=false; local toggles={}; local cancelled=0
+  local view={cutIndex=3,cutProgress=.4,endDrag=function(_,cancel) assert(cancel); cancelled+=1 end}
+  local ui=setmetatable({view=view,overlay={},state={ready=false},
+   canOpen=function() return allowed end,onToggle=function(open) table.insert(toggles,open) end},Journal)
+  ui:open(); h.equals(#toggles,0)
+  ui.state.ready=true; ui:open(); h.equals(#toggles,0)
+  allowed=true; ui:open(); ui:open()
+  h.equals(#toggles,1); h.equals(toggles[1],true); h.equals(cancelled,1)
+  h.equals(view.cutIndex,3); h.equals(view.cutProgress,.4)
+  ui:close(); ui:close(); h.equals(#toggles,2); h.equals(toggles[2],false)
+  h.equals(view.journalOpen,false); h.equals(ui.overlay.Visible,false)
+ end)
+
 end

@@ -50,6 +50,7 @@ Catalog.entries = {
  ["Chocolate virtuoso"]="Шоколадный виртуоз",
  ["Infinite chocolatier"]="Бесконечный шоколатье",
  ["Chocolate journal"]="Дневник шоколатье",
+ ["Journal"]="Дневник",
  ["Order packed! +{bonus} bonus pieces"]="Заказ готов! Бонус: +{bonus} долек",
  ["Take your time. Only tricks you finish by hand fill orders."]="Режь в своём темпе. Заказы выполняются только ручными фокусами.",
  ["Order · {done}/{total}"]="Заказ · {done}/{total}",

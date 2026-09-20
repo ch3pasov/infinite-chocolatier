@@ -99,12 +99,16 @@ function Journal.new(gui,view)
 end
 
 function Journal:open()
-	if not self.state or not self.state.ready then return end
+	if not self.state or not self.state.ready or self.view.journalOpen then return end
+	if self.canOpen and not self.canOpen() then return end
 	self.view:endDrag(true); self.view.journalOpen=true; self.overlay.Visible=true
+	if self.onToggle then self.onToggle(true) end
 end
 
 function Journal:close()
+	local wasOpen=self.view.journalOpen
 	self.overlay.Visible=false; self.view.journalOpen=false
+	if wasOpen and self.onToggle then self.onToggle(false) end
 end
 
 function Journal:fit(parent,compact,position,size)
