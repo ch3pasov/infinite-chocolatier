@@ -7,6 +7,7 @@ local Catalog = require(ReplicatedStorage:WaitForChild("Shared").KitchenCatalog)
 local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
+local Thumbnails = require(script.Parent.DecorThumbnails)
 local Atelier = {}
 Atelier.__index = Atelier
 
@@ -141,6 +142,44 @@ function Atelier.new(gui, gameView, remotes)
 	for _,spec in Config.Economy.upgrades do if spec.id=="kitchen" or spec.maxLevel==math.huge then table.insert(specs,spec) end end
 	for _,spec in Catalog.items do table.insert(specs,spec) end
 	self.scroll=scroll
+	self.placeMap=Instance.new('ScrollingFrame')
+	self.placeMap.Name='ChoosePlace'; self.placeMap.BackgroundColor3=Theme.chocolateDark; self.placeMap.BorderSizePixel=0
+	self.placeMap.CanvasSize=UDim2.fromOffset(0,420); self.placeMap.ScrollBarThickness=4; self.placeMap.Parent=panel
+	self.placeMap.Position=UDim2.fromOffset(12,116)
+	self.placeMap.Size=UDim2.new(1,-24,1,-158)
+	self.placeMap.Visible=false
+	local hint=text(self.placeMap,"Hint",17,Theme.accentSoft)
+	L.set(hint,"Choose a spot in your kitchen")
+	hint.Position=UDim2.fromOffset(12,4); hint.Size=UDim2.new(1,-24,0,44)
+	local floor=box(self.placeMap,"KitchenPlan",Color3.fromRGB(181,160,130))
+	floor.Position=UDim2.new(.05,0,0,54); floor.Size=UDim2.new(.9,0,0,350)
+	self.placeMap:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+	 local height=math.max(240,self.placeMap.AbsoluteSize.Y-68)
+	 floor.Size=UDim2.new(.9,0,0,height); self.placeMap.CanvasSize=UDim2.fromOffset(0,height+68)
+	end)
+	local wall=box(floor,"BackWall",Color3.fromRGB(83,112,97)); wall.Size=UDim2.new(1,0,.25,0)
+	for _,x in {0,.97} do
+	 local side=box(floor,"SideWall",Color3.fromRGB(83,112,97)); side.Position=UDim2.fromScale(x,0); side.Size=UDim2.fromScale(.03,1)
+	end
+	for _,x in {.14,.55} do
+	 local tableTop=box(floor,"Worktable",Color3.fromRGB(207,161,101)); tableTop.Position=UDim2.fromScale(x,.36); tableTop.Size=UDim2.fromScale(.31,.23)
+	end
+	self.placeButtons={}
+	local spots={{'temper',.17,.27},{'library',.25,.08},{'clock',.77,.08},{'workers',.71,.46},{'art',.1,.67},{'rug',.5,.81},{'plant',.89,.81}}
+	for _,spot in spots do
+	 local spec
+	 for _,item in Catalog.items do if item.group==spot[1] then spec=item; break end end
+	 local choice=button(floor,spot[1],"")
+	 choice.AnchorPoint=Vector2.new(.5,.5); choice.Position=UDim2.fromScale(spot[2],spot[3]); choice.Size=UDim2.fromOffset(52,52)
+	 Thumbnails.new(choice,if spot[1]=="library" then Catalog.byId.library_5 else spec)
+	 self.placeButtons[spot[1]]=choice
+	 choice.Activated:Connect(function()
+	  self.selectedPlace=spot[1]; self.scroll.CanvasPosition=Vector2.zero; self:update(self.state)
+	 end)
+	end
+	self.placesBack=button(panel,"ChooseAnotherSpot","‹ Choose another spot")
+	self.placesBack.Position=UDim2.fromOffset(12,112); self.placesBack.Size=UDim2.new(1,-24,0,38); self.placesBack.Visible=false
+	self.placesBack.Activated:Connect(function() self.selectedPlace=nil; self:update(self.state) end)
 	for index, spec in specs do
 		local card = box(scroll, spec.id, Theme.chocolate)
 		card.Size = UDim2.new(1, -8, 0, 138)
@@ -153,16 +192,27 @@ function Atelier.new(gui, gameView, remotes)
 		description.Position = UDim2.fromOffset(12, 40)
 		description.Size = UDim2.new(1, -24, 0, 40)
 		L.set(description, spec.description)
+		if spec.group then
+		 local visual=Instance.new('Frame'); visual.Name='Visual'; visual.BackgroundTransparency=1; visual.Position=UDim2.fromOffset(6,8); visual.Size=UDim2.fromOffset(96,80); visual.Parent=card
+		 Thumbnails.new(visual,spec)
+		 heading.Position=UDim2.fromOffset(108,8); heading.Size=UDim2.new(1,-120,0,32); heading.TextSize=17
+		 description.Position=UDim2.fromOffset(108,42); description.Size=UDim2.new(1,-120,0,42); description.TextSize=12
+		end
 		local buy = button(card, "Buy", "Buy")
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
-		buy.Activated:Connect(function()
-            if spec.group and self.onPreview and self.state and self.state.ready then self.onPreview(spec.id); return end
+		local function activate()
+            if spec.group and self.onPreview and self.state and self.state.ready then self.returningFromPreview=true; self.onPreview(spec.id); return end
 			if self.state and self.state.ready and ((spec.cosmetic and self.state.levels[spec.id] > 0) or (self.state.prices[spec.id]
 				and self.state.slices >= self.state.prices[spec.id])) then
 				remotes.purchase:FireServer(spec.id)
 			end
-		end)
+		end
+		buy.Activated:Connect(activate)
+		if spec.group then
+		 local imageButton=button(card.Visual,"PreviewItem",""); imageButton.BackgroundTransparency=1; imageButton.Size=UDim2.fromScale(1,1)
+		 imageButton.Activated:Connect(activate)
+		end
 		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
@@ -292,6 +342,8 @@ function Atelier:setMode(mode)
     self.scrollPositions=self.scrollPositions or {}
     self.scrollPositions[self.mode or 'upgrades']=self.scroll.CanvasPosition
     self.mode=mode
+    if mode=='kitchen' and not self.returningFromPreview then self.selectedPlace=nil end
+    if mode=='kitchen' then self.returningFromPreview=false end
     L.set(self.title,if mode=='kitchen' then 'My Kitchen' else 'Upgrades')
     self.prestigeCard.Visible=mode~='kitchen'
     self.scroll.CanvasPosition=self.scrollPositions[mode] or Vector2.zero
@@ -312,6 +364,12 @@ function Atelier:update(state)
 	if not state then return end
 	self.state = state
 	if not state.ready then return end
+	local kitchen=self.mode=='kitchen'
+	self.placeMap.Visible=kitchen and self.selectedPlace==nil
+	self.placesBack.Visible=kitchen and self.selectedPlace~=nil
+	self.scroll.Visible=not kitchen or self.selectedPlace~=nil
+	self.scroll.Position=UDim2.fromOffset(12,if kitchen then 160 else 116)
+	self.scroll.Size=UDim2.new(1,-24,1,if kitchen then -202 else -158)
 	self.balanceTest.Visible=state.canTestBalance==true and self.mode~='kitchen'
 	L.set(self.togglePrestige,if state.prestigeDisabled then "Prestige bonus OFF · enable" else "Disable prestige bonus")
 	self.view.inputBlocked = self.overlay.Visible and not self.docked
@@ -328,12 +386,12 @@ function Atelier:update(state)
 	L.set(self.balance, "Pieces: {amount}  ·  {rate} per second", {amount=format(state.slices),rate=format(state.rate)})
 	L.set(self.saved,state.saveStatus or "")
     if self.mode=='kitchen' and not state.owned.workers_1 then
-        L.set(self.balance,'3/3 · Preview Cocoa Apprentice, then tap Hire for free.')
+        L.set(self.balance,'3/3 · Choose the apprentice spot, then hire for free.')
     end
 	local affordable = 0
 	for id, card in self.cards do
         local catalog=card.spec.group~=nil
-        card.frame.Visible=if self.mode=='kitchen' then catalog else not catalog and ((id~='speed' and id~='cafes') or state.owned.workers_1) and (id~='kitchen' or state.levels.kitchen==0)
+        card.frame.Visible=if self.mode=='kitchen' then catalog and card.spec.group==self.selectedPlace else not catalog and ((id~='speed' and id~='cafes') or state.owned.workers_1) and (id~='kitchen' or state.levels.kitchen==0)
         local level=state.levels[id] or 0
         if id=='speed' then
             L.set(card.description,"+20% cycle speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})

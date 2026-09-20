@@ -2,6 +2,9 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Choose a spot in your kitchen"]="Выбери место на кухне",
+ ["‹ Choose another spot"]="‹ Выбрать другое место",
+ ["3/3 · Choose the apprentice spot, then hire for free."]="3/3 · Выбери значок стажёра и найми его бесплатно.",
  ["Admin · session only. Stored stars are kept."]="Админ · только до выхода из игры. Накопленные звёзды сохраняются.",
  ["Disable prestige bonus"]="Отключить бонус престижа",
  ["Prestige bonus OFF · enable"]="Бонус престижа ВЫКЛ · включить",

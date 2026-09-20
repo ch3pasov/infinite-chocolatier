@@ -273,7 +273,7 @@ function Kitchen:updateOnboarding()
  self.guide.Visible=active==true and not self.shopping
  self.bookGuide.Enabled=active==true and self.opened and not self.shopping
  if not active then return end
- local source=if not self.opened then '1/3 · Tap Walk around kitchen above to meet your apprentice.' elseif self.shopping then '3/3 · Preview Cocoa Apprentice, then tap Hire for free.' else '2/3 · Walk to the golden book on the left and open My Kitchen.'
+ local source=if not self.opened then '1/3 · Tap Walk around kitchen above to meet your apprentice.' elseif self.shopping then '3/3 · Choose the apprentice spot, then hire for free.' else '2/3 · Walk to the golden book on the left and open My Kitchen.'
  L.set(self.guide,source)
  self.guide.Position=if self.opened then UDim2.new(.5,0,0,70) else UDim2.new(.5,0,0,180)
 end

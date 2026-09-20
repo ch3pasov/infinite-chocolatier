@@ -48,7 +48,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end
@@ -62,9 +62,15 @@ return function(h)
   h.equals(ui.cards.clock_1.frame.Visible,false); h.equals(ui.cards.speed.frame.Visible,false); h.equals(ui.cards.cafes.frame.Visible,false)
   assert(E.buy(d,'kitchen')); refresh('upgrades'); h.equals(ui.cards.kitchen.frame.Visible,false)
   refresh('kitchen')
-  for _,spec in C.items do h.equals(ui.cards[spec.id].frame.Visible,true) end
+  h.equals(ui.placeMap.Visible,true); h.equals(ui.scroll.Visible,false)
+  for _,spec in C.items do h.equals(ui.cards[spec.id].frame.Visible,false) end
+  ui.selectedPlace='clock'; refresh('kitchen')
+  h.equals(ui.placeMap.Visible,false); h.equals(ui.scroll.Visible,true)
+  for _,spec in C.items do h.equals(ui.cards[spec.id].frame.Visible,spec.group=='clock') end
+  ui.selectedPlace='workers'; refresh('kitchen'); h.equals(ui.cards.workers_1.frame.Visible,true)
+  h.equals(ui.cards.clock_1.frame.Visible,false)
   h.equals(ui.cards.craft.frame.Visible,false); h.equals(ui.cards.recipe.frame.Visible,false)
-  h.equals(ui.balance.Text,'3/3 · Preview Cocoa Apprentice, then tap Hire for free.')
+  h.equals(ui.balance.Text,'3/3 · Choose the apprentice spot, then hire for free.')
   assert(E.buy(d,'workers_1')); refresh('upgrades'); h.equals(ui.cards.speed.frame.Visible,true); h.equals(ui.cards.cafes.frame.Visible,true)
  end)
 
