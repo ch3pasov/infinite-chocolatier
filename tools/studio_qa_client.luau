@@ -211,14 +211,43 @@ local function dispatch(args)
   -- обработчик явно, не выдавая это за проверку нативного игрового ввода.
   kitchen:step(.5); task.wait(1); kitchen:step(.5)
   assert(kitchen.stations[2].actor.visible,"Home apprentice is hidden")
-  assert(#kitchen.online.queueStations==6,"Expected six detailed queue stations")
+  assert(#kitchen.online.queueStations==8,"Expected eight detailed queue stations")
   local loaded=if kitchen.stations[2].actor.rig then 1 else 0
   for _,entry in kitchen.online.queueStations do
    assert(entry.station.actor.visible,"Queue apprentice is hidden")
    if entry.station.actor.rig then loaded+=1 end
   end
   kitchen:setOpen(false)
-  return {ok=true,queueStations=6,loadedAvatars=loaded,expectedAvatars=7,frames="explicit"}
+  return {ok=true,queueStations=8,loadedAvatars=loaded,expectedAvatars=9,frames="explicit"}
+ elseif args.action=="rearDetail" then
+  kitchen:setOpen(true); kitchen:step(.5)
+  local rear={}
+  for _,entry in kitchen.online.queueStations do if entry.rear then table.insert(rear,entry) end end
+  assert(#rear==2,"Nearest rear cafe is missing full stations")
+  assert(waitUntil(function() return rear[1].station.actor.rig and rear[2].station.actor.rig end,15),"Rear avatars did not load")
+  for _,entry in rear do
+   local station=entry.station
+   assert(station.actor.visible and station.actor.rig:FindFirstChild('Humanoid'),"Rear apprentice is a placeholder")
+   assert(station.world.Parent==kitchen.online.queue,"Rear station has the wrong parent")
+   local z=station.actor.rig:GetPivot().Position.Z-kitchen.origin.Z
+   assert(z>31 and z<55,"Detailed apprentice is not in the nearest rear cafe")
+   assert(station.whole and station.knife and next(station.parts),"Rear workstation is incomplete")
+  end
+  for _,object in kitchen.online.queue:GetDescendants() do
+   if object.Name=='DistantWorkerHead' then
+    local z=object.Position.Z-kitchen.origin.Z
+    assert(z<0 or z>55,"Block mannequin remains beside the camera")
+   end
+  end
+  local controller=kitchen.walkController; local distance,pitch=controller.distance,controller.pitch
+  controller:adjust(0,1000); controller:step(0)
+  assert(controller.distance==32,"Maximum walking zoom changed")
+  if args.preview then
+   local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+   if root then root.CFrame=CFrame.new(kitchen.origin.X,root.Position.Y,kitchen.origin.Z+17) end
+   controller.pitch=30; controller.camera.FieldOfView=90; controller:step(0)
+  else controller.distance=distance; controller.pitch=pitch; controller:step(0); kitchen:setOpen(false) end
+  return {ok=true,rearAvatars=2,fullWorkstations=2,nearestPlaceholders=0,maxZoom=32,frames="explicit",renderedFrames=renderedFrames}
  elseif args.action=="rosterRefresh" then
   local Appearance=require(script.FriendAppearance)
   local original=Appearance.createRig; local qaId=2147482999; local loads=0

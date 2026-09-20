@@ -3,7 +3,15 @@ local Q=require('../src/shared/CafeQueue')
 local R=require('../src/shared/StaffRoster')
 local E=require('../src/shared/Economy')
 return function(h)
- h.test('сетевая подписка совпадает с передними анимированными кабинетами',function()
+ h.test('ближайший задний кабинет подробный, дальний остаётся лёгким',function()
+  local detailed,animated=Q.detail(25,24)
+  h.equals(detailed,true); h.equals(animated,true)
+  detailed,animated=Q.detail(26,24)
+  h.equals(detailed,false); h.equals(animated,false)
+  detailed,animated=Q.detail(4,24)
+  h.equals(detailed,true); h.equals(animated,false)
+ end)
+ h.test('сетевая подписка совпадает с передними и ближайшим задним кабинетами',function()
   for a=0,5 do for b=0,5 do
    local records={{owner=1,index=0,online=true,count=a},{owner=2,index=0,online=true,count=b},
     {owner=3,index=0,online=true,count=2},{owner=4,index=0,online=true,count=0}}
@@ -13,8 +21,8 @@ return function(h)
     h.equals(ahead,#preview-math.min(2,math.floor(#preview/2)))
     local actual=Q.animatedPlayers(segments,current,0,1)
     local expected={}
-    for i=1,math.min(3,ahead) do
-     local e=preview[i]; if e.index==0 and e.owner~=1 then expected[e.owner]=true end
+    for i,e in preview do
+     if (i<=math.min(3,ahead) or i==ahead+1) and e.index==0 and e.owner~=1 then expected[e.owner]=true end
     end
     for owner in actual do assert(expected[owner],'пакеты для лёгкого/своего кабинета') end
     for owner in expected do assert(actual[owner],'у видимого игрока нет подписки') end

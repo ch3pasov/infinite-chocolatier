@@ -168,12 +168,20 @@ return function(h)
   assert(oldQueueStation.destroyed); h.equals(#online.queueStations,0)
   local firstObject=#objects+1
   home:SetAttribute("CafeCount",1000000); online:step(.5)
-  h.equals(#online.queueStations,6,"число подробных станций не растёт с покупками")
+  h.equals(#online.queueStations,8,"три передних и один задний кабинет независимо от числа покупок")
+  local rearStations=0
+  for _,entry in online.queueStations do if entry.rear then rearStations+=1 end end
+  h.equals(rearStations,2,'ближайший кабинет перед камерой содержит настоящие станции')
   local behind=0
   for i=firstObject,#objects do local p=objects[i]
    if p.Name=='DistantFloor' and p.Position.Z>k.origin.Z then behind+=1 end
   end
-  h.equals(behind,2,'за камерой не больше двух облегчённых кабинетов')
+  h.equals(behind,1,'только второй задний кабинет остаётся облегчённым')
+  for i=firstObject,#objects do local p=objects[i]
+   if p.Name=='DistantWorkerHead' then
+    assert(p.Position.Z<k.origin.Z or p.Position.Z>k.origin.Z+55,'блочный манекен в ближайшем заднем кабинете')
+   end
+  end
   local queueBefore=online.queue; local stationBefore=online.queueStations[1].station
   local createdBefore=#objects
   home:SetAttribute('StaffRoster','1001,2002,2003'); online:step(.5)

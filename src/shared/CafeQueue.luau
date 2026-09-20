@@ -76,17 +76,24 @@ function Queue.preview(segments,owner,index,limit,viewer)
  return result
 end
 -- Один расчёт передних/задних кабинетов для рисунка и сетевой подписки:
--- за спиной всегда только лёгкие модели без живой позы игрока.
+-- ближайший кабинет за спиной виден крупно при максимальном отдалении.
 function Queue.window(segments,owner,index,viewer)
  local preview=Queue.preview(segments,owner,index,Config.Kitchen.queueLimit,viewer)
  return preview,#preview-math.min(Config.Kitchen.queueBehind,math.floor(#preview/2))
 end
+function Queue.detail(offset,ahead)
+ if offset>ahead then
+  local near=offset-ahead<=Config.Kitchen.queueRearDetailed
+  return near,near
+ end
+ return offset<=Config.Kitchen.queueDetailed,offset<=Config.Kitchen.queueAnimated
+end
 function Queue.animatedPlayers(segments,owner,index,viewer)
  local preview,ahead=Queue.window(segments,owner,index,viewer)
  local result={}
- for offset=1,math.min(ahead,Config.Kitchen.queueAnimated) do
-  local entry=preview[offset]
-  if entry.index==0 and entry.owner~=viewer then result[entry.owner]=true end
+ for offset,entry in preview do
+  local _,animated=Queue.detail(offset,ahead)
+  if animated and entry.index==0 and entry.owner~=viewer then result[entry.owner]=true end
  end
  return result
 end

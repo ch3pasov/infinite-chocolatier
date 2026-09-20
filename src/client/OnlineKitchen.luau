@@ -238,19 +238,20 @@ function Online:updateIslands(models)
  end
  for offset,entry in preview do
   local rear=offset>ahead
+  local detailed,animated=Queue.detail(offset,ahead)
   -- До двух последних кабинетов видимой очереди расположены за спиной.
-  -- Они не дублируют передние и используют только лёгкую геометрию.
+  -- Ближайший попадает в кадр крупно: ему нужны настоящие стажёры и столы.
   local location=origin+Vector3.new(0,0,if rear then 38*(offset-ahead) else -38*offset)
-  if not rear and offset<=Config.Kitchen.queueDetailed then
+  if detailed then
    Shell.new(self.queue,location)
    if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index)) end
-   -- Только ближайшие три комнаты содержат полную анимацию плиток и аватары.
+   -- Полные станции есть в трёх передних комнатах и одной ближайшей задней.
    -- Количество станций ограничено независимо от числа купленных кафе.
-   if offset<=Config.Kitchen.queueAnimated then
+   if animated then
     for side,x in {-3.7,3.7} do
      local isPlayer=entry.index==0 and side==1
      local station=Station.new(k.view,self.queue,location,x,isPlayer,entry.owner)
-     table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side})
+     table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side,rear=rear})
     end
    end
   else
@@ -263,7 +264,7 @@ function Online:updateIslands(models)
    end
    for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
   end
-  if rear or offset>Config.Kitchen.queueAnimated then
+  if not animated then
    for side,x in {-3.7,3.7} do
     part('DistantChocolate',Vector3.new(1.5,.12,2.4),location+Vector3.new(x,2.4,0),Color3.fromRGB(87,43,25))
     if entry.index>0 or (side==2 and sources[entry.owner]:GetAttribute('HasApprentice')) then
