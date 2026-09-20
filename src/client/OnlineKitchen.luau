@@ -19,7 +19,7 @@ local function transparency(part,value)
  if part.LocalTransparencyModifier~=value then part.LocalTransparencyModifier=value end
 end
 function Online.new(kitchen)
- local self=setmetatable({kitchen=kitchen,peers={},packets={},elapsed=0,scan=0,request=0},Online)
+ local self=setmetatable({kitchen=kitchen,peers={},packets={},cycles={},elapsed=0,scan=0,request=0},Online)
  self.remote=kitchen.atelier.remotes.kitchenAction
  self.receive=self.remote.OnClientEvent:Connect(function(userId,raw)
   local clean=Wire.clean(raw); if not clean then return end
@@ -66,6 +66,21 @@ function Online:publishPlayer()
   self.remote:FireServer(action); self.lastPublished=action; self.publishedAt=now
  end
 end
+function Online:cyclePhase(model,now)
+ local id=model:GetAttribute('OwnerId')
+ model=if self.cycleSources then self.cycleSources[id] or model else model
+ local seconds=math.max(.01,model:GetAttribute('CycleSeconds') or 10)
+ local clock=self.cycles[id]
+ if not clock then
+  clock={phase=(now/seconds)%1,seconds=seconds,at=now}; self.cycles[id]=clock
+ else
+  -- Сначала доходим по прежнему темпу, затем принимаем новое улучшение.
+  -- Деление всего времени на новую длительность перескакивало между этапами.
+  clock.phase=(clock.phase+math.max(0,now-clock.at)/clock.seconds)%1
+  clock.seconds=seconds; clock.at=now
+ end
+ return clock.phase
+end
 function Online:step(dt)
  local k=self.kitchen; self.elapsed+=dt; self.scan+=dt
  if k.opened then self.lastPublished=nil end
@@ -85,12 +100,14 @@ function Online:step(dt)
   end
   for key in self.peers do if not seen[key] then self:remove(key) end end
   for id in self.packets do if not owners[id] then self.packets[id]=nil end end
+  for id in self.cycles do if not owners[id] then self.cycles[id]=nil end end
   self:updateIslands(models)
  end
+ local now=os.clock()
  for _,entry in self.queueStations or {} do
-  local cycle=math.max(.01,entry.source:GetAttribute('CycleSeconds') or 10)
+  local phase=self:cyclePhase(entry.source,now)
   local working=entry.index>0 or (entry.side==2 and entry.source:GetAttribute('HasApprentice')==true)
-  local action=Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight)
+  local action=Action.cycle((phase+entry.side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight)
   if entry.index==0 and entry.side==1 then
    local player=Players:GetPlayerByUserId(entry.owner)
    local packet=self.packets[entry.owner]
@@ -113,7 +130,7 @@ function Online:step(dt)
   peer.prompt.Enabled=near and not k.focus and not k.shopping and not k.browsing
   if peer.station then
    local packet=self.packets[peer.player.UserId]
-   local cycle=math.max(.01,peer.model:GetAttribute('CycleSeconds') or 10)
+   local phase=self:cyclePhase(peer.model,now)
    for side,station in peer.stations do
     if side==1 and not peer.staff then
      local working=peer.player:GetAttribute('KitchenMode')=='cut'
@@ -128,7 +145,7 @@ function Online:step(dt)
      local staffSide=if peer.staff then side else 1
      station.actor:setIdentity(peer.model:GetAttribute('Staff'..staffSide),peer.model:GetAttribute('StaffSeed'..staffSide))
      station.actor:setVisible(working)
-     station:pose(Action.cycle((os.clock()/cycle+side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight),working,dt)
+     station:pose(Action.cycle((phase+side*.17)%1,Config,k.view.recipe.slides,k.view.tileWidth,k.view.tileHeight),working,dt)
     end
    end
   end
@@ -166,6 +183,9 @@ function Online:updateIslands(models)
    end
   end
  end
+ -- Домашняя модель — общий источник скорости, чтобы репликация атрибутов
+ -- нескольких комнат одного владельца не чередовала старый и новый темп.
+ self.cycleSources=sources
  local segments=Queue.build(records); local preview,ahead=Queue.window(segments,owner,index,k.player.UserId)
  -- Сразу назначаем окончательный текст: промежуточное Next cafe каждые
  -- полсекунды перезапускало встроенную подсказку и скрывало значок клавиши.
@@ -236,5 +256,6 @@ end
 function Online:destroy()
  self.receive:Disconnect(); self:clearQueue(); self.kitchen.watchPeer=nil
  for key in self.peers do self:remove(key) end
+ self.cycles={}; self.cycleSources=nil
 end
 return Online

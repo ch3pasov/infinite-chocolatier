@@ -373,7 +373,7 @@ class Session:
 
     def smoke(self):
         checks = self.start_test()
-        for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("orders", {}), ("journal", {}),
+        for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
                               ("kitchen", {}), ("visibility", {}), ("catalog", {}), ("idleNetwork", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)

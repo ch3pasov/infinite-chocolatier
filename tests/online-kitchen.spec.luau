@@ -10,6 +10,30 @@ local function signal()
   Fire=function(_,...) for fn in callbacks do fn(...) end end}
 end
 return function(h)
+ h.test('цикл владельца сохраняет фазу при ускорении и долгом отсутствии кадров',function()
+  local stub=setmetatable({},{__index=function(_,key) return key end})
+  local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},
+   script={Parent=stub},require=function() return {} end,
+  },injectGlobals=true})()
+  local function model(id,seconds)
+   return {seconds=seconds,GetAttribute=function(self,key) return if key=='OwnerId' then id else self.seconds end}
+  end
+  local home=model(1,10); local copy=model(1,5)
+  local online=setmetatable({cycles={},cycleSources={[1]=home}},Online)
+  h.near(online:cyclePhase(home,2.3),.23)
+  h.near(online:cyclePhase(copy,2.5),.25,'копия читает скорость из общего источника')
+  home.seconds=5
+  h.near(online:cyclePhase(home,2.5),.25,'новая скорость не меняет текущее положение')
+  h.near(online:cyclePhase(copy,3),.35)
+  h.near(online:cyclePhase(copy,1003),.35,'пауза учитывается без накопления кадров')
+  home.seconds=0
+  h.near(online:cyclePhase(home,1003),.35)
+  h.near(online:cyclePhase(home,1003.0001),.36,'очень быстрый цикл ограничен 0.01 с')
+  local phase=online.cycles[1].phase
+  online:cyclePhase(model(2,10),1003)
+  h.near(online.cycles[1].phase,phase,'разные владельцы не двигают чужой цикл')
+ end)
  h.test('неподвижная ручная станция шлёт редкий снимок, движение сохраняет частоту',function()
   local now=0; local calls={}
   local stub=setmetatable({},{__index=function(_,key) return key end})
@@ -90,6 +114,15 @@ return function(h)
   home:SetAttribute('StaffRoster','1001,1002,1003'); home:SetAttribute('CafeCount',1); online:step(.5)
   h.equals(#online.queueStations,2); h.equals(online.queueStations[1].station.actor.identity,1002); h.equals(online.queueStations[2].station.actor.identity,1003)
   h.equals(online.queueStations[1].station.actor.visible,true)
+  -- Покупка скорости меняет темп, но не переносит руки и куски на другой
+  -- этап. Старый os.clock()/cycle скачет здесь с 40% на 63% цикла.
+  now=2.3; home:SetAttribute('CycleSeconds',10); online:step(.1)
+  local beforeSpeed=online.queueStations[1].station.action
+  home:SetAttribute('CycleSeconds',5); online:step(0)
+  assert(Wire.samePose(beforeSpeed,online.queueStations[1].station.action),'покупка скорости перескочила на другой этап')
+  now=2.4; online:step(.1)
+  local faster=Action.cycle(.23+.17+.1/5,Config,k.view.recipe.slides)
+  assert(Wire.samePose(faster,online.queueStations[1].station.action),'следующий шаг должен идти с новой скоростью')
   local oldQueueStation=online.queueStations[1].station
   h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
   online:step(.5); h.equals(#writes,1)
@@ -125,6 +158,7 @@ return function(h)
   h.equals(stations[1].actor.visible,false)
   models={models[1]}; online:step(.5)
   assert(k.walked); assert(stations[1].destroyed); h.equals(online.peers['2:0'],nil)
+  h.equals(online.cycles[2],nil,'цикл ушедшего владельца освобождается вместе с кафе')
   models[2]=model(2,attrs.KitchenOrigin)
   online:step(.5); assert(online.peers['2:0'])
   position=R.Vector3.new(400,0,1000); online:step(.1); h.equals(online.peers['2:0'].station,nil)

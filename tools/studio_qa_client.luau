@@ -82,6 +82,32 @@ local function dispatch(args)
   for _,prompt in kitchen.prompts do assert(not prompt.Enabled,'Loading left a prompt enabled') end
   atelier:update(saved); kitchen:update(saved); kitchen:setOpen(false)
   return {ok=true,recoveries=4,initialPartialState=true}
+ elseif args.action=="apprenticeTempo" then
+  local Online=require(script.OnlineKitchen)
+  local Action=require(script.WorkstationAction)
+  local home=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId)
+  assert(home,"Home model is missing")
+  local probe=setmetatable({cycles={}},Online)
+  local beforeCycle=home:GetAttribute('CycleSeconds')
+  local sample=beforeCycle*.23
+  local before=probe:cyclePhase(home,sample)
+  local oldLevel=state.levels.speed
+  remotes.purchase:FireServer('speed')
+  assert(waitUntil(function()
+   return atelier.state.levels.speed==oldLevel+1 and home:GetAttribute('CycleSeconds')==atelier.state.cycleSeconds
+  end,4),"Speed purchase did not replicate")
+  local afterCycle=home:GetAttribute('CycleSeconds')
+  local after=probe:cyclePhase(home,sample)
+  assert(afterCycle<beforeCycle and before==after,"Speed purchase jumped the cycle")
+  local station=kitchen.stations[2]
+  local function pose(phase)
+   station:pose(Action.cycle((phase+.17)%1,Config,gameView.recipe.slides,gameView.tileWidth,gameView.tileHeight),true,0)
+   return station.knife:GetPivot()
+  end
+  assert(pose(before)==pose(after),"Knife moved at the instant of an upgrade")
+  local advanced=probe:cyclePhase(home,sample+.1)
+  assert(math.abs(advanced-before-.1/afterCycle)<.000001,"New tempo was not applied")
+  return {ok=true,cycleBefore=beforeCycle,cycleAfter=afterCycle,phaseJump=after-before,knifeStable=true}
  elseif args.action=="idleNetwork" then
   local Online=require(script.OnlineKitchen)
   local view=table.clone(gameView); view.active='cut'; view.cutIndex=1; view.cutProgress=0
