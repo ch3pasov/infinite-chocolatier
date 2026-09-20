@@ -3,6 +3,20 @@ local Q=require('../src/shared/CafeQueue')
 local R=require('../src/shared/StaffRoster')
 local E=require('../src/shared/Economy')
 return function(h)
+ h.test('чередование без пропусков и повторов при разных размерах фабрик',function()
+  for a=0,4 do for b=0,4 do for c=0,3 do
+   local segments=Q.build({{owner=1,index=0,online=true,count=a},{owner=2,index=0,online=true,count=b},{owner=3,index=0,online=true,count=c}})
+   local p=Q.preview(segments,1,0,100)
+   h.equals(#p,a+b+c+2)
+   local seen={['1:0']=true}
+   for _,r in p do local key=Q.key(r.owner,r.index); assert(not seen[key]); seen[key]=true end
+   if a>0 then h.equals(p[1].owner,1); h.equals(p[2].owner,2) end
+   if a>=2 then h.equals(p[4].owner,3); h.equals(p[4].index,0) end
+   local visit=Q.preview(segments,2,0,100,1)
+   h.equals(#visit,#p)
+   for _,r in visit do assert(r.owner~=2 or r.index~=0) end
+  end end end
+ end)
  h.test('посещения пропускают стажёров, свой дом и владельцев офлайн',function()
   local records={{owner=1,index=0,online=true,count=1000000},{owner=1,index=1,online=true},
    {owner=2,index=0,online=true},{owner=3,index=0,online=false},{owner=4,index=0,online=true}}
@@ -38,7 +52,9 @@ return function(h)
   local segments=Q.build({{owner=4,index=0,online=true,count=1000000},{owner=4,index=500,online=true},{owner=9,index=0,online=true,count=2}})
   h.equals(#segments,2)
   local preview=Q.preview(segments,4,0,24); h.equals(#preview,24)
-  for i,r in preview do h.equals(r.owner,4); h.equals(r.index,i) end
+  local expected={{4,1},{9,0},{4,2},{9,1},{4,3},{9,2},{4,4}}
+  for i,r in expected do h.equals(preview[i].owner,r[1]); h.equals(preview[i].index,r[2]) end
+  h.equals(preview[24].owner,4); h.equals(preview[24].index,21)
   local owner,index=Q.next(segments,4,1000000); h.equals(owner,9); h.equals(index,0)
   owner,index=Q.next(segments,9,2); h.equals(owner,4); h.equals(index,0)
   h.equals(#Q.preview(Q.build({{owner=4,index=0,online=true,count=0}}),4,0,24),0)

@@ -39,12 +39,34 @@ function Queue.nextVisitor(records,viewer,current)
  for _,id in ids do if id>current then return id end end
  return ids[1]
 end
-function Queue.preview(segments,owner,index,limit)
- local start=Queue.key(owner,index); local result={}
- for _=1,limit do
-  owner,index=Queue.next(segments,owner,index)
-  if not owner or Queue.key(owner,index)==start then break end
-  table.insert(result,{owner=owner,index=index})
+-- Свои стажёры чередуются с чужими кабинетами; чужие владельцы идут
+-- по кругу, чтобы большая фабрика одного игрока не заслоняла остальных.
+function Queue.preview(segments,owner,index,limit,viewer)
+ viewer=viewer or owner
+ local own,others={},{}
+ for _,s in segments do
+  table.insert(if s.owner==viewer then own else others,{owner=s.owner,next=s.first,last=s.last})
+ end
+ local cursors={1,1}; local queues={own,others}
+ local function take(which)
+  local queue=queues[which]
+  while #queue>0 do
+   local i=cursors[which]; local s=queue[i]
+   if s.next>s.last then
+    table.remove(queue,i); cursors[which]=if #queue==0 then 1 else (i-1)%#queue+1
+   else
+    local n=s.next; s.next+=1; cursors[which]=i%#queue+1
+    if not (s.owner==owner and n==index) then return {owner=s.owner,index=n} end
+   end
+  end
+  return nil
+ end
+ local result={}
+ for i=1,limit do
+  local which=if i%2==1 then 1 else 2
+  local entry=take(which) or take(3-which)
+  if not entry then break end
+  table.insert(result,entry)
  end
  return result
 end

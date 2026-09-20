@@ -77,8 +77,15 @@ function Online:step(dt)
  for _,entry in self.queueStations or {} do
   local cycle=math.max(.01,entry.source:GetAttribute('CycleSeconds') or 10)
   local working=entry.index>0 or (entry.side==2 and entry.source:GetAttribute('HasApprentice')==true)
+  local action=Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides)
+  if entry.index==0 and entry.side==1 then
+   local player=Players:GetPlayerByUserId(entry.owner)
+   local packet=self.packets[entry.owner]
+   working=player~=nil and player:GetAttribute('KitchenMode')=='cut' and packet~=nil
+   if working then action=Wire.blend(packet.previous,packet.current,(os.clock()-packet.at)/.1) end
+  end
   entry.station.actor:setVisible(working)
-  entry.station:pose(Action.cycle((os.clock()/cycle+entry.side*.17)%1,Config,k.view.recipe.slides),working,dt)
+  entry.station:pose(action,working,dt)
  end
  local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart'); local position=if root then root.Position else k.origin
  for _,peer in self.peers do
@@ -132,7 +139,7 @@ function Online:updateIslands(models)
    end
   end
  end
- local segments=Queue.build(records); local preview=Queue.preview(segments,owner,index,24)
+ local segments=Queue.build(records); local preview=Queue.preview(segments,owner,index,24,k.player.UserId)
  -- Сразу назначаем окончательный текст: промежуточное Next cafe каждые
  -- полсекунды перезапускало встроенную подсказку и скрывало значок клавиши.
  for _,entry in prompts do
@@ -169,11 +176,12 @@ function Online:updateIslands(models)
    if offset<=3 then
     local roster={}; for id in string.gmatch(sources[entry.owner]:GetAttribute('StaffRoster') or '', '%d+') do table.insert(roster,tonumber(id)) end
     for side,x in {-3.7,3.7} do
-     local station=Station.new(k.view,self.queue,location,x,false)
+     local isPlayer=entry.index==0 and side==1
+     local station=Station.new(k.view,self.queue,location,x,isPlayer,entry.owner)
      local ordinal=if entry.index>0 then entry.index*2+side-1 else 1
      local id,seed=Roster.identity({[entry.owner]=roster},entry.owner,ordinal)
-     station.actor:setIdentity(id,seed); station.actor:setStyle(1+(entry.index+side)%5)
-     table.insert(self.queueStations,{station=station,source=sources[entry.owner],index=entry.index,side=side})
+     if not isPlayer then station.actor:setIdentity(id,seed); station.actor:setStyle(1+(entry.index+side)%5) end
+     table.insert(self.queueStations,{station=station,source=sources[entry.owner],owner=entry.owner,index=entry.index,side=side})
     end
    end
   else
