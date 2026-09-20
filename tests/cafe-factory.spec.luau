@@ -3,6 +3,30 @@ local Q=require('../src/shared/CafeQueue')
 local R=require('../src/shared/StaffRoster')
 local E=require('../src/shared/Economy')
 return function(h)
+ h.test('сетевая подписка совпадает с передними анимированными кабинетами',function()
+  for a=0,5 do for b=0,5 do
+   local records={{owner=1,index=0,online=true,count=a},{owner=2,index=0,online=true,count=b},
+    {owner=3,index=0,online=true,count=2},{owner=4,index=0,online=true,count=0}}
+   local segments=Q.build(records)
+   for current=1,3 do
+    local preview,ahead=Q.window(segments,current,0,1)
+    h.equals(ahead,#preview-math.min(2,math.floor(#preview/2)))
+    local actual=Q.animatedPlayers(segments,current,0,1)
+    local expected={}
+    for i=1,math.min(3,ahead) do
+     local e=preview[i]; if e.index==0 and e.owner~=1 then expected[e.owner]=true end
+    end
+    for owner in actual do assert(expected[owner],'пакеты для лёгкого/своего кабинета') end
+    for owner in expected do assert(actual[owner],'у видимого игрока нет подписки') end
+   end
+  end end
+  local pair=Q.build({{owner=1,index=0,online=true,count=0},{owner=2,index=0,online=true,count=0}})
+  h.equals(Q.animatedPlayers(pair,1,0,1)[2],true)
+  local onlyOwn=Q.build({{owner=1,index=0,online=true,count=1000000}})
+  local window,ahead=Q.window(onlyOwn,1,0,1)
+  h.equals(#window,26); h.equals(ahead,24)
+  h.equals(next(Q.animatedPlayers(onlyOwn,1,0,1)),nil)
+ end)
  h.test('список для визита содержит только уникальные доступные дома с данными владельцев',function()
   local records={{owner=10,index=0,online=true,name='Me',count=1000000},
    {owner=20,index=1,online=true},{owner=20,index=0,online=true,name='Friend',count=7},

@@ -382,6 +382,14 @@ class Session:
             if not isinstance(result, dict) or result.get("ok") is not True:
                 raise QaError(name + ": " + str(result))
             checks.append((name, result))
+        for name, check in [("networkPrepare", lambda: self.control("networkPrepare")),
+                            ("networkRelay", lambda: self.execute((ROOT / "tools/studio_qa_network.luau").read_text(), "Server")),
+                            ("networkFinish", lambda: self.control("networkFinish"))]:
+            self.report["stage"] = name
+            result = check()
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                raise QaError(name + ": " + str(result))
+            checks.append((name, result))
         self.report["visualReview"] = "Не выполнялась: проверены состояние, геометрия UI и вызовы обработчиков, не снимок или нативный ввод."
         self.engine_errors()
 

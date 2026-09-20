@@ -216,7 +216,14 @@ function Rooms.start(remote,visitRemote)
   refreshStaff()
  end)
  for _,player in Players:GetPlayers() do add(player) end
- return {sync=function(_,player,state)
+ return {visiblePlayers=function(_,player)
+  local current=visitors[player] or homes[player]; if not current then return {} end
+  local records={}
+  for _,room in slots do
+   table.insert(records,{owner=room.id,index=room.index,online=room.owner~=nil,count=room.count})
+  end
+  return Queue.animatedPlayers(Queue.build(records),current.id,current.index,player.UserId)
+ end,sync=function(_,player,state)
   local home=homes[player]; if not home then return end
   home.count=state.levels.cafes or 0; home.model:SetAttribute('CafeCount',home.count)
   for _,room in slots do if room.id==player.UserId then

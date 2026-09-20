@@ -3,6 +3,7 @@
 assert(game:GetService("RunService"):IsStudio(), "QA requires Studio")
 local qa=Instance.new("BindableFunction"); qa.Name="StudioQaControl"; qa.Parent=player.PlayerGui
 local renderedFrames=0
+local networkProbe
 game:GetService("RunService").RenderStepped:Connect(function() renderedFrames+=1 end)
 local function waitUntil(predicate, seconds)
  local deadline=os.clock()+seconds
@@ -27,7 +28,23 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="gesture" then
+ if args.action=="networkPrepare" then
+  if networkProbe then networkProbe.connection:Disconnect() end
+  networkProbe={}
+  networkProbe.connection=remotes.kitchenAction.OnClientEvent:Connect(function(id,action)
+   if id==2147483000 then networkProbe.action=action end
+  end)
+  kitchen:setOpen(true)
+  return {ok=true}
+ elseif args.action=="networkFinish" then
+  local arrived=networkProbe and waitUntil(function() return networkProbe.action~=nil end,4)
+  if networkProbe then networkProbe.connection:Disconnect() end
+  kitchen:setOpen(false)
+  assert(arrived,"Distant player's packet did not arrive through RemoteEvent")
+  local action=networkProbe.action; networkProbe=nil
+  assert(action.cutting and action.knifePoint==Vector2.new(1.25,2.5),"Network pose changed")
+  return {ok=true,transport="RemoteEvent",conditionalAuthor=true}
+ elseif args.action=="gesture" then
   -- Только чтение. Резать, сдвигать и завершать раунд будет настоящий ввод
   -- user_mouse_input, не вызов Game:finishCut или RemoteEvent из теста.
   local v=gameView; local camera=workspace.CurrentCamera

@@ -39,6 +39,10 @@ return function(h)
    players.PlayerAdded:Fire(p); return p
   end
   local a,b=player(1),player(2)
+  h.equals(controller:visiblePlayers(a)[2],true)
+  h.equals(controller:visiblePlayers(b)[1],true)
+  h.equals(controller:visiblePlayers(a)[1],nil)
+  h.equals(next(controller:visiblePlayers({UserId=999})),nil)
   local directory=world.KitchenIslands
   local function visit(p,roomId,home)
    now+=1

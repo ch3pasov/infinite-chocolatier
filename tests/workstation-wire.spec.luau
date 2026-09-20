@@ -11,6 +11,37 @@ local function signal()
 end
 local function pose(t) return Action.cycle(t,Config,Recipe.build(Config.Recipe).slides) end
 return function(h)
+ h.test('видимый сосед в очереди получает позы несмотря на удалённый физический остров',function()
+  local now=0; local sent={}; local queries=0
+  local function player(id,x)
+   local attrs={KitchenOrigin=V3.new(x,0,1000),KitchenMode='walk',VisitingKitchen=id,VisitingCafeIndex=0}
+   return {UserId=id,Parent=true,attrs=attrs,GetAttribute=function(_,k) return attrs[k] end,
+    Character={FindFirstChild=function() return {Position=V3.new(x,3,1008)} end}}
+  end
+  local author,observer,far=player(1,0),player(2,256),player(3,512)
+  author.attrs.KitchenMode='cut'
+  local players={PlayerRemoving=signal(),GetPlayers=function() return {author,observer,far} end}
+  local remote={OnServerEvent=signal(),FireClient=function(_,p,id,a) table.insert(sent,{p,id,a}) end}
+  Relay.start(players,remote,Wire,function() return now end,function(p)
+   queries+=1
+   return if p==observer and p.attrs.VisitingKitchen==2 then {[1]=true} else {}
+  end)
+  remote.OnServerEvent:Fire(author,pose(.1))
+  h.equals(#sent,1); h.equals(sent[1][1],observer); h.equals(sent[1][2],1)
+  local firstQueries=queries
+  now=.1; remote.OnServerEvent:Fire(author,pose(.15))
+  h.equals(#sent,2); h.equals(queries,firstQueries,'очередь не пересчитывается на каждый пакет')
+  remote.OnServerEvent:Fire(observer); h.equals(#sent,3,'новому наблюдателю доступен кеш')
+  observer.attrs.VisitingKitchen=3
+  now=.2; remote.OnServerEvent:Fire(author,pose(.2))
+  h.equals(#sent,3,'смена посещаемой комнаты сразу отменяет старую подписку')
+  observer.attrs.VisitingKitchen=2; observer.attrs.KitchenMode='cut'
+  now=.3; remote.OnServerEvent:Fire(author,pose(.25)); h.equals(#sent,3)
+  observer.attrs.KitchenMode='walk'
+  now=1; remote.OnServerEvent:Fire(author,pose(.3)); h.equals(#sent,4)
+  players.PlayerRemoving:Fire(author); author.Parent=nil
+  now=2; remote.OnServerEvent:Fire(observer); h.equals(#sent,4)
+ end)
  h.test('сеть отвергает некорректные и неограниченные координаты, не принимает деньги/автора',function()
   h.equals(Wire.clean(false),nil); h.equals(Wire.clean({}),nil)
   for _,v in {Vector2.new(0/0,0),Vector2.new(math.huge,0),Vector2.new(13,0),'bad'} do

@@ -1,5 +1,6 @@
 --!nonstrict
 -- Очередь хранит диапазоны, а не список комнат: миллион покупок стоит O(игроков).
+local Config=require('./Config')
 local Queue={}
 function Queue.key(owner,index) return tostring(owner)..':'..tostring(index or 0) end
 function Queue.build(records)
@@ -71,6 +72,21 @@ function Queue.preview(segments,owner,index,limit,viewer)
   local entry=take(which) or take(3-which)
   if not entry then break end
   table.insert(result,entry)
+ end
+ return result
+end
+-- Один расчёт передних/задних кабинетов для рисунка и сетевой подписки:
+-- за спиной всегда только лёгкие модели без живой позы игрока.
+function Queue.window(segments,owner,index,viewer)
+ local preview=Queue.preview(segments,owner,index,Config.Kitchen.queueLimit,viewer)
+ return preview,#preview-math.min(Config.Kitchen.queueBehind,math.floor(#preview/2))
+end
+function Queue.animatedPlayers(segments,owner,index,viewer)
+ local preview,ahead=Queue.window(segments,owner,index,viewer)
+ local result={}
+ for offset=1,math.min(ahead,Config.Kitchen.queueAnimated) do
+  local entry=preview[offset]
+  if entry.index==0 and entry.owner~=viewer then result[entry.owner]=true end
  end
  return result
 end

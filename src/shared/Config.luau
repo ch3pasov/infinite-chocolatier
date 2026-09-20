@@ -4,7 +4,12 @@
 local Config = {}
 Config.BalanceTesterUserId = 2630291964
 -- Отдельный флаг позволяет убрать эксперимент без изменения ручного фокуса.
-Config.Kitchen = { enabled = true }
+Config.Kitchen = {
+	enabled = true,
+	-- Сервер рассылает позы только для того же окна очереди, которое клиент
+	-- рисует подробно. Физические острова при этом могут быть далеко друг от друга.
+	queueLimit = 26, queueBehind = 2, queueDetailed = 6, queueAnimated = 3,
+}
 
 -- Экспериментальный рендер отделён от правил игры; false возвращает 2D.
 Config.Scene3D = {

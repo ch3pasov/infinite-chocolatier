@@ -17,7 +17,8 @@ local remotes = Remotes.ensure(ReplicatedStorage)
 local kitchens
 if Config.Kitchen.enabled and Config.Scene3D.enabled then
  kitchens=require(script.KitchenRooms).start(remotes.kitchenMode,remotes.cafeVisit)
- require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock)
+ require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock,
+  function(player) return kitchens:visiblePlayers(player) end)
 end
 local studio = RunService:IsStudio()
 local dataStore = if studio then nil else DataStoreService:GetDataStore("ChocolateAtelier_v1")

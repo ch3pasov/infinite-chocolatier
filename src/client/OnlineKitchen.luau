@@ -157,7 +157,7 @@ function Online:updateIslands(models)
    end
   end
  end
- local segments=Queue.build(records); local preview=Queue.preview(segments,owner,index,26,k.player.UserId)
+ local segments=Queue.build(records); local preview,ahead=Queue.window(segments,owner,index,k.player.UserId)
  -- Сразу назначаем окончательный текст: промежуточное Next cafe каждые
  -- полсекунды перезапускало встроенную подсказку и скрывало значок клавиши.
  for _,entry in prompts do
@@ -180,19 +180,17 @@ function Online:updateIslands(models)
   p.Anchored=true; p.CanCollide=false; p.CanQuery=false; p.CanTouch=false
   p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth; p.Parent=self.queue; return p
  end
- local behind=math.min(2,math.floor(#preview/2))
- local ahead=#preview-behind
  for offset,entry in preview do
   local rear=offset>ahead
   -- До двух последних кабинетов видимой очереди расположены за спиной.
   -- Они не дублируют передние и используют только лёгкую геометрию.
   local location=origin+Vector3.new(0,0,if rear then 38*(offset-ahead) else -38*offset)
-  if not rear and offset<=6 then
+  if not rear and offset<=Config.Kitchen.queueDetailed then
    Shell.new(self.queue,location)
    if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index)) end
    -- Только ближайшие три комнаты содержат полную анимацию плиток и аватары.
    -- Количество станций ограничено независимо от числа купленных кафе.
-   if offset<=3 then
+   if offset<=Config.Kitchen.queueAnimated then
     local roster={}; for id in string.gmatch(sources[entry.owner]:GetAttribute('StaffRoster') or '', '%d+') do table.insert(roster,tonumber(id)) end
     for side,x in {-3.7,3.7} do
      local isPlayer=entry.index==0 and side==1
@@ -213,7 +211,7 @@ function Online:updateIslands(models)
    end
    for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
   end
-  if rear or offset>3 then
+  if rear or offset>Config.Kitchen.queueAnimated then
    for side,x in {-3.7,3.7} do
     part('DistantChocolate',Vector3.new(1.5,.12,2.4),location+Vector3.new(x,2.4,0),Color3.fromRGB(87,43,25))
     if entry.index>0 or (side==2 and sources[entry.owner]:GetAttribute('HasApprentice')) then

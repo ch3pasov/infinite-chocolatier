@@ -2,13 +2,22 @@
 -- Автор берётся из OnServerEvent; клиент не может выдать пакет за соседа.
 -- Частота ограничена до разбора позы, а кеш нужен новым наблюдателям.
 local Relay={}
-function Relay.start(players,remote,wire,clock)
- local latest,last,lastRequest={}, {}, {}
+function Relay.start(players,remote,wire,clock,visiblePlayers)
+ local latest,last,lastRequest,views={}, {}, {}, {}
  local function nearby(observer,author)
   if observer:GetAttribute('KitchenMode')=='cut' then return false end
   local root=observer.Character and observer.Character:FindFirstChild('HumanoidRootPart')
   local origin=author:GetAttribute('KitchenOrigin')
-  return root and origin and (root.Position-origin).Magnitude<80
+  if root and origin and (root.Position-origin).Magnitude<80 then return true end
+  if not visiblePlayers then return false end
+  local now=clock(); local owner=observer:GetAttribute('VisitingKitchen'); local index=observer:GetAttribute('VisitingCafeIndex')
+  local view=views[observer]
+  -- Ограниченная очередь считается раз в полсекунды на наблюдателя,
+  -- а не для каждого автора на каждом сетевом кадре. Визит сбрасывает кеш сразу.
+  if not view or view.owner~=owner or view.index~=index or now>=view.expires then
+   view={owner=owner,index=index,expires=now+.5,players=visiblePlayers(observer)}; views[observer]=view
+  end
+  return view.players[author.UserId]==true
  end
  remote.OnServerEvent:Connect(function(player,raw)
   local now=clock()
@@ -30,7 +39,7 @@ function Relay.start(players,remote,wire,clock)
   end
  end)
  players.PlayerRemoving:Connect(function(player)
-  latest[player]=nil; last[player]=nil; lastRequest[player]=nil
+  latest[player]=nil; last[player]=nil; lastRequest[player]=nil; views[player]=nil
  end)
 end
 return Relay
