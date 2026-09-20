@@ -3,6 +3,7 @@
 -- Соседние рабочие места соединены общим проходом, а слоты переиспользуются.
 local Players=game:GetService('Players')
 local Workspace=game:GetService('Workspace')
+local RunService=game:GetService('RunService')
 local Rooms={}
 function Rooms.start(remote)
  local rooms={}; local slots={}
@@ -19,9 +20,31 @@ function Rooms.start(remote)
  foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
  local floor=solid(corridor,'HallFloor',Vector3.new(length,1,12),Vector3.new(length/2-12,-.6,1022))
  floor.Transparency=0; floor.Color=Color3.fromRGB(151,126,98)
- for _,wall in {{Vector3.new(length,10,1),Vector3.new(length/2-12,4.5,1028)}, {Vector3.new(1,10,12),Vector3.new(-12,4.5,1022)}, {Vector3.new(1,10,12),Vector3.new(length-12,4.5,1022)}} do
-  local p=solid(corridor,'HallBoundary',wall[1],wall[2]); p.Transparency=0; p.Color=Color3.fromRGB(83,112,97)
- end
+ -- Прозрачный внешний периметр не закрывает фиксированную камеру.
+ -- Он окружает весь фундамент, включая промежутки и ещё пустые кухни.
+ for _,wall in {
+  {Vector3.new(length+1,64,1),Vector3.new(length/2-12,31,1028)},
+  {Vector3.new(length+1,64,1),Vector3.new(length/2-12,31,993)},
+  {Vector3.new(1,64,35),Vector3.new(-12,31,1010.5)},
+  {Vector3.new(1,64,35),Vector3.new(length-12,31,1010.5)},
+ } do solid(corridor,'HallBoundary',wall[1],wall[2]) end
+ -- Страховка от провала физики/телепорта за край: возвращаем в свою кухню,
+ -- не убивая персонажа и не сбрасывая экономику или раунд.
+ local elapsed=0
+ RunService.Heartbeat:Connect(function(dt)
+  elapsed+=dt; if elapsed<.25 then return end; elapsed=0
+  for player,room in rooms do
+   local char=player.Character
+   local root=char and char:FindFirstChild('HumanoidRootPart')
+   if root then
+    local p=root.Position
+    if p.Y< -8 or p.X< -12 or p.X>length-12 or p.Z<993 or p.Z>1028 then
+     char:PivotTo(CFrame.new(room.origin+Vector3.new(0,3,8)))
+     root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyAngularVelocity=Vector3.zero
+    end
+   end
+  end
+ end)
  local function mode(player,value)
   local room=rooms[player]; if not room then return end
   if value~='walk' and value~='cut' and value~='watch' then return end
