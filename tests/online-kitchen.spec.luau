@@ -25,9 +25,9 @@ return function(h)
   local models={}
   local directory={GetChildren=function() return models end}
   local world={FindFirstChild=function() return directory end}
-  local function model(id,origin)
+  local function model(id,origin,descendants)
    local attributes={OwnerId=id,Origin=origin,OwnerOnline=true,DisplayName='Neighbor',Username='neighbor'}
-   return {GetAttribute=function(_,key) return attributes[key] end,SetAttribute=function(_,key,value) attributes[key]=value end,GetDescendants=function() return {} end}
+   return {GetAttribute=function(_,key) return attributes[key] end,SetAttribute=function(_,key,value) attributes[key]=value end,GetDescendants=function() return descendants or {} end}
   end
   local remote={OnClientEvent=signal(),FireServer=function(_,a) table.insert(calls,a or 'request') end}
   local k={player=localPlayer,world={GetDescendants=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
@@ -46,6 +46,24 @@ return function(h)
   },injectGlobals=true})()
   local online=Online.new(k)
   online:step(.5); h.equals(online.peers['2:0'],nil)
+  -- Наблюдаем все записи, а не только итоговый текст: мерцание вызывали
+  -- два противоположных изменения свойства внутри одного обновления.
+  local values={Name='NextCafePrompt',ActionText='Next cafe',Enabled=true}
+  local writes={}
+  local sign=setmetatable({IsA=function(_,class) return class=='ProximityPrompt' end},{__index=values,__newindex=function(_,key,value)
+   table.insert(writes,{key=key,value=value}); values[key]=value
+  end})
+  local home=model(1,k.origin,{sign}); models={home}
+  online:step(.5); h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
+  for _=1,8 do online:step(.5) end
+  h.equals(#writes,1,'ожидающая подсказка не должна обновляться каждый опрос')
+  home:SetAttribute('CafeCount',1); online:step(.5)
+  h.equals(sign.ActionText,'Next cafe'); h.equals(#writes,2)
+  online:step(.5); h.equals(#writes,2)
+  home:SetAttribute('CafeCount',0); online:step(.5)
+  h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,3)
+  k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
+  k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)
   attrs.KitchenOrigin=R.Vector3.new(24,0,1000)
   models={model(1,k.origin),model(2,attrs.KitchenOrigin)}
   online:step(.5); assert(online.peers['2:0']); h.equals(#stations,2)

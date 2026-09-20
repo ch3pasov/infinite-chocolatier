@@ -105,7 +105,7 @@ end
 function Online:updateIslands(models)
  local k=self.kitchen; local owner=k.player:GetAttribute('VisitingKitchen') or k.player.UserId
  local index=k.player:GetAttribute('VisitingCafeIndex') or 0; local currentKey=Queue.key(owner,index)
- local current; local records={}; local sources={}
+ local current; local records={}; local sources={}; local prompts={}
  for _,model in models do
   local id=model:GetAttribute('OwnerId'); local n=model:GetAttribute('CafeIndex') or 0
   if id then
@@ -115,16 +115,22 @@ function Online:updateIslands(models)
    for _,part in model:GetDescendants() do
     if part:IsA('BasePart') then part.LocalTransparencyModifier=if key==currentKey then 0 else 1
     elseif part:IsA('ProximityPrompt') then
-     local home=part.Name=='HomeCafePrompt'
-     part.Enabled=key==currentKey and k.opened and not k.focus and not k.shopping and (not home or owner~=k.player.UserId or index~=0)
-     part.ActionText=L.text(if home then 'Return home' else 'Next cafe')
+     table.insert(prompts,{prompt=part,current=key==currentKey})
     end
    end
   end
  end
- if not current then return end
  local segments=Queue.build(records); local preview=Queue.preview(segments,owner,index,24)
- for _,part in current:GetDescendants() do if part:IsA('ProximityPrompt') and part.Name=='NextCafePrompt' and #preview==0 then part.ActionText=L.text('Waiting for another cafe') end end
+ -- Сразу назначаем окончательный текст: промежуточное Next cafe каждые
+ -- полсекунды перезапускало встроенную подсказку и скрывало значок клавиши.
+ for _,entry in prompts do
+  local prompt=entry.prompt; local home=prompt.Name=='HomeCafePrompt'
+  local enabled=entry.current and k.opened and not k.focus and not k.shopping and (not home or owner~=k.player.UserId or index~=0)
+  local text=L.text(if home then 'Return home' elseif entry.current and #preview==0 then 'Waiting for another cafe' else 'Next cafe')
+  if prompt.ActionText~=text then prompt.ActionText=text end
+  if prompt.Enabled~=enabled then prompt.Enabled=enabled end
+ end
+ if not current then return end
  local origin=current:GetAttribute('Origin')
  for _,part in k.world:GetDescendants() do
   if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1 end
