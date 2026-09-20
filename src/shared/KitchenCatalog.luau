@@ -9,7 +9,7 @@ local names={
  library={'Recipe Notebook','Caramel Recipes','Mint Recipes','Berry Recipes','Grand Recipe Collection'},
  clock={'Cocoa Clock','Caramel Clock','Mint Clock','Berry Clock','Golden Pendulum Clock'},
 }
-local descriptions={temper='+20% trick reward · permanent purchase bonus',library='+2 pieces per trick · permanent purchase bonus',clock='+10% apprentice speed · permanent purchase bonus'}
+local descriptions={temper='+20% trick reward · bonus while owned',library='+2 pieces per trick · bonus while owned',clock='+10% apprentice speed · bonus while owned'}
 for _,spec in Config.Economy.upgrades do
  if names[spec.id] then
   for i,name in names[spec.id] do

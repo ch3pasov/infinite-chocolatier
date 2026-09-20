@@ -347,8 +347,8 @@ function Atelier:update(state)
 	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
 	local gain = state.prestigeGain
 	if gain < 1 then self.confirmed = false end
-	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces and infinite upgrades? Your kitchen collection and stars stay. Gain {stars} stars (+25% income each).",{stars=gain})
-	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Pieces and infinite upgrades reset; your kitchen collection stays.",{earned=format(state.earned)}) end
+	if self.confirmed then L.set(self.prestigeInfo,"Reset pieces, all upgrades, apprentices and furniture? Only stars and lifetime stats stay. Gain {stars} stars (+25% income each).",{stars=gain})
+	else L.set(self.prestigeInfo,"Earned: {earned}. Stars: 5K for one, 20K for two (+25% income each). Resets pieces, all upgrades, apprentices and furniture.",{earned=format(state.earned)}) end
 	self.fill.Size = UDim2.fromScale(math.clamp(state.earned / Config.Economy.prestigeTarget, 0, 1), 1)
 	if self.confirmed then L.set(self.ascend,"Confirm reset · +{stars} ★",{stars=gain})
 	elseif gain>0 then L.set(self.ascend,"Open a new workshop · +{stars} ★",{stars=gain})

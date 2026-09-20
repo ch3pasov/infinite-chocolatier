@@ -163,7 +163,13 @@ function Economy.prestige(data)
 	data.slices = 0
 	data.earned = 0
 	data.productionRemainder = 0
-	for _, spec in E.upgrades do if spec.maxLevel==math.huge then data.levels[spec.id] = 0 end end
+	-- Новый цикл начинается с пустой кухни, включая перенесённых старых стажёров.
+	for _, spec in E.upgrades do data.levels[spec.id] = 0 end
+	data.legacyWorkers = 0
+	data.owned = {}
+	data.equipped = {}
+	for _, item in Catalog.items do data.owned[item.id] = false end
+	recount(data)
 	return true
 end
 

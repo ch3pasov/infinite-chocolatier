@@ -53,12 +53,18 @@ return function(h)
    local before=d.levels[id]; assert(E.buy(d,id)); h.equals(d.levels[id],before+1)
   end
  end)
- h.test('новая мастерская сохраняет коллекцию, выбор и доступ к каталогу',function()
-  local d=E.load({slices=10000,earned=5000,levels={kitchen=1,craft=4}})
-  assert(E.buy(d,'workers_1')); assert(E.buy(d,'library_5')); assert(E.buy(d,'library_5'))
+ h.test('престиж сбрасывает всю коллекцию и старых стажёров, новый найм снова требует оплаты',function()
+  local d=E.load({slices=1e6,earned=5000,productionRemainder=.8,levels={workers=73,clock=5,craft=4}})
+  for _,item in C.items do if not d.owned[item.id] then assert(E.buy(d,item.id)) end end
   assert(E.prestige(d)); d=E.load(d)
-  h.equals(d.levels.craft,0); h.equals(d.levels.kitchen,1)
-  assert(d.owned.library_5); h.equals(d.equipped.library,nil); h.equals(d.levels.workers,1)
+  for _,spec in Config.Economy.upgrades do h.equals(d.levels[spec.id],0) end
+  for _,item in C.items do h.equals(d.owned[item.id],false) end
+  h.equals(next(d.equipped),nil); h.equals(d.legacyWorkers,0)
+  h.equals(d.productionRemainder,0); h.equals(E.rate(d),0)
+  h.equals(E.tick(d,14400),0); h.equals(E.buy(d,'workers_1'),false)
+  h.equals(E.price(d,'kitchen'),25)
+  E.credit(d,25); assert(E.buy(d,'kitchen')); assert(E.buy(d,'workers_1'))
+  h.equals(d.slices,0); h.equals(d.levels.workers,1)
  end)
  h.test('названия и эффекты всех предметов имеют русский перевод',function()
   for _,item in C.items do assert(L.entries[item.name],item.name); assert(L.entries[item.description],item.description) end

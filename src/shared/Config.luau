@@ -177,7 +177,7 @@ Config.Payout = {
 -- вскоре после него, но ручное действие продолжает ускорять развитие.
 Config.Economy = {
     upgrades = {
-        { id = "kitchen", name = "Open My Kitchen", description = "Unlock the kitchen catalog · first apprentice included", baseCost = 25, growth = 1, maxLevel = 1, permanent = true },
+        { id = "kitchen", name = "Open My Kitchen", description = "Unlock the kitchen catalog · first apprentice included", baseCost = 25, growth = 1, maxLevel = 1 },
         { id = "craft", name = "Craftsmanship", description = "+1 piece per manual trick and apprentice cycle", baseCost = 3, growth = 1.55, maxLevel = math.huge },
         { id = "workers", name = "Apprentice Chocolatiers", description = "+1 apprentice · same reward as your manual trick", baseCost = 25, growth = 1.4, maxLevel = 100 },
         { id = "speed", name = "Practiced Hands", description = "+20% apprentice cycle speed", baseCost = 40, growth = 1.55, maxLevel = math.huge },
@@ -185,9 +185,9 @@ Config.Economy = {
         { id = "temper", name = "Tempering Machine", description = "+20% trick reward · adds a tempering machine", baseCost = 80, growth = 2, maxLevel = 5 },
         { id = "library", name = "Recipe Library", description = "+2 pieces per trick · fills your recipe shelf", baseCost = 60, growth = 1.8, maxLevel = 5 },
         { id = "clock", name = "Confectioner’s Clock", description = "+10% apprentice speed · adds a kitchen clock", baseCost = 100, growth = 2, maxLevel = 5 },
-        { id = "plant", name = "Cocoa Plant", description = "Decoration · a leafy cocoa plant · kept in new workshops", baseCost = 45, growth = 1, maxLevel = 1, cosmetic = true, permanent = true },
-        { id = "rug", name = "Caramel Rug", description = "Decoration · a warm patterned rug · kept in new workshops", baseCost = 75, growth = 1, maxLevel = 1, cosmetic = true, permanent = true },
-        { id = "art", name = "Golden Cocoa", description = "Decoration · a framed cocoa artwork · kept in new workshops", baseCost = 120, growth = 1, maxLevel = 1, cosmetic = true, permanent = true },
+        { id = "plant", name = "Cocoa Plant", description = "Decoration · a leafy cocoa plant", baseCost = 45, growth = 1, maxLevel = 1, cosmetic = true },
+        { id = "rug", name = "Caramel Rug", description = "Decoration · a warm patterned rug", baseCost = 75, growth = 1, maxLevel = 1, cosmetic = true },
+        { id = "art", name = "Golden Cocoa", description = "Decoration · a framed cocoa artwork", baseCost = 120, growth = 1, maxLevel = 1, cosmetic = true },
     },
     -- Один ученик выполняет полный фокус; мастерство усиливает его награду.
     apprenticeCycleSeconds = 10,
