@@ -394,7 +394,7 @@ function Atelier:update(state)
         card.frame.Visible=if self.mode=='kitchen' then catalog and card.spec.group==self.selectedPlace else not catalog and ((id~='speed' and id~='cafes') or state.owned.workers_1) and (id~='kitchen' or state.levels.kitchen==0)
         local level=state.levels[id] or 0
         if id=='speed' then
-            L.set(card.description,"+20% cycle speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
+            L.set(card.description,"+20% apprentice speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
         elseif card.spec.group=='workers' then
             L.set(card.description,"One apprentice · +{reward} per {seconds}s cycle",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})
         end

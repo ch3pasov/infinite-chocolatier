@@ -9,7 +9,7 @@ Key,Source,Context,Example,ru
 "+2 pieces per trick · fills your recipe shelf","+2 pieces per trick · fills your recipe shelf","","","+2 дольки за фокус · пополняет полку рецептов"
 "+2 pieces per trick · permanent purchase bonus","+2 pieces per trick · permanent purchase bonus","","","+2 дольки за фокус · бонус за владение"
 "+20% apprentice cycle speed","+20% apprentice cycle speed","","","+20% к скорости фокусов учеников"
-"+20% cycle speed · current cycle: {seconds}s","+20% cycle speed · current cycle: {seconds}s","","","+20% к скорости · текущий цикл: {seconds} с"
+"+20% apprentice speed · current cycle: {seconds}s","+20% apprentice speed · current cycle: {seconds}s","","","+20% к скорости стажёра · текущий цикл: {seconds} с"
 "+20% trick reward · adds a tempering machine","+20% trick reward · adds a tempering machine","","","+20% к награде за фокус · машина появляется на кухне"
 "+20% trick reward · bonus while owned","+20% trick reward · bonus while owned","","","+20% к награде за фокус · бонус за владение"
 "+20% trick reward · permanent purchase bonus","+20% trick reward · permanent purchase bonus","","","+20% к награде за фокус · бонус за владение"
