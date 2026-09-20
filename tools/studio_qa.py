@@ -255,6 +255,30 @@ def qa_overrides(entries, root=ROOT):
             client_path: sources[client_path] + "\n" + (root / "tools/studio_qa_client.luau").read_text()}
 
 
+def mouse_drag(plan):
+    """Координаты берутся из проекции игры; за границы viewport ввод не уходит."""
+    if not plan.get("renderReady"):
+        raise QaError("Studio не рисует игровой viewport; нативный ввод не отправлен")
+    viewport = plan.get("viewport", {})
+    width, height = viewport.get("x", 0), viewport.get("y", 0)
+    points = [plan.get("start", {}), plan.get("finish", {})]
+    for point in points:
+        x, y = point.get("x"), point.get("y")
+        if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (x, y, width, height)):
+            raise QaError("Некорректные координаты жеста")
+        if not 0 <= x < width or not 0 <= y < height:
+            raise QaError("Жест вне игрового viewport; проверьте проекцию")
+    a, b = points
+    actions = [{"action": "moveTo", **a}, {"action": "mouseButtonDown", "mouse_button": "left"},
+               {"action": "wait", "wait_time_ms": 60}]
+    for step in range(1, 9):
+        actions += [{"action": "moveTo", "x": a["x"] + (b["x"] - a["x"]) * step / 8,
+                     "y": a["y"] + (b["y"] - a["y"]) * step / 8},
+                    {"action": "wait", "wait_time_ms": 30}]
+    actions.append({"action": "mouseButtonUp", "mouse_button": "left"})
+    return actions
+
+
 class Session:
     def __init__(self, mcp, studio_id, entries, report):
         self.mcp, self.studio_id, self.entries, self.report = mcp, studio_id, entries, report
@@ -288,7 +312,7 @@ class Session:
             self.modified = False
         self.report["cleanup"] = self.check()
 
-    def smoke(self):
+    def start_test(self):
         self.check()
         self.sync(qa_overrides(self.entries))
         self.play_attempted = True
@@ -307,6 +331,48 @@ class Session:
         self.report["checks"] = checks
         if state.get("workers") != 25 or state.get("manual") != 1:
             raise QaError("Тестовый профиль не применён: " + str(state))
+        return checks
+
+    def gestures(self):
+        self.start_test()
+        self.report["stage"] = "native-input-readiness"
+        deadline = time.monotonic() + 5
+        while True:
+            state = self.control("gesture")
+            self.report["nativeInput"] = state
+            if state.get("renderReady") or time.monotonic() >= deadline:
+                break
+            time.sleep(.2)
+        if not state.get("renderReady"):
+            raise QaError("Studio не рисует игровой viewport (возможна блокировка экрана); нативный ввод не отправлен")
+        before = state["rounds"]
+        expected = [("cut", 1), ("cut", 2), ("cut", 3), ("cut", 4), ("assembleLarge", 4), ("assembleStrip", 4)]
+        self.report["gestures"] = []
+        for phase, cut in expected:
+            self.report["stage"] = "native-" + phase + "-" + str(cut)
+            deadline = time.monotonic() + 6
+            while (state.get("phase"), state.get("cut")) != (phase, cut):
+                if time.monotonic() >= deadline:
+                    raise QaError("Жест не перевёл игру к следующему этапу: " + str(state))
+                time.sleep(.1)
+                state = self.control("gesture")
+            if state.get("blocked") or state.get("rounds") != before:
+                raise QaError("Ввод закрыт интерфейсом или раунд завершился раньше всех жестов")
+            self.mcp.tool("user_mouse_input", studio_id=self.studio_id, datamodel_type="Client", actions=mouse_drag(state))
+            self.report["gestures"].append({"phase": phase, "cut": cut, "start": state["start"], "finish": state["finish"]})
+            state = self.control("gesture")
+        deadline = time.monotonic() + 6
+        while state.get("rounds") != before + 1 or state.get("phase") != "cut" or state.get("cut") != 1:
+            if time.monotonic() >= deadline:
+                raise QaError("Не подтверждены награда и готовность следующей плитки: " + str(state))
+            time.sleep(.1)
+            state = self.control("gesture")
+        self.report["nativeInput"] = state
+        self.report["visualReview"] = "Нативный ввод и состояние проверены; визуальный снимок не выполнялся."
+        self.engine_errors()
+
+    def smoke(self):
+        checks = self.start_test()
         for name, options in [("purchase", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
                               ("kitchen", {}), ("visibility", {}), ("catalog", {})]:
@@ -316,6 +382,10 @@ class Session:
             if not isinstance(result, dict) or result.get("ok") is not True:
                 raise QaError(name + ": " + str(result))
             checks.append((name, result))
+        self.report["visualReview"] = "Не выполнялась: проверены состояние, геометрия UI и вызовы обработчиков, не снимок или нативный ввод."
+        self.engine_errors()
+
+    def engine_errors(self):
         self.report["console"] = self.mcp.tool("get_console_output", studio_id=self.studio_id)
         self.report["engineLogs"] = {}
         self.report["stage"] = "engine-errors"
@@ -332,7 +402,6 @@ return {errors=errors,count=count}
             self.report["engineLogs"][mode] = logs
             if not isinstance(logs, dict) or "errors" not in logs or logs["errors"]:
                 raise QaError("Ошибки движка " + mode + ": " + str(logs))
-        self.report["visualReview"] = "Не выполнялась: проверены состояние, геометрия UI и вызовы обработчиков, не снимок или нативный ввод."
 
 
 def run(args, mcp_factory=MCP):
@@ -356,6 +425,8 @@ def run(args, mcp_factory=MCP):
                 report["sync"] = session.sync()
             elif args.command == "smoke":
                 session.smoke()
+            elif args.command == "gestures":
+                session.gestures()
         report["ok"] = True
     except BaseException as error:
         failure = error
@@ -384,7 +455,7 @@ def run(args, mcp_factory=MCP):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["list", "check", "sync", "smoke"])
+    parser.add_argument("command", choices=["list", "check", "sync", "smoke", "gestures"])
     parser.add_argument("--place-name", default=DEFAULT_PLACE)
     parser.add_argument("--studio-id")
     parser.add_argument("--mcp", default=DEFAULT_MCP)

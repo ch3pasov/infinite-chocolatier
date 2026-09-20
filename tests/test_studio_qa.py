@@ -8,6 +8,7 @@ import queue
 import shutil
 import subprocess
 import unittest
+import itertools
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -34,6 +35,60 @@ class FakeMCP:
     def close(self): self.closed=True
 
 class StudioQaTests(unittest.TestCase):
+    def test_mouse_drag_validates_projection_before_sending_events(self):
+        plan={"renderReady":True,"viewport":{"x":800,"y":600},"start":{"x":200,"y":500},"finish":{"x":400,"y":100}}
+        actions=qa.mouse_drag(plan)
+        self.assertEqual(actions[0],{"action":"moveTo","x":200,"y":500})
+        self.assertEqual(actions[-1],{"action":"mouseButtonUp","mouse_button":"left"})
+        self.assertEqual([a for a in actions if a["action"]=="moveTo"][-1],{"action":"moveTo","x":400.0,"y":100.0})
+        for change in ({"renderReady":False},{"start":{"x":-1,"y":10}},{"finish":{"x":float("nan"),"y":1}}):
+            with self.assertRaises(qa.QaError): qa.mouse_drag(dict(plan,**change))
+
+    def gesture_client(self,ready=True,advance=True):
+        fake=FakeMCP(); phases=[("cut",i) for i in range(1,5)]+[("assembleLarge",4),("assembleStrip",4),("cut",1)]
+        fake.step=0
+        def dispatch(name,**args):
+            if name=="user_mouse_input":
+                fake.calls.append((name,args))
+                if advance: fake.step+=1
+                return "ok"
+            if name=="execute_luau" and "q:Invoke" in args["code"] and "gesture" in args["code"]:
+                phase,cut=phases[fake.step]
+                return {"renderReady":ready,"phase":phase,"cut":cut,"rounds":1 if fake.step==6 else 0,
+                        "viewport":{"x":800 if ready else 1,"y":600 if ready else 1},
+                        "start":{"x":200,"y":500},"finish":{"x":400,"y":100}}
+            return FakeMCP.tool(fake,name,**args)
+        fake.tool=dispatch
+        return fake
+
+    def test_native_scenario_requires_four_cuts_two_slides_and_server_round(self):
+        fake=self.gesture_client(); report={}; session=qa.Session(fake,"qa",qa.source_inventory(),report)
+        session.gestures()
+        self.assertEqual(len(report["gestures"]),6)
+        self.assertEqual(report["nativeInput"]["rounds"],1)
+        self.assertEqual([g["phase"] for g in report["gestures"]],["cut"]*4+["assembleLarge","assembleStrip"])
+        self.assertEqual(len([1 for name,_ in fake.calls if name=="user_mouse_input"]),6)
+        session.cleanup()
+
+    def test_locked_renderer_fails_without_mouse_events_and_restores_sources(self):
+        fake=self.gesture_client(ready=False)
+        with tempfile.TemporaryDirectory() as directory, patch.object(qa.time,"monotonic",side_effect=itertools.count(0,10)):
+            path=Path(directory)/"report.json"
+            args=types.SimpleNamespace(command="gestures",mcp="unused",timeout=1,place_name=qa.DEFAULT_PLACE,studio_id=None,report=str(path))
+            self.assertEqual(qa.run(args,lambda *args:fake),1)
+            report=json.loads(path.read_text())
+        self.assertFalse(any(name=="user_mouse_input" for name,_ in fake.calls))
+        self.assertEqual(report["failedStage"],"native-input-readiness")
+        self.assertFalse(report["ok"]); self.assertIn("restoredSources",report)
+
+    def test_native_stalled_cut_is_not_replayed(self):
+        fake=self.gesture_client(advance=False)
+        session=qa.Session(fake,"qa",qa.source_inventory(),{})
+        with patch.object(qa.time,"monotonic",side_effect=itertools.count(0,10)):
+            with self.assertRaises(qa.QaError): session.gestures()
+        self.assertEqual(len([1 for name,_ in fake.calls if name=="user_mouse_input"]),1)
+        session.cleanup()
+
     def test_timeout_keeps_same_request_and_never_sends_it_twice(self):
         client=qa.MCP.__new__(qa.MCP)
         client.timeout=.002; client.next_id=0; client.pending=None; client.replies=queue.Queue()

@@ -2,6 +2,8 @@
 -- Не маппится Rojo: добавляется только в локальный entrypoint перед Play.
 assert(game:GetService("RunService"):IsStudio(), "QA requires Studio")
 local qa=Instance.new("BindableFunction"); qa.Name="StudioQaControl"; qa.Parent=player.PlayerGui
+local renderedFrames=0
+game:GetService("RunService").RenderStepped:Connect(function() renderedFrames+=1 end)
 local function waitUntil(predicate, seconds)
  local deadline=os.clock()+seconds
  repeat if predicate() then return true end; task.wait(.1) until os.clock()>=deadline
@@ -25,7 +27,38 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="purchase" then
+ if args.action=="gesture" then
+  -- Только чтение. Резать, сдвигать и завершать раунд будет настоящий ввод
+  -- user_mouse_input, не вызов Game:finishCut или RemoteEvent из теста.
+  local v=gameView; local camera=workspace.CurrentCamera
+  local viewport=if camera then camera.ViewportSize else Vector2.zero
+  local result={ready=true,phase=v.active,cut=v.cutIndex,rounds=state.rounds,
+   blocked=v.inputBlocked or v.observingKitchen or v.journalOpen or v.diagnosticsOpen or false,
+   progress=v.cutProgress,renderReady=renderedFrames>1 and viewport.X>1 and viewport.Y>1,
+   frames=renderedFrames,viewport={x=viewport.X,y=viewport.Y}}
+  if not result.renderReady then return result end
+  local a,b
+  if v.active=="cut" then
+   local path=v.paths[v.cutIndex].geom
+   local geom=require(game.ReplicatedStorage.Shared.Geom)
+   a=geom.pointAt(path,v.cutProgress); b=geom.pointAt(path,path.length)
+  elseif v.active=="assembleLarge" or v.active=="assembleStrip" then
+   local large=v.active=="assembleLarge"; local name=if large then "upperLeft" else "stripDouble"
+   local anchor=if large then Vector2.new(v.trick.largeHintAnchor.x*v.tileWidth,v.trick.largeHintAnchor.y*v.tileHeight) else v:pieceCenter(name)
+   a=anchor+v.pieces[name].offset
+   assert(v:isInsidePiece(name,a),"Gesture start is outside the moving piece")
+   local progress=if large then v.largeProgress else v.stripProgress
+   b=a+(v:definitionOffset(v.recipe.slides[name])-v:definitionOffset(v.trick.exploded[name]))*(1-progress)
+  end
+  if a then
+   local function screen(point)
+    local p=v.scene3D:boardToScreen(point)+v.root.AbsolutePosition
+    return {x=p.X,y=p.Y}
+   end
+   result.start=screen(a); result.finish=screen(b)
+  end
+  return result
+ elseif args.action=="purchase" then
   atelier:setQuantity(10); local before=state.levels.craft
   atelier:purchase(atelier.cards.craft.spec)
   assert(waitUntil(function() return atelier.state.levels.craft==before+10 end,4),"Purchase did not arrive")
