@@ -12,11 +12,12 @@ return function(h)
  h.test('соседние кухни, возрождение и переиспользование места после выхода',function()
   local world=R.Instance.new('Folder'); local delayed={}
   local players={PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function() return {} end}
-  local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}
-  local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'),{environment={
+  local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}; local prompts={}; local now=0
+  local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'):gsub('prompt.Triggered:Connect%(', 'connectPrompt(prompt,'),{environment={
    game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(self) return self end} else world end},
    require=function() return require("../src/shared/KitchenStructure") end,
-   Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,
+   Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,UDim2=R.UDim2,
+   os={clock=function() return now end},connectPrompt=function(prompt,fn) prompts[prompt]=fn end,
    task={spawn=function(fn) fn() end,delay=function(_,fn) table.insert(delayed,fn) end},
   },injectGlobals=true})()
   Rooms.start(remote)
@@ -36,6 +37,13 @@ return function(h)
    players.PlayerAdded:Fire(p); return p
   end
   local a,b=player(1),player(2)
+  local directory=world.KitchenIslands
+  local function visit(p,roomId,home)
+   now+=1
+   local board=directory['KitchenRoom_'..roomId][if home then 'HomeCafeArrow' else 'NextCafeArrow']
+   p.root.Position=board.Position
+   prompts[board:FindFirstChildOfClass('ProximityPrompt')](p)
+  end
   -- Сравниваем реальные результаты обоих строителей, включая перенос комнаты.
   local source=fs.readFile('src/client/KitchenShell.luau'):gsub('world:PivotTo%([^\n]+','')
   local Shell=luau.load(source,{environment={
@@ -45,7 +53,7 @@ return function(h)
   },injectGlobals=true})()
   local visible=Shell.new(R.Instance.new('Folder'),R.Vector3.zero)
   for _,owner in {a,b} do for _,name in {'BackWall','LeftWall','RightWall'} do
-   local hitbox=world['KitchenRoom_'..owner.UserId][name]; local wall=visible[name]
+   local hitbox=directory['KitchenRoom_'..owner.UserId][name]; local wall=visible[name]
    h.equals(hitbox.Size,wall.Size)
    assert((hitbox.Position-owner.KitchenOrigin-wall.CFrame.Position).Magnitude<.0001)
    assert(math.abs(hitbox.Position.Y+hitbox.Size.Y/2-6.5)<.0001)
@@ -54,14 +62,14 @@ return function(h)
 
   h.equals(a.root.Anchored,true); h.equals(b.root.Anchored,true)
   h.equals(a.body.Transparency,1); h.equals(a.body.CanCollide,false)
-  assert((a.KitchenOrigin-b.KitchenOrigin).Magnitude==24)
+  assert((a.KitchenOrigin-b.KitchenOrigin).Magnitude==256)
   remote.OnServerEvent:Fire(a,'walk'); h.equals(a.root.Anchored,false); h.equals(b.root.Anchored,true)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
   remote.OnServerEvent:Fire(a,'bogus'); h.equals(a.root.Anchored,false)
   a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
-  h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,8))).Magnitude,0)
-  local hall=world.SharedKitchenHall; local boundaries={}
-  for _,part in hall:GetChildren() do if part.Name=='HallBoundary' then
+  h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,19))).Magnitude,0)
+  local hall=directory.KitchenRoom_1; local boundaries={}
+  for _,part in hall:GetChildren() do if part.Name=='IslandBoundary' then
    table.insert(boundaries,part); assert(part.Transparency==1 and part.CanCollide and part.Anchored)
    assert(part.Size.Y>=60)
   end end
@@ -76,7 +84,7 @@ return function(h)
   -- внешние боковые грани не могут конкурировать за один пиксель.
   h.near(foundation.Position.Z+foundation.Size.Z/2,hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2)
   local opaque={}
-  for _,part in hall:GetChildren() do if part.Transparency==0 then table.insert(opaque,part) end end
+  for _,part in hall:GetChildren() do if part.Name=='Foundation' or part.Name=='HallFloor' then table.insert(opaque,part) end end
   for i=1,#opaque do for j=i+1,#opaque do
    local a,b=opaque[i],opaque[j]
    local overlap=true
@@ -91,19 +99,40 @@ return function(h)
    for _,part in boundaries do if math.abs(part.Position[edge[1]]-edge[2])<.01 and part.Size[edge[3]]>=edge[4] then covered=true end end
    assert(covered,'открытая внешняя граница')
   end
-  for _,outside in {R.Vector3.new(0,-9,1008),R.Vector3.new(-13,3,1000),R.Vector3.new(max.X+1,3,1020),R.Vector3.new(0,3,992),R.Vector3.new(0,3,1029)} do
+  for _,outside in {R.Vector3.new(0,-9,1008),R.Vector3.new(-12,3,1000),R.Vector3.new(max.X+1,3,1020),R.Vector3.new(0,3,992),R.Vector3.new(0,3,1029)} do
    a.root.Position=outside; a.root.AssemblyLinearVelocity=R.Vector3.new(0,-100,0)
    run.Heartbeat:Fire(.25)
-   h.equals(a.position,a.KitchenOrigin+R.Vector3.new(0,3,8))
+   h.equals(a.position,a.KitchenOrigin+R.Vector3.new(0,3,19))
    h.equals(a.root.AssemblyLinearVelocity,R.Vector3.zero); h.equals(a.KitchenMode,'walk')
   end
-  a.root.Position=b.KitchenOrigin+R.Vector3.new(0,3,8); run.Heartbeat:Fire(.25)
-  h.equals(a.root.Position,b.KitchenOrigin+R.Vector3.new(0,3,8))
-  remote.OnServerEvent:Fire(a,'watch'); h.equals(a.root.Anchored,true)
-  players.PlayerRemoving:Fire(a); h.equals(#world:GetChildren(),2)
-  local c=player(3); h.equals(c.KitchenOrigin,a.KitchenOrigin)
-  players.PlayerRemoving:Fire(c)
-  players.PlayerRemoving:Fire(b); h.equals(#world:GetChildren(),1)
-  assert(world.SharedKitchenHall:FindFirstChild('Foundation'),'пол гостей должен пережить уход владельца')
+  -- Нельзя вызвать переход издалека или во время нарезки.
+  local arrow=directory.KitchenRoom_1.NextCafeArrow
+  local trigger=prompts[arrow:FindFirstChildOfClass('ProximityPrompt')]
+  a.root.Position=a.KitchenOrigin; trigger(a); h.equals(a.VisitingKitchen,1)
+  remote.OnServerEvent:Fire(a,'cut'); visit(a,1,false); h.equals(a.VisitingKitchen,1)
+  remote.OnServerEvent:Fire(a,'walk'); visit(a,1,false)
+  h.equals(a.VisitingKitchen,2); h.equals(a.position,b.KitchenOrigin+R.Vector3.new(0,3,19))
+  -- Последний гость удерживает остров после выхода владельца.
+  players.PlayerRemoving:Fire(b); assert(directory:FindFirstChild('KitchenRoom_2'))
+  h.equals(directory.KitchenRoom_2:GetAttribute('OwnerOnline'),false)
+  local c=player(3); assert(c.KitchenOrigin~=b.KitchenOrigin,'занятое гостем место переиспользовано')
+  remote.OnServerEvent:Fire(c,'walk'); visit(c,3,false); visit(c,1,false)
+  h.equals(c.VisitingKitchen,2)
+  -- Возвращение владельца использует сохранённый остров без дубликатов.
+  local returned=player(2); h.equals(returned.KitchenOrigin,b.KitchenOrigin)
+  h.equals(#directory:GetChildren(),3)
+  players.PlayerRemoving:Fire(returned); assert(directory:FindFirstChild('KitchenRoom_2'))
+  visit(a,2,true); h.equals(a.VisitingKitchen,1)
+  assert(directory:FindFirstChild('KitchenRoom_2'),'в кафе ещё один гость')
+  remote.OnServerEvent:Fire(c,'cut'); h.equals(c.VisitingKitchen,3)
+  h.equals(directory:FindFirstChild('KitchenRoom_2'),nil)
+  local d=player(4); h.equals(d.KitchenOrigin,b.KitchenOrigin)
+  -- Переход по кругу и выход последнего гостя тоже освобождают остров.
+  visit(a,1,false); h.equals(a.VisitingKitchen,4)
+  players.PlayerRemoving:Fire(d); assert(directory:FindFirstChild('KitchenRoom_4'))
+  players.PlayerRemoving:Fire(a)
+  h.equals(directory:FindFirstChild('KitchenRoom_4'),nil)
+  h.equals(directory:FindFirstChild('KitchenRoom_1'),nil)
+  players.PlayerRemoving:Fire(c); h.equals(#directory:GetChildren(),0)
  end)
 end

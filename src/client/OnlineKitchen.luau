@@ -1,6 +1,7 @@
 --!nonstrict
 -- Реальные позы соседей приходят от сервера. Между двумя снимками сглаживаем
 -- движение, но не придумываем следующий разрез и не запускаем цикл за игрока.
+local Workspace=game:GetService('Workspace')
 local Players=game:GetService('Players')
 local Shared=game:GetService('ReplicatedStorage'):WaitForChild('Shared')
 local Wire=require(Shared.WorkstationWire)
@@ -18,9 +19,6 @@ function Online.new(kitchen)
   local old=self.packets[userId]
   self.packets[userId]={previous=old and old.current,current=clean,at=os.clock()}
  end)
- self.leaving=Players.PlayerRemoving:Connect(function(player)
-  self:remove(player.UserId); self.packets[player.UserId]=nil
- end)
  self.remote:FireServer()
  return self
 end
@@ -30,11 +28,11 @@ function Online:remove(id)
  if peer.station then peer.station:destroy() end
  peer.world:Destroy(); self.peers[id]=nil
 end
-function Online:add(player,origin)
+function Online:add(player,origin,model)
  local k=self.kitchen
  local world=Instance.new('Model'); world.Name='Neighbor_'..player.UserId; world.Parent=k.world
  Shell.new(world,origin)
- local peer={player=player,origin=origin,world=world}; self.peers[player.UserId]=peer
+ local peer={player=player,origin=origin,world=world,model=model}; self.peers[player.UserId]=peer
  local anchor=Instance.new('Part'); anchor.Name='PlayerWorktable'; anchor.Anchored=true
  anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one
  anchor.Position=origin+Vector3.new(-3.7,2.5,3); anchor.Parent=world
@@ -63,10 +61,26 @@ function Online:step(dt)
  if self.request>=1.1 then self.request=0; self.remote:FireServer() end
  if self.scan>=.5 then
   self.scan=0
-  for _,player in Players:GetPlayers() do
-   local origin=player:GetAttribute('KitchenOrigin')
-   if player~=k.player and origin and not self.peers[player.UserId] then self:add(player,origin) end
+  local directory=Workspace:FindFirstChild('KitchenIslands')
+  local seen={}; local models=if directory then directory:GetChildren() else {}
+  for _,model in models do
+   local id=model:GetAttribute('OwnerId'); local origin=model:GetAttribute('Origin')
+   if id and origin then
+    seen[id]=true
+    if id~=k.player.UserId and not self.peers[id] then
+     -- Снимок имени остаётся после ухода владельца до последнего гостя.
+     local author={UserId=id,DisplayName=model:GetAttribute('DisplayName'),Name=model:GetAttribute('Username')}
+     function author:GetAttribute(name)
+      local player=Players:GetPlayerByUserId(id)
+      return if model:GetAttribute('OwnerOnline') and player and player.Parent then player:GetAttribute(name) else nil
+     end
+     self:add(author,origin,model)
+    end
+   end
   end
+  for id in self.peers do if not seen[id] then self:remove(id); self.packets[id]=nil end end
+  self:updateIslands(models)
+
  end
  local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart')
  local position=if root then root.Position else k.origin
@@ -91,8 +105,58 @@ function Online:step(dt)
   end
  end
 end
+-- Физические острова независимы; дальние копии создают личную очередь,
+-- не перемещая чужих персонажей и не меняя серверную географию.
+function Online:updateIslands(models)
+ local k=self.kitchen
+ local currentId=k.player:GetAttribute('VisitingKitchen') or k.player.UserId
+ local current; local ordered={}
+ for _,model in models do
+  local id=model:GetAttribute('OwnerId')
+  if id then table.insert(ordered,model) end
+  if id==currentId then current=model end
+  for _,part in model:GetDescendants() do
+   if part:IsA('BasePart') then part.LocalTransparencyModifier=if id==currentId then 0 else 1
+   elseif part:IsA('SurfaceGui') then part.Enabled=id==currentId
+   elseif part:IsA('ProximityPrompt') then
+    local home=part.Name=='HomeCafePrompt'
+    part.Enabled=id==currentId and k.opened and not k.focus and not k.shopping and (not home or currentId~=k.player.UserId)
+    part.ActionText=L.text(if home then 'Return home' elseif #models>1 then 'Next cafe' else 'Waiting for another cafe')
+   end
+  end
+ end
+ if not current then return end
+ local origin=current:GetAttribute('Origin')
+ for _,part in k.world:GetDescendants() do
+  if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then
+   part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1
+  end
+ end
+ table.sort(ordered,function(a,b) return a:GetAttribute('Origin').X<b:GetAttribute('Origin').X end)
+ local index=table.find(ordered,current) or 1
+ local key=tostring(currentId)
+ for _,model in ordered do key..=':'..model:GetAttribute('OwnerId') end
+ if self.queueKey==key then return end
+ self.queueKey=key
+ if self.queue then self.queue:Destroy() end
+ self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
+ for offset=1,math.min(3,#ordered-1) do
+  local model=ordered[(index+offset-1)%#ordered+1]
+  -- Очередь за задней стеной видна фиксированной камере; за спиной
+  -- камеры (+Z) она полностью исчезала бы из кадра.
+  local location=origin+Vector3.new(0,0,-80*offset)
+  Shell.new(self.queue,location)
+  local floor=Instance.new('Part'); floor.Name='DistantTerrace'; floor.Anchored=true; floor.CanCollide=false; floor.CanQuery=false
+  floor.Size=Vector3.new(22,1,11); floor.Position=location+Vector3.new(0,-.6,22.5)
+  floor.Color=Color3.fromRGB(151,126,98); floor.TopSurface=Enum.SurfaceType.Smooth; floor.BottomSurface=Enum.SurfaceType.Smooth; floor.Parent=self.queue
+  local title=Instance.new('BillboardGui'); title.Size=UDim2.fromOffset(180,35); title.StudsOffset=Vector3.new(0,6,0); title.Parent=floor
+  local text=Instance.new('TextLabel'); text.Size=UDim2.fromScale(1,1); text.BackgroundTransparency=1; text.TextColor3=Color3.fromRGB(255,232,192)
+  text.TextScaled=true; text.Text=model:GetAttribute('DisplayName'); text.AutoLocalize=false; text.Parent=title
+ end
+end
 function Online:destroy()
- self.receive:Disconnect(); self.leaving:Disconnect()
+ self.receive:Disconnect()
+ if self.queue then self.queue:Destroy() end
  self.kitchen.watchPeer=nil
  for id in self.peers do self:remove(id) end
 end
