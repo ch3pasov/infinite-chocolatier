@@ -89,7 +89,7 @@ function Animator:setVisible(visible)
  if not self.rig then return end
  for part,rest in self.rest do part.Transparency=if visible then rest else 1 end
 end
-function Animator:step(action, origin, scale, dt)
+function Animator:step(action, origin, scale, dt, knifeGrip)
  if not self.rig or not self.visible then return end
  local active=action.cutting or not action.whole
  local alpha=1-math.exp(-dt*12)
@@ -99,7 +99,7 @@ function Animator:step(action, origin, scale, dt)
   if entry then
    local joint=entry.joint
    local tile=if side=="Right" then action.rightHand else action.leftHand
-   local target=origin+Vector3.new(tile.X*scale.X,.2,tile.Y*scale.Y)
+   local target=if side=="Right" and knifeGrip then knifeGrip else origin+Vector3.new(tile.X*scale.X,.2,tile.Y*scale.Y)
    local shoulder=joint.Part0.CFrame:PointToWorldSpace(entry.c0.Position)
    local desired=entry.c0
    if active then

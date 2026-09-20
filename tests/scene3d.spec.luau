@@ -21,7 +21,7 @@ end
 local Projection=module('src/client/Projection3D.luau')
 local Solid=module('src/client/SolidGeometry.luau')
 local Motion=module('src/client/Motion3D.luau')
-local deps={WorldStage={},Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
+local deps={KnifeMotion=module('src/client/KnifeMotion.luau'),WorldStage={},Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
 local modules=setmetatable({},{__index=function(_,k)return k end})
 local sceneEnv=table.clone(env)
 sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' then {WaitForChild=function()return modules end} else {} end}

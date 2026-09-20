@@ -9,6 +9,7 @@ local Layout = require(script.Parent.Layout)
 local Projection = require(script.Parent.Projection3D)
 local Solid = require(script.Parent.SolidGeometry)
 local Motion = require(script.Parent.Motion3D)
+local Knife = require(script.Parent.KnifeMotion)
 local WorldStage = require(script.Parent.WorldStage)
 local Scene = {}
 Scene.__index = Scene
@@ -214,6 +215,7 @@ function Scene.new(view)
 		local rivet=part(self.knife,"Rivet",Vector3.new(0.06,0.025,0.06),CFrame.new(0.04,0.23,z),color("knife"))
 		rivet.Shape=Enum.PartType.Ball
 	end
+	self.knife:ScaleTo(settings.knifeScale)
 	self.knife.Parent = self.overlay.world
 	view.board.Visible = false
 	view.scene3D = self
@@ -400,7 +402,7 @@ function Scene:step(dt)
 		local target=Vector3.new(p.X*unit,settings.surfaceHeight+0.06,p.Y*unit)
 		local cutting = v.drag and v.drag.kind=="cut" or v.active=="finishingCut"
 		local lift=if cutting then 0 else 0.18+math.sin(self.time*2)*0.025
-		self.knife:PivotTo(renderFrame(CFrame.lookAt(target+Vector3.new(0,lift,0),target+Vector3.new(direction.X, lift,direction.Y))*CFrame.new(0,0,0.86)*CFrame.Angles(0,0,math.rad(if cutting then -65 else -12))))
+		self.knife:PivotTo(Knife.frame((target+Vector3.new(0,lift,0))*renderScale,Vector3.new(direction.X,0,direction.Y),settings,math.rad(if cutting then -65 else -12)))
 		present(self.knife,self.overlay.world,true)
 		if cutting and math.abs(v.cutProgress-self.lastCrumb)>7 then self:burst(target,2,false); self.lastCrumb=v.cutProgress end
 	else present(self.knife,self.overlay.world,false) end

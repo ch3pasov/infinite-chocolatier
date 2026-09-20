@@ -2,6 +2,7 @@
 -- Геометрия и анимация едины: различается только источник снимка действий.
 local Config=require(game:GetService('ReplicatedStorage'):WaitForChild('Shared').Config)
 local Animator=require(script.Parent.ChocolatierAnimator)
+local Knife=require(script.Parent.KnifeMotion)
 local Station={}; Station.__index=Station
 local function show(model,visible)
  if model:GetAttribute("KitchenShown")==visible then return end
@@ -33,12 +34,15 @@ function Station:pose(action,working,dt)
   model:PivotTo(CFrame.new(station.origin+Vector3.new(offset.X*scale.X,0,offset.Y*scale.Y)))
  end
  show(station.knife,working and action.cutting)
+ local grip=nil
  if working and action.cutting then
   local point=station.origin+Vector3.new(action.knifePoint.X*scale.X,.18,action.knifePoint.Y*scale.Y)
   local direction=Vector3.new(action.knifeDirection.X*scale.X,0,action.knifeDirection.Y*scale.Y)
-  station.knife:PivotTo(CFrame.lookAt(point,point+direction)*CFrame.Angles(0,0,-math.pi/3))
+  local frame=Knife.frame(point,direction,Config.Scene3D,math.rad(-65))
+  station.knife:PivotTo(frame)
+  grip=Knife.grip(frame,Config.Scene3D)
  end
- self.actor:step(action,station.origin,scale,dt)
+ self.actor:step(action,station.origin,scale,dt,grip)
 end
 function Station:destroy()
  self.actor:destroy(); self.world:Destroy()
