@@ -2,6 +2,9 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Last packed order"]="Последний готовый заказ",
+ ["Bonus received: +{bonus}"]="Получена премия: +{bonus}",
+ ["Bonus already added. This receipt stays until you leave."]="Премия уже на балансе. Квитанция доступна до выхода из игры.",
  ["My factory"]="Моя фабрика",
  ["{cafes} cafes · {workers} apprentices"]="Кафе: {cafes} · стажёров: {workers}",
  ["+{rate} pieces per second"]="+{rate} долек в секунду",

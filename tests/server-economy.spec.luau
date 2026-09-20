@@ -58,6 +58,28 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('квитанция заказа переживает снимки, покупку и престиж без повторного начисления',function()
+  local f=fixture(false,{slices=100,earned=5000})
+  h.equals(f.latest().lastOrder,nil)
+  for _=1,4 do f.events.roundComplete.OnServerEvent:Fire(f.player); f.advance() end
+  local receipt=f.latest().lastOrder
+  h.equals(receipt.name,Config.Orders[1].name); h.equals(receipt.bonus,1); h.equals(receipt.number,1)
+  local balance=f.latest().slices
+  f.events.requestState.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().lastOrder.bonus,1); h.equals(f.latest().slices,balance); h.equals(f.latest().reward,nil)
+  f.advance(); f.events.purchase.OnServerEvent:Fire(f.player,'craft',1)
+  h.equals(f.latest().manual,2); h.equals(f.latest().lastOrder.bonus,1)
+  f.advance(); f.events.prestige.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().slices,0); h.equals(f.latest().lastOrder.bonus,1)
+  -- Престиж начинает текущий заказ заново, сохраняя число выполненных.
+  local remaining=f.latest().order.required-f.latest().order.progress
+  for _=1,remaining do f.advance(); f.events.roundComplete.OnServerEvent:Fire(f.player) end
+  h.equals(f.latest().lastOrder.number,2)
+  h.equals(f.latest().lastOrder.name,Config.Orders[2].name)
+  h.equals(f.latest().lastOrder.bonus,f.latest().manual*Config.Orders[2].bonusRounds)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().data.lastOrder,nil)
+ end)
  h.test('сервер начисляет остаток звёзд и объясняет отказ на общем пределе',function()
   local f=fixture(false,{stars=Config.Economy.maxStars-1,earned=20000})
   f.events.prestige.OnServerEvent:Fire(f.player)

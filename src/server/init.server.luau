@@ -51,6 +51,7 @@ local function send(player, notice, reward)
 	state.prestigeDisabled = session.data.ignorePrestige == true
 	state.offline = session.offline
 	state.offlineReport = session.offlineReport
+	state.lastOrder = session.lastOrder
 	state.notice = if type(notice)=="string" then {key=notice} else notice
 	state.reward = reward
 	state.saveStatus = if studio then "Test session · progress is not saved" else session.saveStatus
@@ -165,6 +166,11 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	session.lastRound = now
 	accrue(session)
 	local amount, completed = Economy.round(session.data)
+	-- Квитанция живёт до выхода: очередной снимок или покупка не стирают
+	-- уже выданную премию и не пересчитывают её по новому уровню навыка.
+	if completed then
+		session.lastOrder = {name=completed.name, bonus=completed.bonus, number=session.data.ordersCompleted}
+	end
 	local notice = if completed then {key="Order packed! +{bonus} bonus pieces", args={bonus=completed.bonus}}
 		else {key="Trick complete! +{amount}",args={amount=amount}}
 	send(player, notice, amount)

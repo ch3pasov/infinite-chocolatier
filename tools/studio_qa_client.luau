@@ -199,7 +199,10 @@ local function dispatch(args)
    task.wait(Config.Payout.minInterval+.05)
   end
   assert(atelier.state.ordersCompleted==1 and atelier.state.order.progress==0,"Order did not complete")
-  return {ok=true,orders=atelier.state.ordersCompleted,rounds=atelier.state.rounds}
+  local receipt=atelier.state.lastOrder
+  assert(receipt and receipt.name==Config.Orders[1].name and receipt.number==1,'Order receipt missing')
+  assert(receipt.bonus==atelier.state.manual*Config.Orders[1].bonusRounds,'Receipt has the wrong bonus')
+  return {ok=true,orders=atelier.state.ordersCompleted,rounds=atelier.state.rounds,receipt=receipt}
  elseif args.action=="journal" then
   atelier.journal:open()
   assert(gameView.journalOpen and atelier.journal.overlay.Visible,"Journal did not open")
@@ -207,13 +210,16 @@ local function dispatch(args)
   local journal=atelier.journal; local saved=atelier.state
   assert(journal.productionCard.Visible and journal.productionCycle.Visible,'Factory report is missing')
   local L=require(script.Localization)
+  assert(journal.receiptCard.Visible and journal.receiptName.Text==L.text(saved.lastOrder.name),'Last order is missing from the journal')
+  assert(journal.receiptBonus.Text==L.text('Bonus received: +{bonus}',{bonus=L.number(saved.lastOrder.bonus)}),'Journal receipt changed the paid bonus')
   assert(journal.productionCount.Text==L.text('{cafes} cafes · {workers} apprentices',{cafes=L.number(13),workers=L.number(25)}),'Wrong cafe or apprentice count')
   assert(journal.productionCycle.Text==L.text('Each apprentice: +{reward} every {seconds}s',{reward=L.number(saved.cycleReward),seconds=L.number(saved.cycleSeconds)}),'Wrong production cycle')
   local economy=require(game.ReplicatedStorage.Shared.Economy)
   local empty=economy.snapshot(economy.load(nil)); empty.ready=true
   journal:update(empty)
+  assert(not journal.receiptCard.Visible,'New session shows a previous receipt')
   assert(not journal.productionCycle.Visible and journal.productionRate.Text==L.text('No apprentices yet'),'Empty factory shows active production')
-  journal:update({ready=false}); assert(not journal.productionCard.Visible,'Loading shows old factory')
+  journal:update({ready=false}); assert(not journal.productionCard.Visible and not journal.receiptCard.Visible,'Loading shows old factory or receipt')
   journal:update(saved)
   atelier.journal:close()
   assert(not gameView.journalOpen and not atelier.journal.overlay.Visible,"Journal did not close")
@@ -222,6 +228,7 @@ local function dispatch(args)
   assert(kitchen.journalButton.Visible,'Walking has no journal entry')
   journal:open(); kitchen:step(0)
   assert(journal.overlay.Visible and not kitchen.journalButton.Visible,'Walking journal did not open')
+  assert(journal.receiptCard.Visible,'Walking lost the completed order')
   assert(kitchen.controls.controlsEnabled==false,'Walking remained active while reading')
   for _,prompt in kitchen.prompts do assert(not prompt.Enabled,'Journal left a worktable prompt active') end
   for _,entry in workspace.KitchenIslands:GetDescendants() do
@@ -245,6 +252,13 @@ local function dispatch(args)
   atelier.panel.Size=UDim2.fromOffset(336,690); atelier.journal.panel.Size=UDim2.fromOffset(336,650)
   atelier.journal:open(); task.wait(.15)
   local checked=checkText(atelier.journal.panel)
+  local receiptChecks=0
+  for _,spec in Config.Orders do
+   local snapshot=table.clone(state); snapshot.lastOrder={name=spec.name,bonus=Config.Economy.maxValue,number=123}
+   atelier.journal:update(snapshot)
+   receiptChecks+=checkText(atelier.journal.receiptCard)
+  end
+  atelier.journal:update(state)
   for _,id in {"craft","speed","recipe","cafes"} do
    local card=atelier.cards[id]; checked+=checkText(card.frame)
    assert(card.buy.AbsolutePosition.Y>=card.waitHint.AbsolutePosition.Y+card.waitHint.AbsoluteSize.Y,"Purchase label overlaps button")
@@ -305,7 +319,7 @@ local function dispatch(args)
   assert(kitchen.journalButton.Position.Y.Offset>=64,'Narrow journal button overlaps Roblox controls')
   assert(kitchen.journalButton.TextFits,'Journal button text overflows')
   kitchen:setOpen(false)
-  return {ok=true,locale=args.locale,rewardChecks=rewardChecks,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
+  return {ok=true,locale=args.locale,receiptChecks=receiptChecks,rewardChecks=rewardChecks,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)
   -- При блокировке macOS RenderStepped может не работать. Вызываем тот же

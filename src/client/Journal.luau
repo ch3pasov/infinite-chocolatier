@@ -73,11 +73,16 @@ function Journal.new(gui,view)
 	self.orderFill=fill(order,"ProgressTrack",114)
 	local help=label(order,"Help",12,Theme.muted); help.Position=UDim2.fromOffset(12,126); help.Size=UDim2.new(1,-24,0,40)
 	L.set(help,"Take your time. Only tricks you finish by hand fill orders.")
-	local rank=frame(scroll,"Rank",Theme.chocolateDark); rank.LayoutOrder=2; rank.Size=UDim2.new(1,-8,0,106)
+	local receipt=frame(scroll,"LastOrder",Theme.chocolateDark); receipt.LayoutOrder=2; receipt.Size=UDim2.new(1,-8,0,150); receipt.Visible=false; self.receiptCard=receipt
+	local receiptTitle=label(receipt,"Title",14,Theme.muted); receiptTitle.Position=UDim2.fromOffset(12,8); receiptTitle.Size=UDim2.new(1,-24,0,26); scaled(receiptTitle,14); L.set(receiptTitle,"Last packed order")
+	self.receiptName=label(receipt,"Order",19,Theme.accentSoft); self.receiptName.Position=UDim2.fromOffset(12,37); self.receiptName.Size=UDim2.new(1,-24,0,30); scaled(self.receiptName,19)
+	self.receiptBonus=label(receipt,"Bonus",18,Theme.accent); self.receiptBonus.Position=UDim2.fromOffset(12,71); self.receiptBonus.Size=UDim2.new(1,-24,0,28); scaled(self.receiptBonus,18)
+	local receiptHelp=label(receipt,"Help",12,Theme.muted); receiptHelp.Position=UDim2.fromOffset(12,105); receiptHelp.Size=UDim2.new(1,-24,0,36); scaled(receiptHelp,12); L.set(receiptHelp,"Bonus already added. This receipt stays until you leave.")
+	local rank=frame(scroll,"Rank",Theme.chocolateDark); rank.LayoutOrder=3; rank.Size=UDim2.new(1,-8,0,106)
 	self.rankTitle=label(rank,"Title",20,Theme.accentSoft); self.rankTitle.Position=UDim2.fromOffset(12,8); self.rankTitle.Size=UDim2.new(1,-24,0,32); scaled(self.rankTitle,20)
 	self.rankInfo=label(rank,"Next",13,Theme.muted); self.rankInfo.Position=UDim2.fromOffset(12,43); self.rankInfo.Size=UDim2.new(1,-24,0,38)
 	self.rankFill=fill(rank,"ProgressTrack",88)
-	local production=frame(scroll,"Production",Theme.chocolate); production.LayoutOrder=3; production.Size=UDim2.new(1,-8,0,194)
+	local production=frame(scroll,"Production",Theme.chocolate); production.LayoutOrder=4; production.Size=UDim2.new(1,-8,0,194)
 	self.productionCard=production
 	local productionTitle=label(production,"Title",20,Theme.accentSoft); productionTitle.Position=UDim2.fromOffset(12,8); productionTitle.Size=UDim2.new(1,-24,0,30); scaled(productionTitle,20); L.set(productionTitle,"My factory")
 	self.productionCount=label(production,"Count",14,Theme.muted); self.productionCount.Position=UDim2.fromOffset(12,40); self.productionCount.Size=UDim2.new(1,-24,0,28); scaled(self.productionCount,14)
@@ -85,7 +90,7 @@ function Journal.new(gui,view)
 	self.productionCycle=label(production,"Cycle",14); self.productionCycle.Position=UDim2.fromOffset(12,106); self.productionCycle.Size=UDim2.new(1,-24,0,38); scaled(self.productionCycle,14)
 	self.productionHelp=label(production,"Help",12,Theme.muted); self.productionHelp.Position=UDim2.fromOffset(12,148); self.productionHelp.Size=UDim2.new(1,-24,0,36); scaled(self.productionHelp,12)
 	for index,spec in {{"rounds","Tricks by hand"},{"ordersCompleted","Orders packed"},{"lifetime","Lifetime pieces"},{"stars","Cocoa stars"}} do
-		local card=frame(scroll,spec[1],Theme.chocolateDark); card.LayoutOrder=index+3; card.Size=UDim2.new(1,-8,0,58)
+		local card=frame(scroll,spec[1],Theme.chocolateDark); card.LayoutOrder=index+4; card.Size=UDim2.new(1,-8,0,58)
 		local name=label(card,"Label",14,Theme.muted); name.Position=UDim2.fromOffset(12,6); name.Size=UDim2.new(.64,-12,1,-12); L.set(name,spec[2])
 		local amount=label(card,"Value",22,Theme.accentSoft); amount.Position=UDim2.new(.64,0,0,6); amount.Size=UDim2.new(.36,-12,1,-12)
 		amount.TextXAlignment=Enum.TextXAlignment.Right; scaled(amount,22); self.stats[spec[1]]=amount
@@ -140,6 +145,12 @@ function Journal:updateProduction(state)
 end
 function Journal:update(state)
 	self.state=state; local order=state.order
+	local receipt=state.lastOrder
+	self.receiptCard.Visible=state.ready==true and receipt~=nil
+	if self.receiptCard.Visible then
+		L.set(self.receiptName,receipt.name)
+		L.set(self.receiptBonus,"Bonus received: +{bonus}",{bonus=L.number(receipt.bonus)})
+	end
 	self:updateProduction(state)
 	self.offlineCard.Visible=(state.offline or 0)>=.1
 	if self.offlineCard.Visible then
