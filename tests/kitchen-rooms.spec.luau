@@ -15,7 +15,7 @@ return function(h)
   local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}
   local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'),{environment={
    game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run else world end},
-   Instance=R.Instance,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,
+   Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,
    task={spawn=function(fn) fn() end,delay=function(_,fn) table.insert(delayed,fn) end},
   },injectGlobals=true})()
   Rooms.start(remote)
@@ -50,6 +50,9 @@ return function(h)
   end end
   h.equals(#boundaries,4)
   -- Проверяем покрытие всех краёв всего фундамента, а не только коридора.
+  assert(hall.Foundation.Position.Y+hall.Foundation.Size.Y/2<-.3)
+  h.near(hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2,1017)
+  h.equals(hall.HallFloor.TopSurface,R.Enum.SurfaceType.Smooth)
   local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2; local max=foundation.Position+foundation.Size/2
   for _,edge in {{'X',min.X,'Z',35},{'X',max.X,'Z',35},{'Z',min.Z,'X',foundation.Size.X},{'Z',max.Z,'X',foundation.Size.X}} do
    local covered=false

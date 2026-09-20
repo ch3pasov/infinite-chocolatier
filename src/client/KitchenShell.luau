@@ -16,9 +16,10 @@ end
 function Shell.new(parent,origin)
  local world=Instance.new('Model'); world.Name='KitchenFurniture'; world.Parent=parent
  part(world,"Floor",Vector3.new(22,.2,24),Vector3.new(0,-.2,5),Color3.fromRGB(181,160,130))
- part(world,"BackWall",Vector3.new(18,7,.2),Vector3.new(0,3,-6),sage)
- part(world,"LeftWall",Vector3.new(.2,7,24),Vector3.new(-10.5,3,5),sage)
- part(world,"RightWall",Vector3.new(.2,7,24),Vector3.new(10.5,3,5),sage)
+ -- Торцы боковых стен стыкуются с задней без щелей и наложения плоскостей.
+ part(world,"BackWall",Vector3.new(20.8,7,.6),Vector3.new(0,3,-6.2),sage)
+ part(world,"LeftWall",Vector3.new(.6,7,23.5),Vector3.new(-10.7,3,5.25),sage)
+ part(world,"RightWall",Vector3.new(.6,7,23.5),Vector3.new(10.7,3,5.25),sage)
  for x=-8,8,2 do
   part(world,"Cabinet",Vector3.new(1.9,2,1.5),Vector3.new(x,1,-5),cream)
   part(world,"Handle",Vector3.new(.6,.08,.08),Vector3.new(x,1.6,-4.2),cocoa)

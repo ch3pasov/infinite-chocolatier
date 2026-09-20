@@ -10,15 +10,19 @@ function Rooms.start(remote)
  local corridor=Instance.new('Model'); corridor.Name='SharedKitchenHall'; corridor.Parent=Workspace
  local function solid(parent,name,size,position)
   local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position
-  p.Anchored=true; p.Transparency=1; p.CanCollide=true; p.Parent=parent
+  p.Anchored=true; p.Transparency=1; p.CanCollide=true
+  p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth
+  p.Material=Enum.Material.SmoothPlastic; p.Parent=parent
   return p
  end
  local capacity=math.max(1,Players.MaxPlayers or 50)
  local length=capacity*24
  -- Общий пол остаётся и после ухода владельца комнаты.
- local foundation=solid(corridor,'Foundation',Vector3.new(length,1,35),Vector3.new(length/2-12,-.65,1010.5))
+ local foundation=solid(corridor,'Foundation',Vector3.new(length,1,35),Vector3.new(length/2-12,-.85,1010.5))
  foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
- local floor=solid(corridor,'HallFloor',Vector3.new(length,1,12),Vector3.new(length/2-12,-.6,1022))
+ -- Коридор начинается ровно у торца комнат (Z=1017), а фундамент ниже
+ -- чистового пола: ни одна видимая поверхность не делит с ним плоскость.
+ local floor=solid(corridor,'HallFloor',Vector3.new(length,1,11),Vector3.new(length/2-12,-.6,1022.5))
  floor.Transparency=0; floor.Color=Color3.fromRGB(151,126,98)
  -- Прозрачный внешний периметр не закрывает фиксированную камеру.
  -- Он окружает весь фундамент, включая промежутки и ещё пустые кухни.
