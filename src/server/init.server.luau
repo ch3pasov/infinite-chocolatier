@@ -171,7 +171,8 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	if completed then
 		session.lastOrder = {name=completed.name, bonus=completed.bonus, number=session.data.ordersCompleted}
 	end
-	local notice = if completed then {key="Order packed! +{bonus} bonus pieces", args={bonus=completed.bonus}}
+	local notice = if amount<=0 then {key=if completed then "Order packed · wallet full" else "Trick complete · wallet full"}
+		elseif completed then {key="Order packed! +{bonus} bonus pieces", args={bonus=completed.bonus}}
 		else {key="Trick complete! +{amount}",args={amount=amount}}
 	send(player, notice, amount)
 end)

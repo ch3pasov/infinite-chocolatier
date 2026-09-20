@@ -192,17 +192,24 @@ end
 
 function Economy.credit(data, amount)
 	amount = number(amount, 0, E.maxValue)
+	local before = data.slices
 	data.slices = math.min(E.maxValue, data.slices + amount)
 	data.earned = math.min(E.maxValue, data.earned + amount)
 	data.lifetime = math.min(E.maxValue, data.lifetime + amount)
-	return amount
+	-- Статистика труда растёт как прежде, но всплывающая награда должна
+	-- совпадать с пополнением кошелька, включая его верхний предел.
+	return math.max(0, data.slices - before)
 end
 
 function Economy.round(data)
 	data.rounds = math.min(E.maxValue, data.rounds + 1)
 	local manual = Economy.manual(data)
 	local completed = Orders.advance(data, manual)
-	return Economy.credit(data, manual + (if completed then completed.bonus else 0)), completed
+	local credited = Economy.credit(data, manual + (if completed then completed.bonus else 0))
+	-- Сначала оплачивается сам фокус, затем премия. Квитанция показывает
+	-- только часть премии, которая поместилась; заказ всё равно выполнен.
+	if completed then completed.bonus = math.max(0, credited - manual) end
+	return credited, completed
 end
 
 function Economy.tick(data, elapsed)

@@ -58,6 +58,17 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('сервер не обещает неполученную награду при полном кошельке',function()
+  local f=fixture(false,{slices=Config.Economy.maxValue-1.5,orderProgress=3,productionRemainder=0})
+  f.events.roundComplete.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().reward,1.5); h.equals(f.latest().lastOrder.bonus,.5)
+  h.equals(f.latest().notice.args.bonus,.5)
+  f.advance(); f.events.roundComplete.OnServerEvent:Fire(f.player)
+  h.equals(f.latest().reward,0); h.equals(f.latest().notice.key,'Trick complete · wallet full')
+  for _=1,5 do f.advance(); f.events.roundComplete.OnServerEvent:Fire(f.player) end
+  h.equals(f.latest().notice.key,'Order packed · wallet full'); h.equals(f.latest().lastOrder.bonus,0)
+  h.equals(f.latest().ordersCompleted,2)
+ end)
  h.test('квитанция заказа переживает снимки, покупку и престиж без повторного начисления',function()
   local f=fixture(false,{slices=100,earned=5000})
   h.equals(f.latest().lastOrder,nil)

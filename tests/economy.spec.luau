@@ -4,6 +4,20 @@ local Config = require("../src/shared/Config")
 local Store = require("../src/server/ProfileStore")
 
 return function(h)
+	h.test('награда у предела кошелька показывает только добавленные дольки',function()
+		local cap=Config.Economy.maxValue
+		local data=E.load({slices=cap-.5,earned=0,lifetime=0,productionRemainder=0})
+		h.equals(E.credit(data,3),.5)
+		h.equals(data.slices,cap); h.equals(data.earned,3); h.equals(data.lifetime,3)
+		h.equals(E.credit(data,3),0)
+		local order=E.load({slices=cap-1.5,orderProgress=3,productionRemainder=0})
+		local amount,receipt=E.round(order)
+		h.equals(amount,1.5); h.equals(receipt.bonus,.5)
+		h.equals(order.ordersCompleted,1); h.equals(order.earned,2)
+		order.orderProgress=order.orderProgress+5
+		local full,completed=E.round(order)
+		h.equals(full,0); h.equals(completed.bonus,0); h.equals(order.ordersCompleted,2)
+	end)
  h.test('прогресс престижа показывает следующий квадратный порог, а не вечные 100%',function()
   for _,sample in {{0,0,5000,0},{2500,0,5000,.5},{5000,1,20000,0},{10000,1,20000,1/3},{20000,2,45000,0},{45000,3,80000,0}} do
    local p=E.prestigeProgress(E.load({earned=sample[1]}))
