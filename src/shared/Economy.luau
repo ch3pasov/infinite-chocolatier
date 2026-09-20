@@ -159,6 +159,37 @@ function Economy.quote(data, id, quantity)
 	return if count > 0 then total else first, count
 end
 
+-- Предпросмотр использует те же формулы и число уровней, что покупка.
+-- Он не списывает деньги; при пустом MAX показывает ближайший один уровень.
+function Economy.preview(data, id, quantity)
+	local spec = upgradeById[id]
+	if not spec or spec.maxLevel ~= math.huge then return nil end
+	local price, count = Economy.quote(data, id, quantity)
+	if not price then return nil end
+	local after = Economy.load(data)
+	-- В сетевом снимке флаг называется иначе, чем в серверной сессии.
+	after.ignorePrestige = data.ignorePrestige == true or data.prestigeDisabled == true
+	local manual, rate = Economy.manual(after), Economy.rate(after)
+	local cycle, workers = Economy.cycleSeconds(after), after.levels.workers
+	local missing = math.max(0, price - data.slices)
+	local waitSeconds = nil
+	if missing > 0 and rate > 0 and price <= E.maxValue then
+		-- Доход приходит целыми циклами: средняя скорость занижает ожидание
+		-- перед первой выплатой. Учитываем уже отработанную часть цикла.
+		local cycles = math.ceil(missing / (workers * manual))
+		waitSeconds = math.max(0, cycles - after.productionRemainder) * cycle
+	end
+	after.levels[id] += math.max(1, count)
+	recount(after)
+	return {
+		manualGain = math.max(0, Economy.manual(after) - manual),
+		rateGain = math.max(0, Economy.rate(after) - rate),
+		cycleBefore = cycle, cycleAfter = Economy.cycleSeconds(after),
+		workersGain = after.levels.workers - workers,
+		waitSeconds = waitSeconds,
+	}
+end
+
 function Economy.credit(data, amount)
 	amount = number(amount, 0, E.maxValue)
 	data.slices = math.min(E.maxValue, data.slices + amount)

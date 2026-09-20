@@ -203,6 +203,18 @@ function Atelier.new(gui, gameView, remotes)
 		description.Position = UDim2.fromOffset(12, 40)
 		description.Size = UDim2.new(1, -24, 0, 40)
 		L.set(description, spec.description)
+		local benefit, waitHint
+		if not spec.group and spec.maxLevel == math.huge then
+			card.Size = UDim2.new(1, -8, 0, 192)
+			benefit = text(card, "PurchaseBenefit", 13, Theme.accentSoft)
+			benefit.Position = UDim2.fromOffset(12, 82)
+			benefit.Size = UDim2.new(1, -24, 0, 34)
+			benefit.TextScaled = true
+			local limit = Instance.new("UITextSizeConstraint"); limit.MinTextSize = 10; limit.MaxTextSize = 13; limit.Parent = benefit
+			waitHint = text(card, "Affordability", 11, Theme.muted)
+			waitHint.Position = UDim2.fromOffset(12, 118)
+			waitHint.Size = UDim2.new(1, -24, 0, 22)
+		end
 		if spec.group then
 		 local visual=Instance.new('Frame'); visual.Name='Visual'; visual.BackgroundTransparency=1; visual.Position=UDim2.fromOffset(6,8); visual.Size=UDim2.fromOffset(96,80); visual.Parent=card
 		 Thumbnails.new(visual,spec)
@@ -221,7 +233,7 @@ function Atelier.new(gui, gameView, remotes)
 		 local imageButton=button(card.Visual,"PreviewItem",""); imageButton.BackgroundTransparency=1; imageButton.Size=UDim2.fromScale(1,1)
 		 imageButton.Activated:Connect(activate)
 		end
-		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec }
+		self.cards[spec.id] = { frame = card, heading = heading, description = description, buy = buy, spec = spec, benefit = benefit, waitHint = waitHint }
 	end
 	local prestige = box(scroll, "NextAtelier", Theme.chocolateDark)
 	self.prestigeCard=prestige
@@ -440,6 +452,28 @@ function Atelier:update(state)
         else L.set(card.heading,"{upgrade} · {level}",{upgrade=L.token(card.spec.name),level=level}) end
         local price,count,quantity=self:quote(card.spec)
         local canBuy=price~=nil and count>0 and state.slices>=price
+        if card.benefit and card.frame.Visible then
+            local preview=Economy.preview(state,id,quantity)
+            if preview then
+                if id=='speed' then
+                    L.set(card.benefit,'Cycle: {before}s → {after}s\n+{rate}/s from apprentices',{before=format(preview.cycleBefore),after=format(preview.cycleAfter),rate=format(preview.rateGain)})
+                elseif id=='cafes' then
+                    L.set(card.benefit,'+{workers} apprentices\n+{rate}/s automatic income',{workers=preview.workersGain,rate=format(preview.rateGain)})
+                elseif state.rate>0 then
+                    L.set(card.benefit,'+{manual} per trick\n+{rate}/s from apprentices',{manual=format(preview.manualGain),rate=format(preview.rateGain)})
+                else
+                    L.set(card.benefit,'+{manual} pieces per trick',{manual=format(preview.manualGain)})
+                end
+                local seconds=preview.waitSeconds
+                if canBuy then L.set(card.waitHint,'Ready to buy')
+                elseif seconds and seconds<60 then L.set(card.waitHint,'~{time}s with apprentices',{time=math.ceil(seconds)})
+                elseif seconds and seconds<3600 then L.set(card.waitHint,'~{time} min with apprentices',{time=math.ceil(seconds/60)})
+                elseif seconds and seconds<86400 then L.set(card.waitHint,'~{time}h with apprentices',{time=math.ceil(seconds/3600)})
+                elseif seconds then L.set(card.waitHint,'~{time} days with apprentices',{time=math.ceil(seconds/86400)})
+                elseif price and price>Config.Economy.maxValue then L.set(card.waitHint,'Try buying one level')
+                else L.set(card.waitHint,'Keep cutting to earn pieces') end
+            end
+        end
         if canBuy and card.frame.Visible then affordable+=1 end
         card.buy.BackgroundColor3=if canBuy or catalog then Theme.accent else Theme.chocolateEdge
         card.buy.TextColor3=if canBuy or catalog then Theme.background else Theme.text

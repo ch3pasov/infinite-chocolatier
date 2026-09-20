@@ -2,6 +2,17 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Cycle: {before}s → {after}s\n+{rate}/s from apprentices"]="Цикл: {before} с → {after} с\n+{rate}/с от стажёров",
+ ["+{workers} apprentices\n+{rate}/s automatic income"]="+{workers} стажёров\n+{rate}/с автоматического дохода",
+ ["+{manual} per trick\n+{rate}/s from apprentices"]="+{manual} за фокус\n+{rate}/с от стажёров",
+ ["+{manual} pieces per trick"]="+{manual} долек за фокус",
+ ["Ready to buy"]="Можно купить",
+ ["~{time}s with apprentices"]="~{time} с со стажёрами",
+ ["~{time} min with apprentices"]="~{time} мин со стажёрами",
+ ["~{time}h with apprentices"]="~{time} ч со стажёрами",
+ ["~{time} days with apprentices"]="~{time} дн. со стажёрами",
+ ["Keep cutting to earn pieces"]="Режь шоколад, чтобы накопить дольки",
+ ["Try buying one level"]="Попробуй купить один уровень",
  ["Choose a cafe"]="Выбрать кафе",
  ["Visit a cafe"]="В гости в кафе",
  ["Players to visit: {count}"]="К кому можно зайти: {count}",

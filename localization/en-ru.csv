@@ -15,7 +15,16 @@ Key,Source,Context,Example,ru
 "+20% trick reward · permanent purchase bonus","+20% trick reward · permanent purchase bonus","","","+20% к награде за фокус · бонус за владение"
 "+25% manual and automatic income","+25% manual and automatic income","","","+25% к ручному и автоматическому доходу"
 "+{bonus} · journal ›","+{bonus} · journal ›","","","+{bonus} · дневник ›"
+"+{manual} per trick
++{rate}/s from apprentices","+{manual} per trick
++{rate}/s from apprentices","","","+{manual} за фокус
++{rate}/с от стажёров"
 "+{manual} per trick  ·  {rate}/s  ·  ★ {stars}","+{manual} per trick  ·  {rate}/s  ·  ★ {stars}","","","+{manual} за фокус  ·  {rate}/с  ·  ★ {stars}"
+"+{manual} pieces per trick","+{manual} pieces per trick","","","+{manual} долек за фокус"
+"+{workers} apprentices
++{rate}/s automatic income","+{workers} apprentices
++{rate}/s automatic income","","","+{workers} стажёров
++{rate}/с автоматического дохода"
 "1/3 · Tap Walk around kitchen above to meet your apprentice.","1/3 · Tap Walk around kitchen above to meet your apprentice.","","","1/3 · Нажми «Прогуляться по кухне» сверху, чтобы встретить стажёра."
 "2 · Open this book","2 · Open this book","","","2 · Открой эту книгу"
 "2/3 · Walk to the golden book on the left and open My Kitchen.","2/3 · Walk to the golden book on the left and open My Kitchen.","","","2/3 · Подойди к золотой книге слева и открой «Мою кухню»."
@@ -68,6 +77,10 @@ Key,Source,Context,Example,ru
 "Cut chocolate","Cut chocolate","","","Резать шоколад"
 "Cut {step} of {total}: continue from the highlighted point","Cut {step} of {total}: continue from the highlighted point","","","Разрез {step} из {total}: продолжи с подсвеченной точки"
 "Cut {step} of {total}: {instruction}","Cut {step} of {total}: {instruction}","","","Разрез {step} из {total}: {instruction}"
+"Cycle: {before}s → {after}s
++{rate}/s from apprentices","Cycle: {before}s → {after}s
++{rate}/s from apprentices","","","Цикл: {before} с → {after} с
++{rate}/с от стажёров"
 "Decoration put away","Decoration put away","","","Украшение убрано"
 "Decoration · a framed cocoa artwork","Decoration · a framed cocoa artwork","","","Украшение · картина с какао в рамке"
 "Decoration · a framed cocoa artwork · kept in new workshops","Decoration · a framed cocoa artwork · kept in new workshops","","","Декор · панно с какао · сохраняется в новой мастерской"
@@ -97,6 +110,7 @@ Key,Source,Context,Example,ru
 "Infinite Chocolatier","Infinite Chocolatier","","","Бесконечный шоколатье"
 "Infinite chocolatier","Infinite chocolatier","","","Бесконечный шоколатье"
 "K","K","",""," тыс."
+"Keep cutting to earn pieces","Keep cutting to earn pieces","","","Режь шоколад, чтобы накопить дольки"
 "Kitchen upgrades","Kitchen upgrades","","","Оснащение кухни"
 "LOADING CHOCOLATE…","LOADING CHOCOLATE…","","","ЗАГРУЗКА ШОКОЛАДА…"
 "Lifetime pieces","Lifetime pieces","","","Всего заработано долек"
@@ -144,6 +158,7 @@ Key,Source,Context,Example,ru
 "Purchased {count} upgrades","Purchased {count} upgrades","","","Куплено улучшений: {count}"
 "Put away · owned","Put away · owned","","","Убрать · куплено"
 "Put away · purchase bonuses remain","Put away · purchase bonuses remain","","","Убрано · бонусы покупок сохраняются"
+"Ready to buy","Ready to buy","","","Можно купить"
 "Recipe","Recipe","","","Рецептура"
 "Recipe Library","Recipe Library","","","Библиотека рецептов"
 "Recipe Notebook","Recipe Notebook","","","Тетрадь рецептов"
@@ -171,6 +186,7 @@ Key,Source,Context,Example,ru
 "That cafe is no longer available. Choose another.","That cafe is no longer available. Choose another.","","","Это кафе уже недоступно. Выбери другое."
 "Trick complete! +{amount}","Trick complete! +{amount}","","","Фокус удался! +{amount} долек"
 "Tricks by hand","Tricks by hand","","","Ручные фокусы"
+"Try buying one level","Try buying one level","","","Попробуй купить один уровень"
 "Unlock the kitchen catalog · first apprentice included","Unlock the kitchen catalog · first apprentice included","","","Открой каталог кухни · первый стажёр включён"
 "Upgrade purchased","Upgrade purchased","","","Улучшение куплено"
 "Upgrades","Upgrades","","","Улучшения"
@@ -199,5 +215,9 @@ Key,Source,Context,Example,ru
 "{upgrade} · {level}","{upgrade} · {level}","","","{upgrade} · {level}"
 "{value}","{value}","","","{value}"
 "{version} · ★ {bonus} · report","{version} · ★ {bonus} · report","","","{version} · ★ {bonus} · отчёт"
+"~{time} days with apprentices","~{time} days with apprentices","","","~{time} дн. со стажёрами"
+"~{time} min with apprentices","~{time} min with apprentices","","","~{time} мин со стажёрами"
+"~{time}h with apprentices","~{time}h with apprentices","","","~{time} ч со стажёрами"
+"~{time}s with apprentices","~{time}s with apprentices","","","~{time} с со стажёрами"
 "×10: {price} · need {missing} more","×10: {price} · need {missing} more","","","×10: {price} · не хватает {missing}"
 "‹ Choose another spot","‹ Choose another spot","","","‹ Выбрать другое место"
