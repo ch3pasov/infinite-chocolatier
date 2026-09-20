@@ -36,9 +36,9 @@ function Station:pose(action,working,dt)
  show(station.knife,working and action.cutting)
  local grip=nil
  if working and action.cutting then
-  local point=station.origin+Vector3.new(action.knifePoint.X*scale.X,.18,action.knifePoint.Y*scale.Y)
+  local point=station.origin+Vector3.new(action.knifePoint.X*scale.X,(Config.Scene3D.surfaceHeight+.06)*Config.Scene3D.renderScale,action.knifePoint.Y*scale.Y)
   local direction=Vector3.new(action.knifeDirection.X*scale.X,0,action.knifeDirection.Y*scale.Y)
-  local frame=Knife.frame(point,direction,Config.Scene3D,math.rad(-65))
+  local frame=Knife.frame(point,direction,Config.Scene3D,Knife.cutRoll)
   station.knife:PivotTo(frame)
   grip=Knife.grip(frame,Config.Scene3D)
  end

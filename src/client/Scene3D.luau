@@ -206,16 +206,7 @@ function Scene.new(view)
 		self:attachPiece(name,self.pieces[name])
 	end
 	self.overlay=self:layer('KnifeAndGuides',8)
-	self.knife = model("ChefKnife")
-	-- Лезвие имеет настоящий острый носик, обух и отдельную рукоять.
-	prism(self.knife,"SteelBlade",{Vector2.new(0,-43),Vector2.new(13,-18),Vector2.new(13,27),Vector2.new(-7,27),Vector2.new(-7,-22)},0,0.055,color("knife"))
-	part(self.knife,"BladeSpine",Vector3.new(0.04,0.055,1),CFrame.new(-0.14,0.065,-0.05),Color3.fromRGB(240,246,235))
-	part(self.knife,"Handle",Vector3.new(0.27,0.20,0.77),CFrame.new(0.04,0.12,0.92),color("handle"))
-	for _, z in {0.70,1.12} do
-		local rivet=part(self.knife,"Rivet",Vector3.new(0.06,0.025,0.06),CFrame.new(0.04,0.23,z),color("knife"))
-		rivet.Shape=Enum.PartType.Ball
-	end
-	self.knife:ScaleTo(settings.knifeScale)
+	self.knife = self:makeKnife()
 	self.knife.Parent = self.overlay.world
 	view.board.Visible = false
 	view.scene3D = self
@@ -225,6 +216,50 @@ function Scene.new(view)
 	self.render = RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
 	self.cleanup = view.gui.Destroying:Connect(function() self:destroy() end)
 	return self
+end
+
+-- Все стальные поверхности соприкасаются: светлая фаска является частью
+-- лезвия, а не отдельным бруском над ним. Та же модель клонируется стажёрам.
+function Scene:makeKnife()
+ local knife=model("ChefKnife")
+ local function outline(points)
+  local result={}
+  for _,p in points do table.insert(result,Vector2.new(p.X/unit,p.Z/unit)) end
+  return result
+ end
+ local steel=Color3.fromRGB(177,193,195)
+ local edge=Color3.fromRGB(224,232,226)
+ local profile=outline(Knife.profile)
+ prism(knife,"BladeEdge",profile,0,.008,edge)
+ -- Срезаем полосу у кромки и соединяем её с широким лицом наклонной фаской.
+ local face=Geom.clipPolygon(profile,{a=Vector2.new(-.055/unit,-1000),b=Vector2.new(-.055/unit,1000)},false)
+ -- Обух находится по отрицательной X, фаска — между лицом и кромкой.
+ prism(knife,"SteelBlade",face,.008,.055,steel)
+ local bevel=Geom.clipPolygon(profile,{a=Vector2.new(-.055/unit,-1000),b=Vector2.new(-.055/unit,1000)},true)
+ local function surface(p)
+  local x=p.X*unit
+  return Vector3.new(x,.008+math.clamp(-x/.055,0,1)*.047,p.Y*unit)
+ end
+ for i=2,#bevel-1 do
+  for _,w in Solid.wedges(surface(bevel[1]),surface(bevel[i]),surface(bevel[i+1]),.004) do
+   part(knife,"HonedBevel",w.size,w.frame,edge,"WedgePart")
+  end
+ end
+ local function rounded(name,x,z,w,h,r,bottom,top,tint)
+  prism(knife,name,Solid.outline(x/unit,z/unit,w/unit,h/unit,r/unit),bottom,top,tint)
+ end
+ -- Сквозной хвостовик между двумя накладками, металлическая шейка и пятка.
+ rounded("Tang",-.38,.48,.30,.91,.065,.003,.047,steel)
+ rounded("Bolster",-.39,.45,.32,.15,.04,-.045,.095,edge)
+ rounded("HandleLower",-.38,.59,.30,.80,.07,-.075,.003,color("handle"))
+ rounded("HandleUpper",-.38,.59,.30,.80,.07,.047,.125,color("handle"))
+ rounded("HandleCrown",-.35,.62,.24,.73,.06,.125,.14,Color3.fromRGB(49,78,72))
+ for _,z in {.76,1.17} do
+  local rivet=part(knife,"FlushRivet",Vector3.new(.048,.012,.048),CFrame.new(-.23,.141,z),edge)
+  rivet.Shape=Enum.PartType.Ball
+ end
+ knife:ScaleTo(settings.knifeScale)
+ return knife
 end
 
 function Scene:fit()
@@ -402,7 +437,7 @@ function Scene:step(dt)
 		local target=Vector3.new(p.X*unit,settings.surfaceHeight+0.06,p.Y*unit)
 		local cutting = v.drag and v.drag.kind=="cut" or v.active=="finishingCut"
 		local lift=if cutting then 0 else 0.18+math.sin(self.time*2)*0.025
-		self.knife:PivotTo(Knife.frame((target+Vector3.new(0,lift,0))*renderScale,Vector3.new(direction.X,0,direction.Y),settings,math.rad(if cutting then -65 else -12)))
+		self.knife:PivotTo(Knife.frame((target+Vector3.new(0,lift,0))*renderScale,Vector3.new(direction.X,0,direction.Y),settings,if cutting then Knife.cutRoll else Knife.restRoll))
 		present(self.knife,self.overlay.world,true)
 		if cutting and math.abs(v.cutProgress-self.lastCrumb)>7 then self:burst(target,2,false); self.lastCrumb=v.cutProgress end
 	else present(self.knife,self.overlay.world,false) end
