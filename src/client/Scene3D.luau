@@ -2,6 +2,7 @@
 -- Объёмная рабочая станция читает состояние Game. Экономика, жесты и
 -- геометрия фокуса остаются прежними; рендер можно отключить одним флагом.
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Geom = require(Shared.Geom)
@@ -402,6 +403,27 @@ function Scene:burst(point, count, golden)
 	end
 end
 
+function Scene:collectReward()
+ local name=Config.Trick.rewardPiece
+ local piece=self.view.pieces[name]
+ local position=piece.motion.Position
+ local offset=Vector3.new((position.X.Offset-piece.origin.X)*unit,0,(position.Y.Offset-piece.origin.Y)*unit)
+ local ghost=self.pieces[name]:Clone()
+ ghost.Name="CollectedReward"; ghost:SetAttribute("Shown",nil)
+ ghost:PivotTo(CFrame.new(offset*renderScale))
+ present(ghost,self.overlay.world,true)
+ local duration=Config.Trick.collectionDuration
+ for _,p in ghost:GetDescendants() do
+  if p:IsA('BasePart') then
+   TweenService:Create(p,TweenInfo.new(duration,Enum.EasingStyle.Linear),{
+    CFrame=p.CFrame+Vector3.new(-.3,.8,0)*renderScale,Transparency=1,
+   }):Play()
+  end
+ end
+ task.delay(duration+.02,function() ghost:Destroy() end)
+ return ghost
+end
+
 function Scene:step(dt)
 	if self.view.observingKitchen then return end
     -- Стандартный спавн Roblox возвращает камеру в Custom. В режиме нарезки
@@ -416,17 +438,12 @@ function Scene:step(dt)
 	self:posePiece('WholeBar',intact,Vector3.zero,0)
 	for name,m in self.pieces do
 		local p=v.pieces[name]
-		local reward = name==Config.Trick.rewardPiece and (v.active=="done" or v.active=="collecting")
+		local reward = name==Config.Trick.rewardPiece and v.active=="done"
 		local visible=p.motion.Visible and (not intact or reward)
 		local fade=0
 		local position = p.motion.Position
 		local raw=Vector2.new(position.X.Offset-p.origin.X,position.Y.Offset-p.origin.Y)
 		local offset=Motion.offset(name,raw,v.active,settings,v.recipe.slides,v.tileWidth,v.tileHeight)
-		if reward and v.active=="collecting" then
-			local elapsed=math.clamp((self.time-(self.collectStarted or self.time))/Config.Trick.collectionDuration,0,1)
-			offset += Vector3.new(-elapsed*0.3,elapsed*0.8,0)
-			fade=elapsed
-		end
 		self:posePiece(name,visible,offset,fade)
 	end
 	self:syncHints()
@@ -442,7 +459,6 @@ function Scene:step(dt)
 		if cutting and math.abs(v.cutProgress-self.lastCrumb)>7 then self:burst(target,2,false); self.lastCrumb=v.cutProgress end
 	else present(self.knife,self.overlay.world,false) end
 	if self.previousActive~=v.active then
-		if v.active=="collecting" then self.collectStarted=self.time end
 		if v.active=="done" or (v.active=="assembleStrip" and self.previousActive~=nil) then
 			for i=1,5 do
 				local x=i*v.tileWidth-v.tileWidth/2

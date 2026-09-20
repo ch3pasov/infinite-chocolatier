@@ -2,11 +2,14 @@
 local R = require('@lune/roblox')
 -- Lune хранит настоящие Instance, но не исполняет перемещение моделей движком.
 R.implementMethod('Model','PivotTo',function(m,frame)
-	local transform=frame*m.WorldPivot:Inverse()
+	-- Lune не переносит WorldPivot при Clone; атрибут сохраняет его для копии.
+ local ok,pivot=pcall(function() return m.WorldPivot end)
+ if not ok then pivot=m:GetAttribute('TestPivot') or R.CFrame.identity end
+ local transform=frame*pivot:Inverse()
 	for _,p in m:GetDescendants() do
 		if p:IsA('BasePart') then p.CFrame=transform*p.CFrame end
 	end
-	m.WorldPivot=frame
+	m.WorldPivot=frame; m:SetAttribute("TestPivot",frame)
 end)
 local fs = require('@lune/fs')
 local luau = require('@lune/luau')
@@ -23,8 +26,12 @@ local Solid=module('src/client/SolidGeometry.luau')
 local Motion=module('src/client/Motion3D.luau')
 local deps={KnifeMotion=module('src/client/KnifeMotion.luau'),WorldStage={},Config=Config,Geom=Geom,Layout=Layout,Projection3D=Projection,SolidGeometry=Solid,Motion3D=Motion}
 local modules=setmetatable({},{__index=function(_,k)return k end})
+local pending={}
+local tweens={Create=function(_,part,_,properties) return {Play=function() for k,v in properties do part[k]=v end end} end}
 local sceneEnv=table.clone(env)
-sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' then {WaitForChild=function()return modules end} else {} end}
+sceneEnv.task={delay=function(_,callback) table.insert(pending,callback) end}
+sceneEnv.TweenInfo={new=function() return {} end}
+sceneEnv.game={GetService=function(_,name) return if name=='ReplicatedStorage' then {WaitForChild=function()return modules end} elseif name=='TweenService' then tweens else {} end}
 sceneEnv.Instance=R.Instance
 sceneEnv.Color3=R.Color3
 sceneEnv.Enum=R.Enum
@@ -165,11 +172,19 @@ return function(h)
 		end
 		v.active='done'; self:step(0.016)
 		assert(self.layers.stripSingle.model:GetAttribute("Shown"))
-		v.active='collecting'; v.intactLayer.Visible=true
-		self:step(0.016); self:step(0.15)
-		assert(self.layers.stripSingle.fade>0)
-		assert(self.layers.WholeBar.model:GetAttribute("Shown"))
-		assert(not self.layers.stripDouble.model:GetAttribute("Shown"))
+		local ghost=self:collectReward()
+  assert(ghost~=self.pieces.stripSingle and ghost.Parent==self.overlay.world)
+  v.active='cut'; v.intactLayer.Visible=true
+  v.paths={{geom=Geom.path({R.Vector2.new(0,364),R.Vector2.new(330,156)}),points={R.Vector2.new(0,364),R.Vector2.new(330,156)}}}
+  v.cutIndex=1; v.cutProgress=0
+  self:step(.016)
+  assert(self.knife:GetAttribute('Shown'))
+  assert(not self.layers.stripSingle.model:GetAttribute('Shown'))
+  assert(self.layers.WholeBar.model:GetAttribute('Shown'))
+  v.cutProgress=20
+  while #pending>0 do table.remove(pending,1)() end
+  assert(ghost.Parent==nil)
+  h.equals(v.active,'cut'); h.equals(v.cutProgress,20)
 		v.active='exploding'
 		for _=1,60 do self:step(0.016) end
 		assert(not self.layers.stripSingle.model:GetAttribute("Shown"))

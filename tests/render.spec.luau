@@ -64,6 +64,30 @@ return function(harness)
 		root:Destroy()
 	end)
 
+ harness.test("исчезновение награды идёт параллельно новому разрезу и не сбрасывает его",function()
+  local root=R.Instance.new('Frame')
+  local view=setmetatable({active='done',trick=Config.Trick,pieces={},tweens={},animationToken=0,
+   intactLayer=R.Instance.new('Frame'),hintLayer=R.Instance.new('Frame'),seamLayer=R.Instance.new('Frame'),progressLayer=R.Instance.new('Frame')},exports.Game)
+  for _,name in Config.Trick.pieceOrder do
+   local motion=R.Instance.new('Frame'); motion.Parent=root
+   local crop=R.Instance.new('Frame'); crop.Name='Crop'; crop.Parent=motion
+   view.pieces[name]={motion=motion,crop=crop,size=V.new(58,92),origin=V.zero,offset=V.new(-100,0)}
+  end
+  function view:setPieceOffset(name,offset) self.pieces[name].offset=offset end
+  function view:showCutHint() self.hintShown=true end
+  view:beginReset()
+  harness.equals(view.active,'cut'); harness.equals(view.cutIndex,1)
+  assert(view.hintShown and view.intactLayer.Visible)
+  local ghost=root:FindFirstChild('CollectedReward'); assert(ghost)
+  assert(ghost.Crop:FindFirstChild('RewardCollectionWipe'))
+  view:beginReset(); harness.equals(#pending,1)
+  view.cutIndex=2; view.cutProgress=17; view:cancelTweens()
+  while #pending>0 do table.remove(pending,1)() end
+  harness.equals(view.active,'cut'); harness.equals(view.cutIndex,2); harness.equals(view.cutProgress,17)
+  harness.equals(root:FindFirstChild('CollectedReward'),nil)
+  root:Destroy()
+ end)
+
 	harness.test("бывший внешний угол верхней части заполняет внутренний стык", function()
 		local surface = R.Instance.new("Frame")
 		local extension = R.Instance.new("Frame")

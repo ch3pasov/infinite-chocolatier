@@ -1365,9 +1365,9 @@ function Game:playRewardEffect(amount: number)
 	local piece = self.pieces[self.trick.rewardPiece]
 	local size = self.root.AbsoluteSize
 	if size.X <= 0 or size.Y <= 0 then return end
-	local point = self.board.AbsolutePosition - self.root.AbsolutePosition
-		+ (piece.origin + piece.offset + piece.size / 2) * self.boardScale.Scale
-	if self.scene3D then point = self.scene3D:boardToScreen(piece.origin + piece.offset + piece.size / 2) end
+	local at = self.rewardEffectOrigin or (piece.origin + piece.offset + piece.size / 2)
+	local point = self.board.AbsolutePosition - self.root.AbsolutePosition + at * self.boardScale.Scale
+	if self.scene3D then point = self.scene3D:boardToScreen(at) end
 	-- Число остаётся внутри экрана даже у внешней левой дольки. Эффект
 	-- отдельный от полигонов: сброс раунда не обрывает его и не задерживает ввод.
 	point = Vector2.new(math.clamp(point.X, 80, math.max(80, size.X - 80)),
@@ -1415,75 +1415,42 @@ function Game:finishRound()
 	self.active = "done"
 	clear(self.hintLayer)
 	self:showRewardMarker()
+	local reward = self.pieces[self.trick.rewardPiece]
+	self.rewardEffectOrigin = reward.origin + reward.offset + reward.size / 2
 	L.set(self.status, "Done! The bar is whole again, with one original piece left over")
 	-- В RemoteEvent нет количества: клиент сообщает только завершение жеста.
 	self.remotes.roundComplete:FireServer()
+	local token = self.animationToken
 	task.delay(self.trick.resetDelay, function()
-		if self.active == "done" then
+		if self.active == "done" and self.animationToken == token then
 			self:beginReset()
 		end
 	end)
 end
 
 function Game:beginReset()
-	self:cancelTweens()
-	self.active = "collecting"
-	clear(self.hintLayer)
-	clear(self.seamLayer)
-	if self.rewardMarker then
-		self.rewardMarker:Destroy()
-		self.rewardMarker = nil
-	end
-
-	-- Никакой обратной перемотки: собранная плитка остаётся на том же месте.
-	-- Канонический слой совпадает с ней пиксель в пиксель и скрывает только
-	-- техническую подготовку полигонов следующего раунда.
-	self.intactLayer.Visible = true
-	local rewardName = self.trick.rewardPiece
-	for _, name in self.trick.pieceOrder do
-		if name ~= rewardName then
-			self:setPieceOffset(name, Vector2.zero)
-		end
-	end
-
-	-- В референсе внешняя долька постепенно исчезает, а не возвращается вместе
-	-- с кусками. Непрозрачное окно растёт от правого края (со стороны плитки)
-	-- и «съедает» только уже начисленную исходную дольку.
-	local piece = self.pieces[rewardName]
-	local wipe = makeFrame(
-		piece.crop,
-		"RewardCollectionWipe",
-		Vector2.new(piece.size.X, 0),
-		Vector2.new(0, piece.size.Y),
-		Theme.background,
-		850
-	)
-	wipe.AnchorPoint = Vector2.new(1, 0)
-	self.rewardWipe = wipe
-	L.set(self.status, "Piece collected — the chocolate bar stays whole")
-
-	local duration = self.trick.collectionDuration
-	local token = self.animationToken
-	local tween = TweenService:Create(
-		wipe,
-		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-		{ Size = UDim2.fromOffset(piece.size.X, piece.size.Y) }
-	)
-	table.insert(self.tweens, tween)
-	tween:Play()
-	task.delay(duration + 0.02, function()
-		if self.animationToken ~= token or self.active ~= "collecting" then
-			return
-		end
-		self.tweens = {}
-		piece.motion.Visible = false
-		self:setPieceOffset(rewardName, Vector2.zero)
-		if self.rewardWipe then
-			self.rewardWipe:Destroy()
-			self.rewardWipe = nil
-		end
-		self:resetRound()
-	end)
+ if self.active ~= "done" then return end
+ if self.rewardMarker then
+  self.rewardMarker:Destroy(); self.rewardMarker=nil
+ end
+ local piece=self.pieces[self.trick.rewardPiece]
+ local duration=self.trick.collectionDuration
+ -- Исчезает отдельная копия уже выданной награды. Её завершение не меняет
+ -- active, animationToken и полигоны, которыми игрок уже режет новую плитку.
+ if self.scene3D then
+  self.scene3D:collectReward()
+ else
+  local ghost=piece.motion:Clone()
+  ghost.Name="CollectedReward"; ghost.Visible=true; ghost.Parent=piece.motion.Parent
+  local wipe=makeFrame(ghost.Crop,"RewardCollectionWipe",Vector2.new(piece.size.X,0),
+   Vector2.new(0,piece.size.Y),Theme.background,850)
+  wipe.AnchorPoint=Vector2.new(1,0)
+  TweenService:Create(wipe,TweenInfo.new(duration,Enum.EasingStyle.Quad,Enum.EasingDirection.InOut),
+   {Size=UDim2.fromOffset(piece.size.X,piece.size.Y)}):Play()
+  task.delay(duration+.02,function() ghost:Destroy() end)
+ end
+ self.intactLayer.Visible = true
+ self:resetRound()
 end
 
 function Game:resetRound()
@@ -1508,10 +1475,6 @@ function Game:resetRound()
 		self:setPieceOffset(name, Vector2.zero)
 	end
 	self.intactLayer.Visible = true
-	if self.rewardWipe then
-		self.rewardWipe:Destroy()
-		self.rewardWipe = nil
-	end
 	if self.rewardMarker then
 		self.rewardMarker:Destroy()
 		self.rewardMarker = nil
