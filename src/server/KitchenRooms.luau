@@ -40,10 +40,10 @@ function Rooms.start(remote)
    end
   end
  end
- local function segments()
+ local function records()
   local records={}
   for _,room in slots do table.insert(records,{owner=room.id,index=room.index,online=room.owner~=nil,count=room.count}) end
-  return Queue.build(records)
+  return records
  end
  local function enter(player,room)
   local previous=visitors[player]; visitors[player]=room
@@ -84,14 +84,10 @@ function Rooms.start(remote)
    if not own or own.mode~='walk' or not root or (root.Position-board.Position).Magnitude>9 or visitors[player]~=room then return end
    local now=os.clock(); if now<(own.nextVisit or 0) then return end; own.nextVisit=now+.5
    if home then enter(player,own); return end
-   local id,index=Queue.next(segments(),room.id,room.index)
+   local id=Queue.nextVisitor(records(),player.UserId,room.id)
    if not id then return end
-   local target=byKey[Queue.key(id,index)]
-   if not target then
-    local source=byKey[Queue.key(id,0)]
-    if not source or not source.owner or index>source.count then return end
-    target=create(source.owner,index,source)
-   end
+   local target=byKey[Queue.key(id,0)]
+   if not target or not target.owner then return end
    enter(player,target)
   end)
  end

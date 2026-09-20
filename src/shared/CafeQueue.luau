@@ -27,6 +27,18 @@ function Queue.next(segments,owner,index)
  local first=segments[1]; if first then return first.owner,first.first end
  return nil
 end
+-- Посещения отделены от декоративной очереди: только дома других игроков онлайн.
+function Queue.nextVisitor(records,viewer,current)
+ local ids={}; local seen={}
+ for _,r in records do
+  if r.index==0 and r.online and r.owner~=viewer and r.owner~=current and not seen[r.owner] then
+   seen[r.owner]=true; table.insert(ids,r.owner)
+  end
+ end
+ table.sort(ids)
+ for _,id in ids do if id>current then return id end end
+ return ids[1]
+end
 function Queue.preview(segments,owner,index,limit)
  local start=Queue.key(owner,index); local result={}
  for _=1,limit do

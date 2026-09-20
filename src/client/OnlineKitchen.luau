@@ -138,7 +138,7 @@ function Online:updateIslands(models)
  for _,entry in prompts do
   local prompt=entry.prompt; local home=prompt.Name=='HomeCafePrompt'
   local enabled=entry.current and k.opened and not k.focus and not k.shopping and (not home or owner~=k.player.UserId or index~=0)
-  local text=L.text(if home then 'Return home' elseif entry.current and #preview==0 then 'Waiting for another cafe' else 'Next cafe')
+  local text=L.text(if home then 'Return home' elseif entry.current and not Queue.nextVisitor(records,k.player.UserId,owner) then 'Waiting for another cafe' else 'Next cafe')
   if prompt.ActionText~=text then prompt.ActionText=text end
   if prompt.Enabled~=enabled then prompt.Enabled=enabled end
  end
