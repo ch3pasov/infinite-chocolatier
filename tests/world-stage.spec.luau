@@ -6,7 +6,7 @@ return function(h)
  h.test('3D: камеры остаются в мире, скрытая кухня не рендерится, очистка восстанавливает окружение',function()
   local world=R.Instance.new('Workspace')
   local storage=R.Instance.new('ReplicatedStorage')
-  local light={Brightness=3,ClockTime=14,GlobalShadows=false,Ambient=R.Color3.new(),OutdoorAmbient=R.Color3.new()}
+  local light=R.Instance.new('Lighting'); light.Brightness=3; light.ClockTime=14; light.GlobalShadows=false; light.Ambient=R.Color3.new(); light.OutdoorAmbient=R.Color3.new()
   local original=R.Instance.new('Camera'); original.Parent=world; world.CurrentCamera=original
   local services={Workspace=world,ReplicatedStorage=storage,Lighting=light}
   local Stage=luau.load(fs.readFile('src/client/WorldStage.luau'),{environment={
@@ -23,7 +23,9 @@ return function(h)
   assert(kitchen.Parent==world and not board:IsDescendantOf(world))
   stage:activate(board,a)
   assert(world.CurrentCamera==a and board.Parent==world)
+  assert(light:FindFirstChild("ChocolateHorizon"))
   stage:destroy()
+  h.equals(#light:GetChildren(),0)
   assert(world.CurrentCamera==original and light.Brightness==3)
   assert(#storage:GetChildren()==0 and #world:GetChildren()==1)
  end)

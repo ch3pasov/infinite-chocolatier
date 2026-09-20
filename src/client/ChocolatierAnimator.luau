@@ -6,23 +6,33 @@ local Appearance=require(script.Parent.FriendAppearance)
 local Animator = {}
 Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
- local self=setmetatable({alive=true,visible=false,x=x},Animator)
- task.spawn(function()
+ local self=setmetatable({alive=true,visible=false,x=x,generation=0},Animator)
+ function self:setIdentity(nextId,seed)
+  nextId=nextId or 0; seed=seed or 1
+  local key=tostring(nextId)..':'..tostring(seed)
+  if self.identity==key then return end
+  self.identity=key; self.generation+=1; local generation=self.generation
+  if self.rig then self.rig:Destroy(); self.rig=nil; self.apron=nil; self.apronStyle=nil end
+  task.spawn(function()
   local description=Instance.new("HumanoidDescription")
   description.HeadColor=Color3.fromRGB(223,176,130)
   description.LeftArmColor=description.HeadColor; description.RightArmColor=description.HeadColor
   description.TorsoColor=if isPlayer then Color3.fromRGB(90,133,166) else Color3.fromRGB(244,234,209)
   description.LeftLegColor=Color3.fromRGB(64,52,44); description.RightLegColor=description.LeftLegColor
-  if not isPlayer then
-   local player=Players.LocalPlayer
-   userId=Appearance.pickFriend(Players,player and player.UserId,math.random)
+  do
+   local random=Random.new(seed)
+   local skin={Color3.fromRGB(239,201,165),Color3.fromRGB(207,159,119),Color3.fromRGB(156,105,73),Color3.fromRGB(98,65,49)}
+   description.HeadColor=skin[random:NextInteger(1,#skin)]
+   description.LeftArmColor=description.HeadColor; description.RightArmColor=description.HeadColor
+   description.TorsoColor=Color3.fromHSV(random:NextNumber(),.35,.85)
+   description.LeftLegColor=Color3.fromHSV(random:NextNumber(),.3,.3); description.RightLegColor=description.LeftLegColor
   end
   if not self.alive then description:Destroy(); return end
   -- R6 сохраняет общие суставы и позы игрока и стажёра.
-  local ok,rig=Appearance.createRig(Players,description,userId,Enum.HumanoidRigType.R6)
+  local ok,rig=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6)
   description:Destroy()
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
-  if not self.alive or not parent.Parent then rig:Destroy(); return end
+  if not self.alive or generation~=self.generation or not parent.Parent then rig:Destroy(); return end
   rig.Name=name; rig:ScaleTo(.8)
   self.rig=rig; self.rest={}; self.motors={}
   local root=rig:FindFirstChild("HumanoidRootPart")
@@ -44,7 +54,9 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   rig:PivotTo(CFrame.new((roomOrigin or Vector3.zero)+Vector3.new(x,2.4,-2.9))*CFrame.Angles(0,math.pi,0))
   self:setStyle(self.style or 0)
   self:setVisible(self.visible)
- end)
+  end)
+ end
+ self:setIdentity(if isPlayer then userId else 0,1)
  return self
 end
 -- Фартук отличает варианты ученика, сохраняя внешность друга и общие суставы.

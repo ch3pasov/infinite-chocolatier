@@ -1,163 +1,162 @@
 --!nonstrict
--- Реальные позы соседей приходят от сервера. Между двумя снимками сглаживаем
--- движение, но не придумываем следующий разрез и не запускаем цикл за игрока.
+-- Живые игроки используют сетевые позы; автоматические кафе — общий цикл
+-- стажёра. В памяти только посещённые острова и ограниченная дальняя очередь.
 local Workspace=game:GetService('Workspace')
 local Players=game:GetService('Players')
 local Shared=game:GetService('ReplicatedStorage'):WaitForChild('Shared')
 local Wire=require(Shared.WorkstationWire)
+local Queue=require(Shared.CafeQueue)
+local Config=require(Shared.Config)
 local Action=require(script.Parent.WorkstationAction)
 local Station=require(script.Parent.WorkstationView)
 local Shell=require(script.Parent.KitchenShell)
+local Decor=require(script.Parent.KitchenDecor)
 local L=require(script.Parent.Localization)
 local Online={}; Online.__index=Online
 function Online.new(kitchen)
  local self=setmetatable({kitchen=kitchen,peers={},packets={},elapsed=0,scan=0,request=0},Online)
  self.remote=kitchen.atelier.remotes.kitchenAction
  self.receive=self.remote.OnClientEvent:Connect(function(userId,raw)
-  local clean=Wire.clean(raw)
-  if not clean then return end
-  local old=self.packets[userId]
-  self.packets[userId]={previous=old and old.current,current=clean,at=os.clock()}
+  local clean=Wire.clean(raw); if not clean then return end
+  local old=self.packets[userId]; self.packets[userId]={previous=old and old.current,current=clean,at=os.clock()}
  end)
- self.remote:FireServer()
- return self
+ self.remote:FireServer(); return self
 end
-function Online:remove(id)
- local peer=self.peers[id]; if not peer then return end
+function Online:remove(key)
+ local peer=self.peers[key]; if not peer then return end
  if self.kitchen.watchPeer==peer then self.kitchen:setWalking() end
- if peer.station then peer.station:destroy() end
- peer.world:Destroy(); self.peers[id]=nil
+ for _,station in peer.stations do station:destroy() end
+ peer.world:Destroy(); self.peers[key]=nil
 end
-function Online:add(player,origin,model)
- local k=self.kitchen
- local world=Instance.new('Model'); world.Name='Neighbor_'..player.UserId; world.Parent=k.world
- Shell.new(world,origin)
- local peer={player=player,origin=origin,world=world,model=model}; self.peers[player.UserId]=peer
+function Online:add(model)
+ local k=self.kitchen; local id=model:GetAttribute('OwnerId'); local index=model:GetAttribute('CafeIndex') or 0
+ local key=Queue.key(id,index); local origin=model:GetAttribute('Origin')
+ local world=Instance.new('Model'); world.Name='Neighbor_'..key; world.Parent=k.world; Shell.new(world,origin)
+ local author={UserId=id,DisplayName=model:GetAttribute('DisplayName'),Name=model:GetAttribute('Username')}
+ function author:GetAttribute(name)
+  local player=Players:GetPlayerByUserId(id)
+  return if model:GetAttribute('OwnerOnline') and player and player.Parent then player:GetAttribute(name) else nil
+ end
+ local peer={player=author,origin=origin,world=world,model=model,staff=index>0,index=index,stations={}}
+ self.peers[key]=peer
+ if peer.staff then Decor.update(peer,Queue.decor(id,index)) end
  local anchor=Instance.new('Part'); anchor.Name='PlayerWorktable'; anchor.Anchored=true
- anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one
- anchor.Position=origin+Vector3.new(-3.7,2.5,3); anchor.Parent=world
- local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text('Watch player')
- prompt.ObjectText=player.DisplayName..' (@'..player.Name..')'; prompt.MaxActivationDistance=5
- prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor; peer.prompt=prompt
- prompt.Triggered:Connect(function()
-  if k.opened and not k.focus and not k.shopping and peer.station then k:watchPlayer(peer) end
- end)
- local billboard=Instance.new('BillboardGui'); billboard.Size=UDim2.fromOffset(240,48)
- billboard.StudsOffset=Vector3.new(0,3,0); billboard.MaxDistance=65; billboard.Parent=anchor; peer.billboard=billboard
- local text=Instance.new('TextLabel'); text.Size=UDim2.fromScale(1,1); text.BackgroundTransparency=.25
- text.BackgroundColor3=Color3.fromRGB(71,38,27); text.TextColor3=Color3.fromRGB(255,232,192)
- text.TextScaled=true; text.Font=Enum.Font.GothamBold; text.Text=player.DisplayName..'\n@'..player.Name; text.AutoLocalize=false; text.Parent=billboard
+ anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one; anchor.Position=origin+Vector3.new(-3.7,2.5,3); anchor.Parent=world
+ local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(if peer.staff then 'Watch apprentices' else 'Watch player')
+ prompt.ObjectText=author.DisplayName..(if peer.staff then ' · '..index else ' (@'..author.Name..')')
+ prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor; peer.prompt=prompt
+ prompt.Triggered:Connect(function() if k.opened and not k.focus and not k.shopping and peer.station then k:watchPlayer(peer) end end)
  return peer
 end
 function Online:step(dt)
- local k=self.kitchen
- self.elapsed+=dt; self.scan+=dt
- if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then
-  self.elapsed=0
-  self.remote:FireServer(Action.player(k.view))
- end
+ local k=self.kitchen; self.elapsed+=dt; self.scan+=dt
+ if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then self.elapsed=0; self.remote:FireServer(Action.player(k.view)) end
  if not k.opened then return end
- self.request+=dt
- if self.request>=1.1 then self.request=0; self.remote:FireServer() end
+ self.request+=dt; if self.request>=1.1 then self.request=0; self.remote:FireServer() end
  if self.scan>=.5 then
   self.scan=0
-  local directory=Workspace:FindFirstChild('KitchenIslands')
-  local seen={}; local models=if directory then directory:GetChildren() else {}
+  local directory=Workspace:FindFirstChild('KitchenIslands'); local models=if directory then directory:GetChildren() else {}
+  local seen={}; local owners={}
   for _,model in models do
-   local id=model:GetAttribute('OwnerId'); local origin=model:GetAttribute('Origin')
+   local id=model:GetAttribute('OwnerId'); local origin=model:GetAttribute('Origin'); local index=model:GetAttribute('CafeIndex') or 0
    if id and origin then
-    seen[id]=true
-    if id~=k.player.UserId and not self.peers[id] then
-     -- Снимок имени остаётся после ухода владельца до последнего гостя.
-     local author={UserId=id,DisplayName=model:GetAttribute('DisplayName'),Name=model:GetAttribute('Username')}
-     function author:GetAttribute(name)
-      local player=Players:GetPlayerByUserId(id)
-      return if model:GetAttribute('OwnerOnline') and player and player.Parent then player:GetAttribute(name) else nil
-     end
-     self:add(author,origin,model)
-    end
+    local key=Queue.key(id,index); seen[key]=true; owners[id]=true
+    if (id~=k.player.UserId or index>0) and not self.peers[key] then self:add(model) end
    end
   end
-  for id in self.peers do if not seen[id] then self:remove(id); self.packets[id]=nil end end
+  for key in self.peers do if not seen[key] then self:remove(key) end end
+  for id in self.packets do if not owners[id] then self.packets[id]=nil end end
   self:updateIslands(models)
-
  end
- local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart')
- local position=if root then root.Position else k.origin
- for id,peer in self.peers do
-  local near=(position-peer.origin).Magnitude<65 or k.watchPeer==peer
+ local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart'); local position=if root then root.Position else k.origin
+ for _,peer in self.peers do
+  local near=(position-peer.origin).Magnitude<55 or k.watchPeer==peer
   if near and not peer.station then
-   peer.station=Station.new(k.view,peer.world,peer.origin,-3.7,true,id)
+   peer.stations[1]=Station.new(k.view,peer.world,peer.origin,-3.7,not peer.staff,peer.player.UserId)
+   peer.stations[2]=Station.new(k.view,peer.world,peer.origin,3.7,false)
+   peer.station=peer.stations[1]
   elseif not near and peer.station then
-   peer.station:destroy(); peer.station=nil
+   for _,station in peer.stations do station:destroy() end; peer.stations={}; peer.station=nil
   end
   peer.prompt.Enabled=near and not k.focus and not k.shopping
-  peer.billboard.Enabled=not k.focus
-  local packet=self.packets[id]
   if peer.station then
-   local working=peer.player:GetAttribute('KitchenMode')=='cut'
-   peer.station.actor:setVisible(working and packet~=nil)
-   if packet then
-    local action=Wire.blend(packet.previous,packet.current,(os.clock()-packet.at)/.1)
-    if not working then action=table.clone(action); action.cutting=false end
-    peer.station:pose(action,true,dt)
+   local packet=self.packets[peer.player.UserId]
+   local cycle=math.max(.01,peer.model:GetAttribute('CycleSeconds') or 10)
+   for side,station in peer.stations do
+    if side==1 and not peer.staff then
+     local working=peer.player:GetAttribute('KitchenMode')=='cut'
+     station.actor:setVisible(working and packet~=nil)
+     if packet then
+      local action=Wire.blend(packet.previous,packet.current,(os.clock()-packet.at)/.1)
+      if not working then action=table.clone(action); action.cutting=false end
+      station:pose(action,true,dt)
+     end
+    else
+     local working=peer.staff or peer.model:GetAttribute('HasApprentice')==true
+     local staffSide=if peer.staff then side else 1
+     station.actor:setIdentity(peer.model:GetAttribute('Staff'..staffSide),peer.model:GetAttribute('StaffSeed'..staffSide))
+     station.actor:setStyle(1+(peer.index+side)%5); station.actor:setVisible(working)
+     station:pose(Action.cycle((os.clock()/cycle+side*.17)%1,Config,k.view.recipe.slides),working,dt)
+    end
    end
   end
  end
 end
--- Физические острова независимы; дальние копии создают личную очередь,
--- не перемещая чужих персонажей и не меняя серверную географию.
 function Online:updateIslands(models)
- local k=self.kitchen
- local currentId=k.player:GetAttribute('VisitingKitchen') or k.player.UserId
- local current; local ordered={}
+ local k=self.kitchen; local owner=k.player:GetAttribute('VisitingKitchen') or k.player.UserId
+ local index=k.player:GetAttribute('VisitingCafeIndex') or 0; local currentKey=Queue.key(owner,index)
+ local current; local records={}; local sources={}
  for _,model in models do
-  local id=model:GetAttribute('OwnerId')
-  if id then table.insert(ordered,model) end
-  if id==currentId then current=model end
-  for _,part in model:GetDescendants() do
-   if part:IsA('BasePart') then part.LocalTransparencyModifier=if id==currentId then 0 else 1
-   elseif part:IsA('SurfaceGui') then part.Enabled=id==currentId
-   elseif part:IsA('ProximityPrompt') then
-    local home=part.Name=='HomeCafePrompt'
-    part.Enabled=id==currentId and k.opened and not k.focus and not k.shopping and (not home or currentId~=k.player.UserId)
-    part.ActionText=L.text(if home then 'Return home' elseif #models>1 then 'Next cafe' else 'Waiting for another cafe')
+  local id=model:GetAttribute('OwnerId'); local n=model:GetAttribute('CafeIndex') or 0
+  if id then
+   local key=Queue.key(id,n); if key==currentKey then current=model end
+   table.insert(records,{owner=id,index=n,online=model:GetAttribute('OwnerOnline'),count=model:GetAttribute('CafeCount') or 0})
+   if not sources[id] or n==0 then sources[id]=model end
+   for _,part in model:GetDescendants() do
+    if part:IsA('BasePart') then part.LocalTransparencyModifier=if key==currentKey then 0 else 1
+    elseif part:IsA('ProximityPrompt') then
+     local home=part.Name=='HomeCafePrompt'
+     part.Enabled=key==currentKey and k.opened and not k.focus and not k.shopping and (not home or owner~=k.player.UserId or index~=0)
+     part.ActionText=L.text(if home then 'Return home' else 'Next cafe')
+    end
    end
   end
  end
  if not current then return end
+ local segments=Queue.build(records); local preview=Queue.preview(segments,owner,index,24)
+ for _,part in current:GetDescendants() do if part:IsA('ProximityPrompt') and part.Name=='NextCafePrompt' and #preview==0 then part.ActionText=L.text('Waiting for another cafe') end end
  local origin=current:GetAttribute('Origin')
  for _,part in k.world:GetDescendants() do
-  if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then
-   part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1
-  end
+  if part:IsA('BasePart') and (not self.queue or not part:IsDescendantOf(self.queue)) then part.LocalTransparencyModifier=if (part.Position-origin).Magnitude<55 then 0 else 1 end
  end
- table.sort(ordered,function(a,b) return a:GetAttribute('Origin').X<b:GetAttribute('Origin').X end)
- local index=table.find(ordered,current) or 1
- local key=tostring(currentId)
- for _,model in ordered do key..=':'..model:GetAttribute('OwnerId') end
- if self.queueKey==key then return end
- self.queueKey=key
+ local key=currentKey..':'..tostring(origin)
+ for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index) end
+ if self.queueKey==key then return end; self.queueKey=key
  if self.queue then self.queue:Destroy() end
  self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
- for offset=1,math.min(3,#ordered-1) do
-  local model=ordered[(index+offset-1)%#ordered+1]
-  -- Очередь за задней стеной видна фиксированной камере; за спиной
-  -- камеры (+Z) она полностью исчезала бы из кадра.
-  local location=origin+Vector3.new(0,0,-80*offset)
-  Shell.new(self.queue,location)
-  local floor=Instance.new('Part'); floor.Name='DistantTerrace'; floor.Anchored=true; floor.CanCollide=false; floor.CanQuery=false
-  floor.Size=Vector3.new(22,1,11); floor.Position=location+Vector3.new(0,-.6,22.5)
-  floor.Color=Color3.fromRGB(151,126,98); floor.TopSurface=Enum.SurfaceType.Smooth; floor.BottomSurface=Enum.SurfaceType.Smooth; floor.Parent=self.queue
-  local title=Instance.new('BillboardGui'); title.Size=UDim2.fromOffset(180,35); title.StudsOffset=Vector3.new(0,6,0); title.Parent=floor
-  local text=Instance.new('TextLabel'); text.Size=UDim2.fromScale(1,1); text.BackgroundTransparency=1; text.TextColor3=Color3.fromRGB(255,232,192)
-  text.TextScaled=true; text.Text=model:GetAttribute('DisplayName'); text.AutoLocalize=false; text.Parent=title
+ local function part(name,size,position,color)
+  local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position; p.Color=color
+  p.Anchored=true; p.CanCollide=false; p.CanQuery=false; p.CanTouch=false
+  p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth; p.Parent=self.queue; return p
+ end
+ for offset,entry in preview do
+  -- Плотный строй кабинок с просветом неба, как на концепте. За +Z-камерой
+  -- очередь была бы невидима, поэтому уходит к горизонту вдоль -Z.
+  local location=origin+Vector3.new(0,0,-38*offset)
+  if offset<=6 then
+   Shell.new(self.queue,location)
+   if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index)) end
+  else
+   part('DistantFloor',Vector3.new(22,.3,24),location+Vector3.new(0,-.2,5),Color3.fromRGB(181,160,130))
+   for _,wall in {{Vector3.new(22,7,.6),Vector3.new(0,3,-6.2)},{Vector3.new(.6,7,23.5),Vector3.new(-10.7,3,5.25)},{Vector3.new(.6,7,23.5),Vector3.new(10.7,3,5.25)}} do
+    part('DistantWall',wall[1],location+wall[2],Color3.fromRGB(83,112,97))
+   end
+   for _,x in {-3.7,3.7} do part('DistantTable',Vector3.new(6.8,.4,5.8),location+Vector3.new(x,2.1,0),Color3.fromRGB(207,161,101)) end
+  end
  end
 end
 function Online:destroy()
- self.receive:Disconnect()
- if self.queue then self.queue:Destroy() end
- self.kitchen.watchPeer=nil
- for id in self.peers do self:remove(id) end
+ self.receive:Disconnect(); if self.queue then self.queue:Destroy() end; self.kitchen.watchPeer=nil
+ for key in self.peers do self:remove(key) end
 end
 return Online

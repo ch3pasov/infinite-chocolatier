@@ -4,7 +4,7 @@
 local Config=require('./Config')
 local C={items={},byId={}}
 local names={
- workers={'Cocoa Apprentice','Caramel Apprentice','Mint Apprentice','Berry Apprentice','Master Apprentice'},
+ workers={'Cocoa Apprentice'},
  temper={'Copper Melter','Cream Temperer','Mint Temperer','Berry Temperer','Golden Temperer'},
  library={'Recipe Notebook','Caramel Recipes','Mint Recipes','Berry Recipes','Grand Recipe Collection'},
  clock={'Cocoa Clock','Caramel Clock','Mint Clock','Berry Clock','Golden Pendulum Clock'},

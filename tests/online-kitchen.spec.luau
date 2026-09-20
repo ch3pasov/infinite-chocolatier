@@ -30,55 +30,48 @@ return function(h)
    return {GetAttribute=function(_,key) return attributes[key] end,SetAttribute=function(_,key,value) attributes[key]=value end,GetDescendants=function() return {} end}
   end
   local remote={OnClientEvent=signal(),FireServer=function(_,a) table.insert(calls,a or 'request') end}
-  local k={player=localPlayer,world={GetDescendants=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={},
+  local k={player=localPlayer,world={GetDescendants=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
    state={ready=true},atelier={remotes={kitchenAction=remote}}}
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
-  local modules={Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function()
-   local s={actor={setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
+  local modules={Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function() end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function()
+   local s={actor={setIdentity=function(self,id) self.identity=id end,setStyle=function() end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
    table.insert(stations,s); return s
   end}}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
-   game={GetService=function(_,n) return if n=='Players' then players elseif n=='Workspace' then world else {WaitForChild=function() return {WorkstationWire='Wire'} end} end},
-   script={Parent={WorkstationAction='Action',WorkstationView='Station',KitchenShell='Shell',Localization='Localization'}},
+   game={GetService=function(_,n) return if n=='Players' then players elseif n=='Workspace' then world else {WaitForChild=function() return {WorkstationWire='Wire',CafeQueue='Queue',Config='Config'} end} end},
+   script={Parent={WorkstationAction='Action',WorkstationView='Station',KitchenShell='Shell',KitchenDecor='Decor',Localization='Localization'}},
    require=function(id) return modules[id] end,Instance={new=new},Vector3=R.Vector3,UDim2=R.UDim2,Color3=R.Color3,
    Enum=R.Enum,os={clock=function() return now end},
   },injectGlobals=true})()
   local online=Online.new(k)
-  online:step(.5); h.equals(online.peers[2],nil)
+  online:step(.5); h.equals(online.peers['2:0'],nil)
   attrs.KitchenOrigin=R.Vector3.new(24,0,1000)
   models={model(1,k.origin),model(2,attrs.KitchenOrigin)}
-  online:step(.5); assert(online.peers[2]); h.equals(#stations,1)
-  local p=online.peers[2]; assert(p.prompt.Enabled)
+  online:step(.5); assert(online.peers['2:0']); h.equals(#stations,2)
+  local p=online.peers['2:0']; assert(p.prompt.Enabled)
   local action=Action.cycle(.7,Config,Recipe.build(Config.Recipe).slides)
   remote.OnClientEvent:Fire(2,action); online:step(.1)
   h.equals(stations[1].actor.visible,true)
   h.near((stations[1].action.offsets.upperLeft-action.offsets.upperLeft).Magnitude,0)
   now=3; online:step(.1)
   h.near((stations[1].action.offsets.upperLeft-action.offsets.upperLeft).Magnitude,0)
-  p.prompt.Triggered:Fire(); h.equals(k.watchPeer,p); online:step(.1); h.equals(p.billboard.Enabled,false)
+  p.prompt.Triggered:Fire(); h.equals(k.watchPeer,p); online:step(.1)
   models[2]:SetAttribute('OwnerOnline',false); players.PlayerRemoving:Fire(peer); online:step(.5)
-  assert(online.peers[2],'гость должен продолжать видеть кафе без владельца')
+  assert(online.peers['2:0'],'гость должен продолжать видеть кафе без владельца')
   h.equals(stations[1].actor.visible,false)
   models={models[1]}; online:step(.5)
-  assert(k.walked); assert(stations[1].destroyed); h.equals(online.peers[2],nil)
+  assert(k.walked); assert(stations[1].destroyed); h.equals(online.peers['2:0'],nil)
   models[2]=model(2,attrs.KitchenOrigin)
-  online:step(.5); assert(online.peers[2])
-  position=R.Vector3.new(400,0,1000); online:step(.1); h.equals(online.peers[2].station,nil)
-  -- Личная очередь ограничена тремя копиями, начинается после посещаемого кафе.
-  models={model(1,k.origin),model(2,attrs.KitchenOrigin),model(3,R.Vector3.new(512,0,1000)),model(4,R.Vector3.new(768,0,1000)),model(5,R.Vector3.new(1024,0,1000))}
+  online:step(.5); assert(online.peers['2:0'])
+  position=R.Vector3.new(400,0,1000); online:step(.1); h.equals(online.peers['2:0'].station,nil)
+  models[2]=model(2,R.Vector3.new(400,0,1000)); models[2]:SetAttribute('CafeIndex',1)
+  models[2]:SetAttribute('Staff1',101); models[2]:SetAttribute('Staff2',102)
   online:step(.5)
-  local count=0
-  for _,object in objects do if object.Name=='DistantTerrace' and object.Parent==online.queue then
-   count+=1; h.equals(object.Position.X,0); assert(object.Position.Z<1000)
-  end end
-  h.equals(count,3)
-  local oldQueue=online.queue
-  function localPlayer:GetAttribute() return 5 end
-  online:step(.5); assert(oldQueue.destroyed)
-  count=0
-  for _,object in objects do if object.Name=='DistantTerrace' and object.Parent==online.queue then count+=1; h.equals(object.Position.X,1024) end end
-  h.equals(count,3)
+  local cafe=online.peers['2:1']; assert(cafe and cafe.staff); h.equals(#cafe.stations,2)
+  h.equals(cafe.stations[1].actor.identity,101); h.equals(cafe.stations[2].actor.identity,102)
+  h.equals(cafe.stations[1].actor.visible,true); h.equals(cafe.stations[2].actor.visible,true)
+  models[2]:SetAttribute('Staff1',103); online:step(.1); h.equals(cafe.stations[1].actor.identity,103)
   local previous=online.packets[2]; online:destroy(); remote.OnClientEvent:Fire(2,action)
   h.equals(online.packets[2],previous)
  end)

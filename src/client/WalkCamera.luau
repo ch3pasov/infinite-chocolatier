@@ -6,7 +6,7 @@ local Run=game:GetService('RunService')
 local Workspace=game:GetService('Workspace')
 local Camera={}; Camera.__index=Camera
 function Camera.new(player,camera,enabled)
- local self=setmetatable({player=player,camera=camera,enabled=enabled,distance=18,pitch=35,touches={},connections={}},Camera)
+ local self=setmetatable({player=player,camera=camera,enabled=enabled,distance=24,pitch=30,touches={},connections={}},Camera)
  local function connect(signal,callback) table.insert(self.connections,signal:Connect(callback)) end
  connect(Input.InputBegan,function(input,processed)
   if processed or not self:active() then return end

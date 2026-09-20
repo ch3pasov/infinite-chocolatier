@@ -14,7 +14,7 @@ end
 
 local function recount(data)
  for _,group in {'workers','temper','library','clock','plant','rug','art'} do
-  local n=if group=='workers' then data.legacyWorkers else 0
+  local n=if group=='workers' then 2*data.levels.cafes else 0
   for _,item in Catalog.items do if item.group==group and data.owned[item.id] then n+=1 end end
   data.levels[group]=n
  end
@@ -40,7 +40,7 @@ function Economy.load(raw)
 		productionRemainder = number(raw.productionRemainder, 0, 0.999999999),
 		levels = {},
 		decor = {},
-        collectionVersion=1, owned={}, equipped={}, legacyWorkers=0,
+        collectionVersion=2, owned={}, equipped={}, legacyWorkers=0,
 	}
 	for _, spec in E.upgrades do
 		data.levels[spec.id] = math.floor(number(levels[spec.id], 0, math.min(spec.maxLevel,1e9)))
@@ -50,7 +50,7 @@ function Economy.load(raw)
 	end
     -- Старый уровень N означает владение первыми N предметами. Избыточных
     -- стажёров сохраняем отдельно: новая конечная коллекция не отнимает доход.
-    local modern=raw.collectionVersion==1
+    local modern=raw.collectionVersion==1 or raw.collectionVersion==2
     data.legacyWorkers=if modern then math.floor(number(raw.legacyWorkers,0,100)) else math.max(0,data.levels.workers-5)
     local oldOwned=if type(raw.owned)=='table' then raw.owned else {}
     local oldEquipped=if type(raw.equipped)=='table' then raw.equipped else {}
@@ -68,6 +68,20 @@ function Economy.load(raw)
             if item and item.group==group and data.owned[id] then data.equipped[group]=id end
         end
     end
+    -- Пять старых обликов и прежние стажёры превращаются в полноценные кафе.
+    -- Нечётный остаток округляем в пользу игрока, миграция выполняется один раз.
+    if raw.collectionVersion~=2 then
+        local workers=data.levels.workers
+        if modern then
+            workers=data.legacyWorkers
+            for i=1,5 do if oldOwned['workers_'..i]==true then workers+=1 end end
+        end
+        if workers>0 then
+            data.owned.workers_1=true; data.equipped.workers='workers_1'; data.levels.kitchen=1
+            data.levels.cafes=math.max(data.levels.cafes,math.ceil((workers-1)/2))
+        end
+    end
+    data.legacyWorkers=0
     recount(data)
 	-- Старый таймер оставлял случайные сотые даже без множителей. Один раз
 	-- доводим такой баланс вверх до десятой, не отнимая уже заработанное.
@@ -104,7 +118,7 @@ function Economy.price(data, id)
   if data.levels.kitchen<1 or data.owned[id] then return nil end
   return item.price
  end
- if id=='speed' and data.levels.workers<1 then return nil end
+ if (id=='speed' or id=='cafes') and not data.owned.workers_1 then return nil end
  for _,spec in E.upgrades do
   if spec.id==id and (spec.id=='kitchen' or spec.maxLevel==math.huge) then
    if data.levels[id]>=spec.maxLevel then return nil end
@@ -154,7 +168,7 @@ function Economy.buy(data, id)
  data.slices-=price
  if item then
   data.owned[id]=true; data.equipped[item.group]=id; recount(data)
- else data.levels[id]+=1 end
+ else data.levels[id]+=1; recount(data) end
  return true
 end
 

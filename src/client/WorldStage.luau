@@ -8,6 +8,12 @@ local Stage={}
 Stage.__index=Stage
 function Stage.new()
  local self=setmetatable({originalCamera=Workspace.CurrentCamera,lighting={}},Stage)
+ -- Собственная лёгкая дымка объединяет кабинки с небом; существующее
+ -- освещение восстанавливается вместе со сценой.
+ self.atmosphere=Instance.new('Atmosphere'); self.atmosphere.Name='ChocolateHorizon'
+ self.atmosphere.Density=.16; self.atmosphere.Offset=.1
+ self.atmosphere.Color=Color3.fromRGB(213,228,242); self.atmosphere.Decay=Color3.fromRGB(185,205,221)
+ self.atmosphere.Haze=1.1; self.atmosphere.Glare=.08; self.atmosphere.Parent=Lighting
  self.cameras=Instance.new('Folder'); self.cameras.Name='ChocolateCameras'; self.cameras.Parent=Workspace
  self.storage=Instance.new('Folder'); self.storage.Name='LocalChocolateScenes'; self.storage.Parent=ReplicatedStorage
  for property,value in {Ambient=Color3.fromRGB(150,140,125),OutdoorAmbient=Color3.fromRGB(150,140,125),Brightness=2,ClockTime=10,GlobalShadows=true} do
@@ -31,6 +37,7 @@ end
 function Stage:destroy()
  if self.originalCamera and self.originalCamera.Parent then Workspace.CurrentCamera=self.originalCamera end
  if self.active then self.active:Destroy() end
+ self.atmosphere:Destroy()
  self.storage:Destroy()
  self.cameras:Destroy()
  for property,value in self.lighting do Lighting[property]=value end

@@ -14,8 +14,9 @@ local Economy = require(Shared.Economy)
 local Remotes = require(Shared.Remotes)
 local ProfileStore = require(script.ProfileStore)
 local remotes = Remotes.ensure(ReplicatedStorage)
+local kitchens
 if Config.Kitchen.enabled and Config.Scene3D.enabled then
- require(script.KitchenRooms).start(remotes.kitchenMode)
+ kitchens=require(script.KitchenRooms).start(remotes.kitchenMode)
  require(script.KitchenRelay).start(Players,remotes.kitchenAction,require(Shared.WorkstationWire),os.clock)
 end
 local studio = RunService:IsStudio()
@@ -33,6 +34,7 @@ local function send(player, notice, reward)
 		return
 	end
 	local state = Economy.snapshot(session.data)
+ if kitchens then kitchens:sync(player,state) end
 	state.ready = true
 	state.offline = session.offline
 	state.notice = if type(notice)=="string" then {key=notice} else notice

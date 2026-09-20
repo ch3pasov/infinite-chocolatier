@@ -59,13 +59,13 @@ return function(h)
   end
   refresh('upgrades')
   h.equals(ui.cards.kitchen.frame.Visible,true); h.equals(ui.cards.craft.frame.Visible,true)
-  h.equals(ui.cards.clock_1.frame.Visible,false); h.equals(ui.cards.speed.frame.Visible,false)
+  h.equals(ui.cards.clock_1.frame.Visible,false); h.equals(ui.cards.speed.frame.Visible,false); h.equals(ui.cards.cafes.frame.Visible,false)
   assert(E.buy(d,'kitchen')); refresh('upgrades'); h.equals(ui.cards.kitchen.frame.Visible,false)
   refresh('kitchen')
   for _,spec in C.items do h.equals(ui.cards[spec.id].frame.Visible,true) end
   h.equals(ui.cards.craft.frame.Visible,false); h.equals(ui.cards.recipe.frame.Visible,false)
   h.equals(ui.balance.Text,'3/3 · Preview Cocoa Apprentice, then tap Hire for free.')
-  assert(E.buy(d,'workers_1')); refresh('upgrades'); h.equals(ui.cards.speed.frame.Visible,true)
+  assert(E.buy(d,'workers_1')); refresh('upgrades'); h.equals(ui.cards.speed.frame.Visible,true); h.equals(ui.cards.cafes.frame.Visible,true)
  end)
 
 end

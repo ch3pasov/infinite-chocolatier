@@ -39,7 +39,7 @@ return function(h)
   local right={UserInputType=R.Enum.UserInputType.MouseButton2}
   input.InputBegan:fire(right,false)
   input.InputChanged:fire({UserInputType=R.Enum.UserInputType.MouseMovement,Delta=R.Vector3.new(1000,25,0)},false)
-  h.equals(c.pitch,40); c:step(0); h.near(camera.CFrame.LookVector.X,0)
+  h.equals(c.pitch,35); c:step(0); h.near(camera.CFrame.LookVector.X,0)
   input.WindowFocusReleased:fire(); h.equals(input.MouseBehavior,R.Enum.MouseBehavior.Default)
   input.InputBegan:fire(right,false); enabled(false); run.tick(0)
   h.equals(input.MouseBehavior,R.Enum.MouseBehavior.Default)
@@ -49,14 +49,14 @@ return function(h)
  h.test('прогулка: интерфейс не управляет камерой, два пальца меняют масштаб',function()
   local c,_,input=setup()
   local wheel={UserInputType=R.Enum.UserInputType.MouseWheel,Position=R.Vector3.new(0,0,2)}
-  input.InputChanged:fire(wheel,true); h.equals(c.distance,18)
-  input.InputChanged:fire(wheel,false); h.equals(c.distance,15)
+  input.InputChanged:fire(wheel,true); h.equals(c.distance,24)
+  input.InputChanged:fire(wheel,false); h.equals(c.distance,21)
   local a={UserInputType=R.Enum.UserInputType.Touch,Position=R.Vector3.new(0,0,0)}
   local b={UserInputType=R.Enum.UserInputType.Touch,Position=R.Vector3.new(100,0,0)}
   input.InputBegan:fire(a,false); input.InputBegan:fire(b,false)
   b.Position=R.Vector3.new(200,0,0); input.InputChanged:fire(b,false)
-  h.equals(c.distance,11); h.equals(c.pitch,35)
+  h.equals(c.distance,17); h.equals(c.pitch,30)
   input.InputEnded:fire(b); a.Position=R.Vector3.new(0,50,0); input.InputChanged:fire(a,false)
-  h.equals(c.pitch,45)
+  h.equals(c.pitch,40)
  end)
 end

@@ -192,13 +192,13 @@ function Kitchen:step(dt)
  self:setAvatarVisible(false)
  self.camera.CameraType=Enum.CameraType.Scriptable
  local aspect=self.root.AbsoluteSize.X/math.max(1,self.root.AbsoluteSize.Y-150)
- local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(-3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
+ local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(if self.watchPeer.staff then 0 else -3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
  local lookOffset
  if self.preview then
   local shots={workers={Vector3.new(3.7,3,-2),Vector3.new(0,3,7)},temper={Vector3.new(-6,3,-5),Vector3.new(2,2,5)},library={Vector3.new(-4,4,-6),Vector3.new(1,1,5)},clock={Vector3.new(6,5.6,-6),Vector3.new(-1,0,5)},plant={Vector3.new(8.5,1.5,9),Vector3.new(-3,2,5)},rug={Vector3.new(0,0,9),Vector3.new(0,8,5)},art={Vector3.new(-10.1,4,8),Vector3.new(6,1,1)}}
   local shot=shots[self.previewSpec.group]; target=self.origin+shot[1]; lookOffset=shot[2]
  end
- local distance=if self.focus then 8 else 16
+ local distance=if self.focus then (if self.watchPeer and self.watchPeer.staff then 12 else 8) else 16
  distance*=math.max(1,1.5/aspect)
  local cf=CFrame.lookAt(target+(if lookOffset then lookOffset*math.max(1,1.3/aspect) else Vector3.new(0,distance*.8,distance)),target)
  -- Нижняя панель занимает 150 px: центр кухни сдвигается выше неё.
@@ -210,9 +210,14 @@ function Kitchen:step(dt)
  end
  local previewId=if self.preview then Preview.update(self.preview,state) else nil
  local variant=Catalog.selected(state,'workers',previewId)
+ local directory=workspace:FindFirstChild('KitchenIslands')
+ local home=directory and directory:FindFirstChild('KitchenRoom_'..self.player.UserId)
+ if home then self.stations[2].actor:setIdentity(home:GetAttribute('Staff1'),home:GetAttribute('StaffSeed1')) end
  self.stations[2].actor:setStyle(variant)
  self.stations[2].actor:setVisible(variant>0)
- if self.watchPeer then
+ if self.watchPeer and self.watchPeer.staff then
+  L.set(self.info,"Watch apprentices")
+ elseif self.watchPeer then
   L.set(self.info,if self.watchPeer.player:GetAttribute("KitchenMode")=="cut" then "Watching {name} · live" else "{name} is away from their worktable",{name=self.watchPeer.player.DisplayName})
  elseif working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})
  else L.set(self.info,"Hire your first apprentice in the workshop") end

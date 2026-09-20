@@ -12,15 +12,16 @@ return function(h)
  h.test('соседние кухни, возрождение и переиспользование места после выхода',function()
   local world=R.Instance.new('Folder'); local delayed={}
   local players={PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function() return {} end}
+  function players:GetFriendsAsync() return {IsFinished=true,GetCurrentPage=function() return {{Id=1001},{Id=1002},{Id=1003},{Id=1004}} end} end
   local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}; local prompts={}; local now=0
   local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'):gsub('prompt.Triggered:Connect%(', 'connectPrompt(prompt,'),{environment={
-   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(self) return self end} else world end},
-   require=function() return require("../src/shared/KitchenStructure") end,
+   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(_,name) return if name=='Shared' then {WaitForChild=function(_,module) return module end} else name end} else world end},
+   require=function(name) return require("../src/shared/"..name) end,
    Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,UDim2=R.UDim2,
    os={clock=function() return now end},connectPrompt=function(prompt,fn) prompts[prompt]=fn end,
    task={spawn=function(fn) fn() end,delay=function(_,fn) table.insert(delayed,fn) end},
   },injectGlobals=true})()
-  Rooms.start(remote)
+  local controller=Rooms.start(remote)
   local function player(id)
    local p={UserId=id,Parent=true,CharacterAdded=signal()}
    function p:SetAttribute(k,v) self[k]=v end
@@ -128,11 +129,36 @@ return function(h)
   h.equals(directory:FindFirstChild('KitchenRoom_2'),nil)
   local d=player(4); h.equals(d.KitchenOrigin,b.KitchenOrigin)
   -- Переход по кругу и выход последнего гостя тоже освобождают остров.
-  visit(a,1,false); h.equals(a.VisitingKitchen,4)
+  visit(a,1,false); visit(a,3,false); h.equals(a.VisitingKitchen,4)
   players.PlayerRemoving:Fire(d); assert(directory:FindFirstChild('KitchenRoom_4'))
   players.PlayerRemoving:Fire(a)
   h.equals(directory:FindFirstChild('KitchenRoom_4'),nil)
   h.equals(directory:FindFirstChild('KitchenRoom_1'),nil)
   players.PlayerRemoving:Fire(c); h.equals(#directory:GetChildren(),0)
+  -- Миллион покупок не создаёт миллион объектов. Посещение создаёт ровно
+  -- один дополнительный остров, а уход освобождает его даже при живом владельце.
+  local e=player(10)
+  controller:sync(e,{levels={cafes=1000000},owned={workers_1=true},cycleSeconds=4})
+  h.equals(#directory:GetChildren(),1); h.equals(directory.KitchenRoom_10:GetAttribute('CafeCount'),1000000)
+  h.equals(directory.KitchenRoom_10:GetAttribute('Staff1'),1001)
+  remote.OnServerEvent:Fire(e,'walk'); visit(e,10,false)
+  h.equals(e.VisitingKitchen,10); h.equals(e.VisitingCafeIndex,1)
+  h.equals(#directory:GetChildren(),2)
+  local child=directory.KitchenRoom_10_1
+  h.equals(child:GetAttribute('Staff1'),1002); h.equals(child:GetAttribute('Staff2'),1003)
+  local friend=player(1001)
+  assert(directory.KitchenRoom_10:GetAttribute('Staff1')~=1001)
+  assert(child:GetAttribute('Staff1')~=1001); assert(child:GetAttribute('Staff2')~=1001)
+  visit(e,'10_1',true); h.equals(e.VisitingCafeIndex,0)
+  h.equals(directory:FindFirstChild('KitchenRoom_10_1'),nil)
+  players.PlayerRemoving:Fire(friend)
+  -- Гость сохраняет купленное кафе, даже если домашний остров владельца удалён.
+  local f=player(20); remote.OnServerEvent:Fire(f,'walk')
+  visit(f,20,false); visit(f,10,false); h.equals(f.VisitingCafeIndex,1)
+  players.PlayerRemoving:Fire(e)
+  h.equals(directory:FindFirstChild('KitchenRoom_10'),nil)
+  assert(directory:FindFirstChild('KitchenRoom_10_1'))
+  visit(f,'10_1',true); h.equals(directory:FindFirstChild('KitchenRoom_10_1'),nil)
+  players.PlayerRemoving:Fire(f); h.equals(#directory:GetChildren(),0)
  end)
 end

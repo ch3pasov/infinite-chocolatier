@@ -180,6 +180,7 @@ Config.Economy = {
         { id = "kitchen", name = "Open My Kitchen", description = "Unlock the kitchen catalog · first apprentice included", baseCost = 25, growth = 1, maxLevel = 1 },
         { id = "craft", name = "Craftsmanship", description = "+1 piece per manual trick and apprentice cycle", baseCost = 3, growth = 1.55, maxLevel = math.huge },
         { id = "workers", name = "Apprentice Chocolatiers", description = "+1 apprentice · same reward as your manual trick", baseCost = 25, growth = 1.4, maxLevel = 100 },
+        { id = "cafes", name = "New Cafe", description = "+2 apprentices · a new cafe in your endless factory", baseCost = 75, growth = 1.4, maxLevel = math.huge },
         { id = "speed", name = "Practiced Hands", description = "+20% apprentice cycle speed", baseCost = 40, growth = 1.55, maxLevel = math.huge },
         { id = "recipe", name = "Recipe", description = "+25% manual and automatic income", baseCost = 40, growth = 1.7, maxLevel = math.huge },
         { id = "temper", name = "Tempering Machine", description = "+20% trick reward · adds a tempering machine", baseCost = 80, growth = 2, maxLevel = 5 },
