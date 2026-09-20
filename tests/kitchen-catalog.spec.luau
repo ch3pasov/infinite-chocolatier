@@ -5,6 +5,17 @@ local C=require('../src/shared/KitchenCatalog')
 local Config=require('../src/shared/Config')
 local L=require('../src/shared/LocalizationCatalog')
 return function(h)
+ h.test('публичный декор передаёт только выбранные купленные предметы',function()
+  local state={slices=999,owned={clock_1=true,clock_5=true,plant=true,workers_1=true},
+   equipped={clock='clock_5',plant='plant',workers='workers_1',temper='temper_1'}}
+  local raw=C.appearance(state); h.equals(raw,',,clock_5,plant,,')
+  local public=C.fromAppearance(raw); h.equals(public.equipped.clock,'clock_5'); h.equals(public.equipped.plant,'plant')
+  h.equals(public.slices,nil); h.equals(public.owned,nil); h.equals(public.equipped.workers,nil)
+  state.equipped.clock=nil; h.equals(C.fromAppearance(C.appearance(state)).equipped.clock,nil)
+  for _,bad in {123,string.rep('x',257),'clock_5',',,temper_1,,,',',,clock_99,,,'} do
+   h.equals(next(C.fromAppearance(bad).equipped),nil)
+  end
+ end)
  h.test('коллекция считает покупки, а не выбранные облики или старые id',function()
   local d=E.load({collectionVersion=2,slices=10000,levels={kitchen=1}})
   h.equals(C.collection(d,'clock').owned,0); h.equals(C.collection(d,'clock').total,5)

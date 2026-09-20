@@ -7,6 +7,7 @@ local Shared=game:GetService('ReplicatedStorage'):WaitForChild('Shared')
 local Wire=require(Shared.WorkstationWire)
 local Queue=require(Shared.CafeQueue)
 local Roster=require(Shared.StaffRoster)
+local Catalog=require(Shared.KitchenCatalog)
 local Config=require(Shared.Config)
 local Structure=require(Shared.KitchenStructure)
 local Action=require(script.Parent.WorkstationAction)
@@ -55,8 +56,20 @@ function Online:add(model)
 end
 function Online:clearQueue()
  for _,entry in self.queueStations or {} do entry.station:destroy() end
- self.queueStations={}
+ self.queueStations={}; self.queueDecor={}
  if self.queue then self.queue:Destroy(); self.queue=nil end
+end
+function Online:updateDecor(room,source)
+ local raw=source:GetAttribute('CafeAppearance') or ''
+ if room.appearanceKey==raw then return end
+ room.appearanceKey=raw
+ Decor.update(room,Catalog.fromAppearance(raw))
+end
+function Online:refreshQueueDecor(sources)
+ for _,room in self.queueDecor or {} do
+  local source=sources[room.owner]
+  if source then self:updateDecor(room,source) end
+ end
 end
 function Online:refreshQueueStaff(sources)
  local rosters={}
@@ -119,7 +132,8 @@ function Online:step(dt)
      -- Между опросами хозяин может вернуться с тем же ключом комнаты.
      -- Прежняя оболочка тогда хранит удалённую модель и старые координаты.
      if peer and (peer.model~=model or peer.origin~=origin) then self:remove(key); peer=nil end
-     if not peer then self:add(model) end
+     if not peer then peer=self:add(model) end
+     if not peer.staff then self:updateDecor(peer,model) end
     end
    end
   end
@@ -228,7 +242,7 @@ function Online:updateIslands(models)
  for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
  -- Список друзей не меняет стены, мебель и шоколадки. Обновляем только
  -- назначения и ссылки на источники, даже если их Instance был заменён.
- if self.queueKey==key then self:refreshQueueStaff(sources); return end; self.queueKey=key
+ if self.queueKey==key then self:refreshQueueStaff(sources); self:refreshQueueDecor(sources); return end; self.queueKey=key
  self:clearQueue()
  self.queue=Instance.new('Model'); self.queue.Name='DistantCafeQueue'; self.queue.Parent=k.world
  local function part(name,size,position,color)
@@ -244,7 +258,11 @@ function Online:updateIslands(models)
   local location=origin+Vector3.new(0,0,if rear then 38*(offset-ahead) else -38*offset)
   if detailed then
    Shell.new(self.queue,location)
-   if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index)) end
+   if entry.index>0 then Decor.update({world=self.queue,origin=location},Queue.decor(entry.owner,entry.index))
+   else
+    local room={world=self.queue,origin=location,owner=entry.owner}
+    table.insert(self.queueDecor,room); self:updateDecor(room,sources[entry.owner])
+   end
    -- Полные станции есть в трёх передних комнатах и одной ближайшей задней.
    -- Количество станций ограничено независимо от числа купленных кафе.
    if animated then

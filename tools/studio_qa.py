@@ -415,7 +415,7 @@ class Session:
         checks = self.start_test()
         for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("journal", {}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
-                              ("kitchen", {}), ("rearDetail", {}), ("rosterRefresh", {}), ("peerReplacement", {}), ("directoryRefresh", {}), ("visibility", {}), ("catalog", {}), ("idleNetwork", {})]:
+                              ("kitchen", {}), ("rearDetail", {}), ("rosterRefresh", {}), ("peerReplacement", {}), ("directoryRefresh", {}), ("visibility", {}), ("catalog", {}), ("publicDecor", {}), ("idleNetwork", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)
             self.report["stage"] = name
             result = self.control(name, **options)

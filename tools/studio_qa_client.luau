@@ -368,12 +368,14 @@ local function dispatch(args)
   assert(ok,result); return result
  elseif args.action=="catalog" then
   local catalog=require(game.ReplicatedStorage.Shared.KitchenCatalog)
+  local home=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId)
   kitchen:setOpen(true); kitchen:openShop()
   local slot=atelier.placeProgress.clock
   assert(slot.count.Text=="0/5","Wrong initial collection count")
   atelier.selectedPlace="clock"; atelier:update(atelier.state)
   remotes.purchase:FireServer("clock_5")
   assert(waitUntil(function() return atelier.state.owned.clock_5==true end,4),"Clock purchase did not arrive")
+  assert(waitUntil(function() return catalog.fromAppearance(home:GetAttribute('CafeAppearance')).equipped.clock=='clock_5' end,4),'Selected clock did not replicate')
   assert(slot.count.Text=="1/5" and slot.visualId=="clock_5","Map did not show the purchased clock")
   local original=slot.visual; atelier:update(atelier.state)
   assert(slot.visual==original,"Income refresh recreated the thumbnail")
@@ -382,6 +384,7 @@ local function dispatch(args)
   task.wait(.25)
   remotes.purchase:FireServer("clock_5")
   assert(waitUntil(function() return atelier.state.equipped.clock==nil end,4),"Clock did not hide")
+  assert(waitUntil(function() return catalog.fromAppearance(home:GetAttribute('CafeAppearance')).equipped.clock==nil end,4),'Hidden clock remains public')
   assert(slot.count.Text=="1/5" and slot.visualId=="clock_1","Hidden clock lost collection credit")
   assert(not atelier.cards.clock_5.installed.Enabled,"Hidden clock still marked as displayed")
   assert(atelier.state.rate==rate and atelier.state.slices>=balance,"Hiding changed bonus or charged pieces")
@@ -398,6 +401,36 @@ local function dispatch(args)
   end
   atelier:setOpen(false); kitchen:setOpen(false)
   return {ok=true,collected=catalog.collection(atelier.state).owned,texts=checked,thumbnailReused=true,bonusKept=true}
+ elseif args.action=="publicDecor" then
+  kitchen:setOpen(true)
+  local id=-779911; local fake=Instance.new('Model'); fake.Name='PublicDecorQA'
+  for name,value in {OwnerId=id,CafeIndex=0,OwnerOnline=true,DisplayName='Decor QA',Username='decorqa',
+   HasApprentice=false,CafeCount=0,CycleSeconds=10,Origin=kitchen.origin+Vector3.new(30,0,0),CafeAppearance=',,clock_5,plant,,'} do fake:SetAttribute(name,value) end
+  fake.Parent=workspace.KitchenIslands
+  local ok,result=pcall(function()
+   kitchen:step(.5); local online=kitchen.online; local peer=online.peers[tostring(id)..':0']
+   local copy
+   for _,room in online.queueDecor do if room.owner==id then copy=room end end
+   assert(peer and copy,'Guest or queue home is missing')
+   for _,room in {peer,copy} do
+    assert(room.decorModel:FindFirstChild('PendulumBob') and room.decorModel:FindFirstChild('CocoaPot'),'Public furniture is missing')
+   end
+   local world=peer.world; local station=peer.station; local queue=online.queue
+   local oldPeer,oldCopy=peer.decorModel,copy.decorModel
+   fake:SetAttribute('CafeAppearance',',,clock_2,,,'); kitchen:step(.5)
+   for _,room in {peer,copy} do
+    assert(room.decorModel:FindFirstChild('ClockFrame') and not room.decorModel:FindFirstChild('PendulumBob') and not room.decorModel:FindFirstChild('CocoaPot'),'Changed furniture was not applied')
+   end
+   assert(oldPeer.Parent==nil and oldCopy.Parent==nil,'Old furniture was retained')
+   assert(peer.world==world and peer.station==station and online.queue==queue,'Furniture change rebuilt workstations')
+   fake:SetAttribute('OwnerOnline',false); kitchen:step(.5)
+   assert(peer.decorModel:FindFirstChild('ClockFrame'),'Leaving owner removed furniture')
+   fake:SetAttribute('CafeAppearance',',,,,,'); kitchen:step(.5)
+   assert(not peer.decorModel:FindFirstChild('ClockFrame') and not copy.decorModel:FindFirstChild('ClockFrame'),'Removed furniture remains visible')
+   return {ok=true,physicalHome=true,queueHome=true,stationsRetained=true,departedOwnerRetained=true,conditionalOwner=true}
+  end)
+  fake:Destroy(); kitchen:step(.5); kitchen:setOpen(false)
+  assert(ok,result); return result
  elseif args.action=="visibility" then
   kitchen:setOpen(true); kitchen:step(.5)
   local online=kitchen.online; local origin=kitchen.origin

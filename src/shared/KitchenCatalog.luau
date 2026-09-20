@@ -3,6 +3,7 @@
 -- а бонус — от владения, поэтому выбор внешнего вида не меняет производство.
 local Config=require('./Config')
 local C={items={},byId={}}
+C.decorGroups={'temper','library','clock','plant','rug','art'}
 local names={
  workers={'Cocoa Apprentice'},
  temper={'Copper Melter','Cream Temperer','Mint Temperer','Berry Temperer','Golden Temperer'},
@@ -41,5 +42,22 @@ function C.collection(state,group)
  local item=C.byId[equipped]
  if not item or item.group~=group or not (state.owned or {})[equipped] then equipped=nil end
  return {owned=owned,total=total,equipped=equipped}
+end
+-- Публичный снимок содержит только установленные предметы, без кошелька,
+-- остальных покупок и предпросмотра. Одна строка исключает смешение атрибутов.
+function C.appearance(state)
+ local ids={}
+ for _,group in C.decorGroups do table.insert(ids,C.collection(state,group).equipped or '') end
+ return table.concat(ids,',')
+end
+function C.fromAppearance(raw)
+ local state={equipped={}}
+ if type(raw)~='string' or #raw>256 then return state end
+ local ids=string.split(raw,','); if #ids~=#C.decorGroups then return state end
+ for index,group in C.decorGroups do
+  local item=C.byId[ids[index]]
+  if item and item.group==group then state.equipped[group]=item.id end
+ end
+ return state
 end
 return C

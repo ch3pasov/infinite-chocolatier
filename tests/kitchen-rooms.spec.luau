@@ -128,7 +128,14 @@ return function(h)
   remote.OnServerEvent:Fire(a,'walk'); visit(a,1,false)
   h.equals(a.VisitingKitchen,2); h.equals(a.position,b.KitchenOrigin+R.Vector3.new(0,3,12))
   -- Последний гость удерживает остров после выхода владельца.
+  local decorState={levels={cafes=0},cycleSeconds=10,owned={clock_5=true,clock_1=true,plant=true},equipped={clock='clock_5',plant='plant'}}
+  controller:sync(b,decorState)
+  h.equals(directory.KitchenRoom_2:GetAttribute('CafeAppearance'),',,clock_5,plant,,')
+  decorState.equipped.clock=nil; controller:sync(b,decorState)
+  h.equals(directory.KitchenRoom_2:GetAttribute('CafeAppearance'),',,,plant,,')
+  decorState.equipped.clock='clock_1'; controller:sync(b,decorState)
   players.PlayerRemoving:Fire(b); assert(directory:FindFirstChild('KitchenRoom_2'))
+  h.equals(directory.KitchenRoom_2:GetAttribute('CafeAppearance'),',,clock_1,plant,,')
   h.equals(directory.KitchenRoom_2:GetAttribute('OwnerOnline'),false)
   local c=player(3); assert(c.KitchenOrigin~=b.KitchenOrigin,'занятое гостем место переиспользовано')
   remote.OnServerEvent:Fire(c,'walk'); c.root.Position=directory.KitchenRoom_3.NextCafeArrow.Position

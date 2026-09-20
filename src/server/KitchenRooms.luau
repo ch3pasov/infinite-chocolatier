@@ -5,6 +5,7 @@ local Shared=game:GetService('ReplicatedStorage'):WaitForChild('Shared')
 local Structure=require(Shared:WaitForChild('KitchenStructure'))
 local Queue=require(Shared:WaitForChild('CafeQueue'))
 local Roster=require(Shared:WaitForChild('StaffRoster'))
+local Catalog=require(Shared:WaitForChild('KitchenCatalog'))
 local Players=game:GetService('Players')
 local Workspace=game:GetService('Workspace')
 local RunService=game:GetService('RunService')
@@ -226,6 +227,8 @@ function Rooms.start(remote,visitRemote)
  end,sync=function(_,player,state)
   local home=homes[player]; if not home then return end
   home.count=state.levels.cafes or 0; home.model:SetAttribute('CafeCount',home.count)
+  local appearance=Catalog.appearance(state)
+  if home.model:GetAttribute('CafeAppearance')~=appearance then home.model:SetAttribute('CafeAppearance',appearance) end
   for _,room in slots do if room.id==player.UserId then
    room.model:SetAttribute('CycleSeconds',state.cycleSeconds)
    room.model:SetAttribute('HasApprentice',if room.index==0 then state.owned.workers_1==true else true)
