@@ -77,6 +77,7 @@ function Kitchen.new(view,atelier)
  self.previewBuy=button(previewPanel,'Buy','Buy',UDim2.fromOffset(12,78),UDim2.new(1,-24,0,36),function()
   local state=self.state; local id=self.preview and self.preview.id
   if not id or os.clock()<(self.previewNextBuy or 0) then return end
+  if Catalog.byId[id].group=='workers' and state.equipped.workers==id then return end
   local price=state.prices[id]
   if state.owned[id] or (price and state.slices>=price) then
    self.previewNextBuy=os.clock()+.5; atelier.remotes.purchase:FireServer(id)
@@ -236,13 +237,15 @@ function Kitchen:updatePreview()
  L.set(self.previewTitle,self.previewSpec.name)
  local owned=state.owned[id]==true
  local installed=state.equipped[self.previewSpec.group]==id
- L.set(self.previewInfo,if id=='workers_1' and not owned then '3/3 · Hire your prepaid apprentice below.' elseif not owned then 'Preview · not purchased' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Put away · purchase bonuses remain')
+ local worker=self.previewSpec.group=='workers'
+ L.set(self.previewInfo,if id=='workers_1' and not owned then '3/3 · Hire your prepaid apprentice below.' elseif not owned then 'Preview · not purchased' elseif installed and worker then 'Working in your kitchen' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Put away · purchase bonuses remain')
  local price=state.prices[id]
- local available=owned or (price and state.slices>=price)
+ local available=not (worker and installed) and (owned or (price and state.slices>=price))
  self.previewBuy.AutoButtonColor=available==true
  self.previewBuy.BackgroundColor3=if available then gold else cocoa
  self.previewBuy.TextColor3=if available then cocoa else cream
- if owned then L.set(self.previewBuy,if installed then 'Put away · owned' else 'Place · owned')
+ if owned and worker then L.set(self.previewBuy,if installed then 'Selected apprentice' else 'Select apprentice')
+ elseif owned then L.set(self.previewBuy,if installed then 'Put away · owned' else 'Place · owned')
  elseif available and price==0 then L.set(self.previewBuy,'Hire for free · prepaid')
  elseif available then L.set(self.previewBuy,'Buy · {price} pieces',{price=L.number(price)})
  else L.set(self.previewBuy,'Price {price} · need {missing} more',{price=L.number(price or 0),missing=L.number(math.max(0,(price or 0)-state.slices))}) end

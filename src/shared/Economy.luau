@@ -18,6 +18,12 @@ local function recount(data)
   for _,item in Catalog.items do if item.group==group and data.owned[item.id] then n+=1 end end
   data.levels[group]=n
  end
+ -- Нанятый стажёр всегда виден; восстанавливаем и ранее скрытые сохранения.
+ if not data.equipped.workers then
+  for _,item in Catalog.items do
+   if item.group=='workers' and data.owned[item.id] then data.equipped.workers=item.id; break end
+  end
+ end
  for _,id in {'plant','rug','art'} do data.decor[id]=data.equipped[id]==id end
 end
 function Economy.load(raw)
@@ -140,7 +146,7 @@ function Economy.buy(data, id)
  if type(id)~='string' then return false end
  local item=Catalog.byId[id]
  if item and data.levels.kitchen>0 and data.owned[id] then
-  data.equipped[item.group]=if data.equipped[item.group]==id then nil else id
+  data.equipped[item.group]=if item.group~='workers' and data.equipped[item.group]==id then nil else id
   recount(data); return true
  end
  local price=Economy.price(data,id)

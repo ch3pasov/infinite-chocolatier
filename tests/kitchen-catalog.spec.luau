@@ -14,6 +14,26 @@ return function(h)
   assert(E.buy(d,'workers_1')); assert(E.buy(d,'workers_1'))
   h.equals(d.levels.workers,1); h.equals(d.slices,0)
  end)
+ h.test('стажёра можно сменить, но нельзя скрыть повторным выбором',function()
+  local d=E.load({slices=10000,levels={kitchen=1}})
+  assert(E.buy(d,'workers_1')); assert(E.buy(d,'workers_2'))
+  local rate=E.rate(d); local balance=d.slices
+  for _,id in {'workers_2','workers_1','workers_1'} do
+   assert(E.buy(d,id)); h.equals(d.equipped.workers,id)
+   h.equals(E.load(d).equipped.workers,id)
+   h.equals(d.levels.workers,2); h.near(E.rate(d),rate); h.equals(d.slices,balance)
+  end
+ end)
+ h.test('ранее скрытый стажёр восстанавливается без бесплатных покупок',function()
+  local d=E.load({slices=10000,levels={kitchen=1}})
+  assert(E.buy(d,'workers_3'))
+  local rate=E.rate(d); local balance=d.slices
+  d.equipped.workers=nil
+  local loaded=E.load(d)
+  h.equals(loaded.equipped.workers,'workers_3'); h.equals(loaded.owned.workers_1,false)
+  h.equals(loaded.levels.workers,1); h.near(E.rate(loaded),rate); h.equals(loaded.slices,balance)
+  h.equals(E.load({}).equipped.workers,nil)
+ end)
  h.test('предметы независимы: дорогие часы можно купить первыми, выбор не меняет бонус',function()
   local d=E.load({slices=10000,levels={kitchen=1,workers=1}})
   assert(E.buy(d,'clock_5')); h.equals(d.levels.clock,1)
