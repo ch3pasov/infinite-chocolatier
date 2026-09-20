@@ -14,6 +14,7 @@ Key,Source,Context,Example,ru
 "+20% trick reward · bonus while owned","+20% trick reward · bonus while owned","","","+20% к награде за фокус · бонус за владение"
 "+20% trick reward · permanent purchase bonus","+20% trick reward · permanent purchase bonus","","","+20% к награде за фокус · бонус за владение"
 "+25% manual and automatic income","+25% manual and automatic income","","","+25% к ручному и автоматическому доходу"
+"+{amount}","+{amount}","","","+{amount}"
 "+{amount} pieces","+{amount} pieces","","","+{amount} долек"
 "+{bonus} · journal ›","+{bonus} · journal ›","","","+{bonus} · дневник ›"
 "+{manual} per trick

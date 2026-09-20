@@ -11,6 +11,7 @@ Catalog.entries = {
  ["Hire your first apprentice to start automatic production."]="Найми первого стажёра, чтобы запустить автоматическое производство.",
  ["While you were away"]="Пока тебя не было",
  ["+{amount} pieces"]="+{amount} долек",
+ ["+{amount}"]="+{amount}",
  ["Apprentices worked: {hours}h {minutes}m"]="Стажёры работали: {hours} ч {minutes} мин",
  ["Apprentices worked: {minutes}m {seconds}s"]="Стажёры работали: {minutes} мин {seconds} с",
  ["Apprentices worked: {seconds}s"]="Стажёры работали: {seconds} с",

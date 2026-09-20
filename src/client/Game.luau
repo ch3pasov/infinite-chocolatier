@@ -1385,8 +1385,9 @@ function Game:playRewardEffect(amount: number)
 	label.TextStrokeColor3 = Theme.background
 	label.TextStrokeTransparency = 0.15
 	label.TextScaled = true
-	label.AutoLocalize = false
-	label.Text = "+" .. (string.format("%.2f", amount):gsub("0+$", ""):gsub("%.$", ""))
+	-- Та же запись тысяч и миллионов, что в кошельке: большая награда
+	-- не превращается в длинную строку мелких цифр поверх шоколадки.
+	L.set(label, "+{amount}", {amount = L.number(amount)})
 	label.ZIndex = 923
 	label.Parent = effect
 	local limit = Instance.new("UITextSizeConstraint")

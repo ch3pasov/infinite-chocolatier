@@ -23,6 +23,17 @@ local function fixture(locale,cloud)
 	return L,function(nextLocale) service.RobloxLocaleId=nextLocale; changed.Fire() end
 end
 return function(h)
+	h.test('локализация: всплывающая награда сокращает большие числа и сохраняет малые',function()
+		local L,switch=fixture('en-us')
+		local label={Destroying=signal()}
+		for _,sample in {{.25,'+0.25'},{16.2,'+16.2'},{1200,'+1.2K'},{357800,'+357.8K'},{15000000,'+15.0M'}} do
+			L.set(label,'+{amount}',{amount=L.number(sample[1])})
+			h.equals(label.Text,sample[2])
+		end
+		switch('ru-ru'); h.equals(label.Text,'+15.0 млн')
+		label.Destroying:Fire(); switch('en-us')
+		h.equals(label.Text,'+15.0 млн')
+	end)
 	h.test('локализация: все русские шаблоны сохраняют параметры английского источника',function()
 		for source,translation in Catalog.entries do
 			local function tokens(s)

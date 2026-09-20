@@ -278,11 +278,34 @@ local function dispatch(args)
   local title=atelier.journal.panel.Title.Text
   if args.locale=="ru-ru" then assert(title=="Дневник шоколатье","Static title was not translated") end
   atelier.journal:close(); atelier:setOpen(false)
+  local rewardChecks=0
+  local L=require(script.Localization)
+  local active,token,blocked=gameView.active,gameView.animationToken,gameView.inputBlocked
+  local effects={}
+  for _,amount in {.25,357800,15000000,Config.Economy.maxValue} do
+   local before={}; for _,child in gameView.root:GetChildren() do before[child]=true end
+   gameView:playRewardEffect(amount)
+   local effect
+   for _,child in gameView.root:GetChildren() do
+    if child.Name=='RewardEffect' and not before[child] then effect=child end
+   end
+   assert(effect,'Reward effect did not appear')
+   table.insert(effects,effect)
+   local label=effect.EarnedSlices
+   assert(label.Text==L.text('+{amount}',{amount=L.number(amount)}),'Reward does not use wallet number formatting')
+   local limit=label:FindFirstChildOfClass('UITextSizeConstraint')
+   local bounds=game:GetService('TextService'):GetTextSize(label.Text,limit.MinTextSize,label.Font,Vector2.new(1000,1000))
+   assert(bounds.X<=160 and bounds.Y<=44,'Reward text cannot fit at its minimum size')
+   rewardChecks+=1
+  end
+  assert(gameView.active==active and gameView.animationToken==token and gameView.inputBlocked==blocked,'Reward interrupted the next cut')
+  task.wait(Config.Feedback.duration+.1)
+  for _,effect in effects do assert(effect.Parent==nil,'Reward effect leaked after fading') end
   kitchen:setOpen(true); kitchen:step(0); task.wait(.1)
   assert(kitchen.journalButton.Position.Y.Offset>=64,'Narrow journal button overlaps Roblox controls')
   assert(kitchen.journalButton.TextFits,'Journal button text overflows')
   kitchen:setOpen(false)
-  return {ok=true,locale=args.locale,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
+  return {ok=true,locale=args.locale,rewardChecks=rewardChecks,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)
   -- При блокировке macOS RenderStepped может не работать. Вызываем тот же

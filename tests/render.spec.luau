@@ -16,7 +16,9 @@ local tweenService = {
 		}
 	end,
 }
-local modules = { Localization = { set = function(label,source) label.Text=source end }, Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Motion3D = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new(), accent = R.Color3.new(), accentSoft = R.Color3.new() } }
+local modules = { Localization = { number = function(value) return value end, set = function(label,source,args)
+ label.Text=source:gsub("{(%w+)}",function(key) return tostring(args[key]) end)
+end }, Config = Config, Geom = Geom, Recipe = {}, Layout = {}, Motion3D = {}, Theme = { background = R.Color3.new(), chocolateDark = R.Color3.new(), accent = R.Color3.new(), accentSoft = R.Color3.new() } }
 local shared = { Config = "Config", Geom = "Geom", Recipe = "Recipe" }
 local source = fs.readFile("src/client/Game.luau"):gsub("return Game%s*$", "return { render = renderClippedCanonicalTile, Game = Game }")
 local exports = luau.load(source, {
