@@ -36,6 +36,52 @@ class FakeMCP:
     def close(self): self.closed=True
 
 class StudioQaTests(unittest.TestCase):
+    def test_capture_rejects_failed_or_missing_png_even_with_success_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/"frame.png"
+            for code,metadata in [(1,{"ok":False,"error":"locked"}), (0,{"ok":True,"path":str(output)})]:
+                result=types.SimpleNamespace(returncode=code,stdout=json.dumps(metadata),stderr="")
+                with patch.object(qa.subprocess,"run",return_value=result), self.assertRaises(qa.QaError):
+                    qa.capture_window("binary",qa.DEFAULT_PLACE,output)
+            output.write_bytes(b"not a png")
+            result=types.SimpleNamespace(returncode=0,stdout=json.dumps({"ok":True,"path":str(output)}),stderr="")
+            with patch.object(qa.subprocess,"run",return_value=result), self.assertRaises(qa.QaError):
+                qa.capture_window("binary",qa.DEFAULT_PLACE,output)
+            output.write_bytes(b"\x89PNG\r\n\x1a\nexample")
+            with patch.object(qa.subprocess,"run",return_value=result):
+                self.assertTrue(qa.capture_window("binary",qa.DEFAULT_PLACE,output)["ok"])
+
+    def test_capture_success_failure_and_no_frames_all_restore_owned_play(self):
+        for ready,capture_error in [(True,None),(True,qa.QaError("window capture failed")),(False,None)]:
+            fake=FakeMCP()
+            def dispatch(name,**args):
+                if name=="execute_luau" and "captureView" in args["code"] and "q:Invoke" in args["code"]:
+                    return {"ok":ready,"renderReady":ready}
+                return FakeMCP.tool(fake,name,**args)
+            fake.tool=dispatch
+            with tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/"report.json"
+                args=types.SimpleNamespace(command="capture",mcp="unused",timeout=1,place_name=qa.DEFAULT_PLACE,
+                    studio_id=None,report=str(path),scene="rear",image=str(Path(directory)/"frame.png"))
+                with patch.object(qa.sys,"platform","darwin"), patch.object(qa.subprocess,"run"), \
+                     patch.object(qa,"capture_window",side_effect=capture_error,return_value={"ok":True}) as capture:
+                    self.assertEqual(qa.run(args,lambda *args:fake),0 if ready and not capture_error else 1)
+                self.assertEqual(capture.call_count,1 if ready else 0)
+                report=json.loads(path.read_text())
+            self.assertEqual([a["is_start"] for name,a in fake.calls if name=="start_stop_play"],[True,False])
+            self.assertEqual(report["cleanup"],{"placeId":0,"running":False})
+            self.assertIn("restoredSources",report)
+            self.assertTrue(fake.closed)
+            if ready and not capture_error: self.assertIn("PNG",report["visualReview"])
+
+    def test_existing_capture_is_never_overwritten_or_started(self):
+        fake=FakeMCP(); session=qa.Session(fake,"qa",qa.source_inventory(),{})
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/"frame.png"; output.write_bytes(b"existing")
+            with self.assertRaises(qa.QaError): session.capture("cutting",output,qa.DEFAULT_PLACE)
+            self.assertEqual(output.read_bytes(),b"existing")
+        self.assertFalse(any(name=="start_stop_play" for name,_ in fake.calls))
+
     def test_mouse_drag_validates_projection_before_sending_events(self):
         plan={"renderReady":True,"viewport":{"x":800,"y":600},"start":{"x":200,"y":500},"finish":{"x":400,"y":100}}
         actions=qa.mouse_drag(plan)

@@ -28,7 +28,21 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="avatarLifecycle" then
+ if args.action=="captureView" then
+  local frames=renderedFrames
+  if args.scene=='cutting' then kitchen:setOpen(false)
+  elseif args.scene=='kitchen' then kitchen:setOpen(true); kitchen:step(.5)
+  elseif args.scene=='rear' then dispatch({action='rearDetail',preview=true})
+  elseif args.scene=='catalog' then kitchen:setOpen(true); kitchen:openShop()
+  else error('Unknown capture scene') end
+  local ready=waitUntil(function()
+   local camera=workspace.CurrentCamera
+   return renderedFrames>=frames+2 and camera and camera.ViewportSize.X>1 and camera.ViewportSize.Y>1
+  end,5)
+  local camera=workspace.CurrentCamera
+  return {ok=ready,renderReady=ready,scene=args.scene,frames=renderedFrames,
+   fieldOfView=camera and camera.FieldOfView,viewport=camera and {x=camera.ViewportSize.X,y=camera.ViewportSize.Y}}
+ elseif args.action=="avatarLifecycle" then
   local Animator=require(script.ChocolatierAnimator)
   local Appearance=require(script.FriendAppearance)
   local original=Appearance.createRig

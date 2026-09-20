@@ -25,6 +25,23 @@ class QaError(RuntimeError):
     pass
 
 
+def capture_window(binary, place_name, output):
+    """Только отдельное окно. Нет fallback на снимок всего рабочего стола."""
+    result = subprocess.run([str(binary), place_name, str(output)], capture_output=True, text=True, timeout=25)
+    try:
+        metadata = json.loads(result.stdout)
+    except ValueError as error:
+        raise QaError("Захват вернул некорректный отчёт: " + result.stderr[-1000:]) from error
+    if result.returncode or not metadata.get("ok"):
+        raise QaError("Снимок Studio не получен: " + str(metadata.get("error", metadata)))
+    if metadata.get("path") != str(output) or not output.is_file():
+        raise QaError("Захват не создал ожидаемый PNG")
+    with output.open("rb") as image:
+        if image.read(8) != b"\x89PNG\r\n\x1a\n":
+            raise QaError("Файл захвата не является PNG")
+    return metadata
+
+
 def lua(value):
     """Данные передаются как литералы Luau, без shell и подстановок кода."""
     if value is None:
@@ -333,6 +350,29 @@ class Session:
             raise QaError("Тестовый профиль не применён: " + str(state))
         return checks
 
+    def capture(self, scene, output, place_name):
+        output = Path(output).resolve()
+        if output.exists():
+            raise QaError("PNG уже существует; выберите новый путь: " + str(output))
+        if sys.platform != "darwin":
+            raise QaError("Фоновый захват Studio требует macOS")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        self.report["stage"] = "compile-window-capture"
+        with tempfile.TemporaryDirectory(prefix="chocolatier-capture-") as directory:
+            binary = Path(directory) / "capture"
+            subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-module-cache-path", str(Path(directory)/"cache"),
+                            str(ROOT/"tools/studio_capture.swift"), "-o", str(binary)], check=True, capture_output=True, text=True, timeout=60)
+            self.start_test()
+            self.report["stage"] = "capture-view-readiness"
+            view = self.control("captureView", scene=scene)
+            self.report["captureView"] = view
+            if not isinstance(view, dict) or not view.get("ok") or not view.get("renderReady"):
+                raise QaError("Нет свежего игрового кадра; снимок не выполнен: " + str(view))
+            self.report["stage"] = "capture-window"
+            self.report["capture"] = capture_window(binary, place_name, output)
+            self.report["visualReview"] = "PNG сохранён для осмотра; визуальная корректность автоматически не подтверждена."
+            self.engine_errors()
+
     def gestures(self):
         self.start_test()
         self.report["stage"] = "native-input-readiness"
@@ -435,6 +475,8 @@ def run(args, mcp_factory=MCP):
                 session.smoke()
             elif args.command == "gestures":
                 session.gestures()
+            elif args.command == "capture":
+                session.capture(args.scene, args.image, args.place_name)
         report["ok"] = True
     except BaseException as error:
         failure = error
@@ -463,12 +505,14 @@ def run(args, mcp_factory=MCP):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["list", "check", "sync", "smoke", "gestures"])
+    parser.add_argument("command", choices=["list", "check", "sync", "smoke", "gestures", "capture"])
     parser.add_argument("--place-name", default=DEFAULT_PLACE)
     parser.add_argument("--studio-id")
     parser.add_argument("--mcp", default=DEFAULT_MCP)
     parser.add_argument("--timeout", type=float, default=45)
     parser.add_argument("--report", default="/tmp/chocolatier-studio-report.json")
+    parser.add_argument("--scene", choices=["cutting", "kitchen", "rear", "catalog"], default="cutting")
+    parser.add_argument("--image", default="/tmp/chocolatier-studio-capture.png")
     args = parser.parse_args()
     def interrupted(_signal, _frame):
         raise KeyboardInterrupt("Studio QA interrupted")
