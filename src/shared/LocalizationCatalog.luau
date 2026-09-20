@@ -2,6 +2,13 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["My factory"]="Моя фабрика",
+ ["{cafes} cafes · {workers} apprentices"]="Кафе: {cafes} · стажёров: {workers}",
+ ["+{rate} pieces per second"]="+{rate} долек в секунду",
+ ["Each apprentice: +{reward} every {seconds}s"]="Каждый стажёр: +{reward} каждые {seconds} с",
+ ["Each new cafe adds two apprentices. Your home has the first one."]="Каждое новое кафе добавляет двух стажёров. Первый работает у тебя.",
+ ["No apprentices yet"]="Стажёров пока нет",
+ ["Hire your first apprentice to start automatic production."]="Найми первого стажёра, чтобы запустить автоматическое производство.",
  ["While you were away"]="Пока тебя не было",
  ["+{amount} pieces"]="+{amount} долек",
  ["Apprentices worked: {hours}h {minutes}m"]="Стажёры работали: {hours} ч {minutes} мин",

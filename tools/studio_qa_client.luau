@@ -204,9 +204,20 @@ local function dispatch(args)
   atelier.journal:open()
   assert(gameView.journalOpen and atelier.journal.overlay.Visible,"Journal did not open")
   assert(atelier.journal.offlineCard.Visible,"Offline report is missing")
+  local journal=atelier.journal; local saved=atelier.state
+  assert(journal.productionCard.Visible and journal.productionCycle.Visible,'Factory report is missing')
+  local L=require(script.Localization)
+  assert(journal.productionCount.Text==L.text('{cafes} cafes · {workers} apprentices',{cafes=L.number(13),workers=L.number(25)}),'Wrong cafe or apprentice count')
+  assert(journal.productionCycle.Text==L.text('Each apprentice: +{reward} every {seconds}s',{reward=L.number(saved.cycleReward),seconds=L.number(saved.cycleSeconds)}),'Wrong production cycle')
+  local economy=require(game.ReplicatedStorage.Shared.Economy)
+  local empty=economy.snapshot(economy.load(nil)); empty.ready=true
+  journal:update(empty)
+  assert(not journal.productionCycle.Visible and journal.productionRate.Text==L.text('No apprentices yet'),'Empty factory shows active production')
+  journal:update({ready=false}); assert(not journal.productionCard.Visible,'Loading shows old factory')
+  journal:update(saved)
   atelier.journal:close()
   assert(not gameView.journalOpen and not atelier.journal.overlay.Visible,"Journal did not close")
-  return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds}
+  return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds,factoryCafes=13,apprentices=25,emptyFactory=true}
  elseif args.action=="layout" then
   require(script.Localization).__qaLocale(args.locale)
   gameView.root.Size=UDim2.fromOffset(360,780); atelier:fit(); atelier:setOpen(true)

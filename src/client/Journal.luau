@@ -77,8 +77,15 @@ function Journal.new(gui,view)
 	self.rankTitle=label(rank,"Title",20,Theme.accentSoft); self.rankTitle.Position=UDim2.fromOffset(12,8); self.rankTitle.Size=UDim2.new(1,-24,0,32); scaled(self.rankTitle,20)
 	self.rankInfo=label(rank,"Next",13,Theme.muted); self.rankInfo.Position=UDim2.fromOffset(12,43); self.rankInfo.Size=UDim2.new(1,-24,0,38)
 	self.rankFill=fill(rank,"ProgressTrack",88)
+	local production=frame(scroll,"Production",Theme.chocolate); production.LayoutOrder=3; production.Size=UDim2.new(1,-8,0,194)
+	self.productionCard=production
+	local productionTitle=label(production,"Title",20,Theme.accentSoft); productionTitle.Position=UDim2.fromOffset(12,8); productionTitle.Size=UDim2.new(1,-24,0,30); scaled(productionTitle,20); L.set(productionTitle,"My factory")
+	self.productionCount=label(production,"Count",14,Theme.muted); self.productionCount.Position=UDim2.fromOffset(12,40); self.productionCount.Size=UDim2.new(1,-24,0,28); scaled(self.productionCount,14)
+	self.productionRate=label(production,"Rate",20,Theme.accent); self.productionRate.Position=UDim2.fromOffset(12,72); self.productionRate.Size=UDim2.new(1,-24,0,30); scaled(self.productionRate,20)
+	self.productionCycle=label(production,"Cycle",14); self.productionCycle.Position=UDim2.fromOffset(12,106); self.productionCycle.Size=UDim2.new(1,-24,0,38); scaled(self.productionCycle,14)
+	self.productionHelp=label(production,"Help",12,Theme.muted); self.productionHelp.Position=UDim2.fromOffset(12,148); self.productionHelp.Size=UDim2.new(1,-24,0,36); scaled(self.productionHelp,12)
 	for index,spec in {{"rounds","Tricks by hand"},{"ordersCompleted","Orders packed"},{"lifetime","Lifetime pieces"},{"stars","Cocoa stars"}} do
-		local card=frame(scroll,spec[1],Theme.chocolateDark); card.LayoutOrder=index+2; card.Size=UDim2.new(1,-8,0,58)
+		local card=frame(scroll,spec[1],Theme.chocolateDark); card.LayoutOrder=index+3; card.Size=UDim2.new(1,-8,0,58)
 		local name=label(card,"Label",14,Theme.muted); name.Position=UDim2.fromOffset(12,6); name.Size=UDim2.new(.64,-12,1,-12); L.set(name,spec[2])
 		local amount=label(card,"Value",22,Theme.accentSoft); amount.Position=UDim2.new(.64,0,0,6); amount.Size=UDim2.new(.36,-12,1,-12)
 		amount.TextXAlignment=Enum.TextXAlignment.Right; scaled(amount,22); self.stats[spec[1]]=amount
@@ -112,8 +119,24 @@ function Journal:fit(parent,compact,position,size)
 	if self.state then self:update(self.state) end
 end
 
+function Journal:updateProduction(state)
+	self.productionCard.Visible=state.ready==true
+	if not state.ready then return end
+	local workers=state.levels.workers or 0
+	L.set(self.productionCount,"{cafes} cafes · {workers} apprentices",{cafes=L.number((state.levels.cafes or 0)+1),workers=L.number(workers)})
+	self.productionCycle.Visible=workers>0
+	if workers>0 then
+		L.set(self.productionRate,"+{rate} pieces per second",{rate=L.number(state.rate)})
+		L.set(self.productionCycle,"Each apprentice: +{reward} every {seconds}s",{reward=L.number(state.cycleReward),seconds=L.number(state.cycleSeconds)})
+		L.set(self.productionHelp,"Each new cafe adds two apprentices. Your home has the first one.")
+	else
+		L.set(self.productionRate,"No apprentices yet")
+		L.set(self.productionHelp,"Hire your first apprentice to start automatic production.")
+	end
+end
 function Journal:update(state)
 	self.state=state; local order=state.order
+	self:updateProduction(state)
 	self.offlineCard.Visible=(state.offline or 0)>=.1
 	if self.offlineCard.Visible then
 		L.set(self.offlineAmount,"+{amount} pieces",{amount=L.number(state.offline)})
