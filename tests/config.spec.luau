@@ -22,7 +22,8 @@ return function(harness)
 		local rightSplit = Config.Recipe.cuts[2]
 		harness.equals(rightSplit[1][1], 3)
 		harness.equals(rightSplit[2][1], 3)
-		harness.near(rightSplit[2][2], 2.3)
+		harness.near(rightSplit[1][2], 2.3)
+		harness.near(rightSplit[2][2], 0)
 
 		local topSplit = Config.Recipe.cuts[3]
 		harness.equals(topSplit[1][2], 1)
@@ -31,6 +32,8 @@ return function(harness)
 		local sliceSplit = Config.Recipe.cuts[4]
 		harness.equals(sliceSplit[1][1], 1)
 		harness.equals(sliceSplit[2][1], 1)
+		harness.equals(sliceSplit[1][2], 1)
+		harness.equals(sliceSplit[2][2], 0)
 		harness.equals(#Config.Trick.cutLabels, #Config.Recipe.cuts)
 	end)
 

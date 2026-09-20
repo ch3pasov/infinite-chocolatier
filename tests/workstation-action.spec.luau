@@ -19,6 +19,9 @@ return function(h)
    h.equals(a.cutting,true)
    h.near(a.knifePoint.X,(cut[1][1]+cut[2][1])/2)
    h.near(a.knifePoint.Y,(cut[1][2]+cut[2][2])/2)
+   if index==2 or index==4 then
+    assert(a.knifeDirection.Y<0,'Стажёр должен вести оба вертикальных разреза снизу вверх')
+   end
   end
  end)
  h.test("игрок и ученик дают одну позу для одинакового разреза",function()
