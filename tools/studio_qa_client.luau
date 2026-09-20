@@ -28,7 +28,26 @@ local function dispatch(args)
   return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="idleNetwork" then
+ if args.action=="loadingRecovery" then
+  local saved=state
+  kitchen:setOpen(false)
+  kitchen.state=nil
+  for i=1,3 do
+   local loading={ready=false}
+   atelier:update(loading); kitchen:update(loading); kitchen:step(.1)
+   assert(gameView.inputBlocked and not atelier.journal.chip.Visible,'Loading left input or order active')
+   kitchen:openShop(); kitchen:watchPlayer({}); kitchen:setOpen(true)
+   assert(not kitchen.shopping and not kitchen.focus and not kitchen.opened,'Incomplete profile entered a kitchen action')
+   atelier:update(saved); kitchen:update(saved)
+   assert(kitchen.state.ready and atelier.journal.chip.Visible,'Ready state did not recover')
+   assert(gameView.inputBlocked==(atelier.overlay.Visible and not atelier.docked),'Ready input stayed blocked')
+  end
+  kitchen:setOpen(true)
+  atelier:update({ready=false}); kitchen:update({ready=false}); kitchen:step(.5)
+  for _,prompt in kitchen.prompts do assert(not prompt.Enabled,'Loading left a prompt enabled') end
+  atelier:update(saved); kitchen:update(saved); kitchen:setOpen(false)
+  return {ok=true,recoveries=4,initialPartialState=true}
+ elseif args.action=="idleNetwork" then
   local Online=require(script.OnlineKitchen)
   local view=table.clone(gameView); view.active='cut'; view.cutIndex=1; view.cutProgress=0
   local sent=0

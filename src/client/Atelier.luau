@@ -443,7 +443,16 @@ end
 function Atelier:update(state)
 	if not state then return end
 	self.state = state
-	if not state.ready then return end
+	if not state.ready then
+		-- Сервер ещё не принял профиль: нельзя завершать жест с потерей
+		-- награды или оставлять активным ввод от предыдущего готового снимка.
+		self.view.inputBlocked = true
+		self.view:endDrag(true)
+		self.journal:update(state)
+		L.set(self.metrics, "Loading your progress")
+		L.set(self.saved, "Loading your progress")
+		return
+	end
 	self.journal:update(state)
 	local kitchen=self.mode=='kitchen'
 	if kitchen then self:updateCollection(state) end

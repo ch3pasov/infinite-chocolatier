@@ -14,6 +14,16 @@ local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment 
 }, injectGlobals = true })()
 
 return function(h)
+ h.test('ответ загрузки блокирует ручной ввод и отменяет активное перетаскивание',function()
+  local cancelled=false; local journalState
+  local ui=setmetatable({state={ready=true},view={inputBlocked=false,endDrag=function(_,cancel) cancelled=cancel end},
+   metrics={},saved={},journal={update=function(_,state) journalState=state end}},Atelier)
+  local loading={ready=false}
+  ui:update(loading)
+  h.equals(ui.view.inputBlocked,true); h.equals(cancelled,true)
+  h.equals(ui.state,loading); h.equals(journalState,loading)
+  h.equals(ui.metrics.Text,'Loading your progress')
+ end)
  h.test("переключатель количества меняет запрос навыков, но не разовые покупки кухни",function()
   local E=require('../src/shared/Economy')
   local sent={}
@@ -71,7 +81,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({quantityBar={},quantityButtons={},journal={update=function() end},view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({quantityBar={},quantityButtons={},journal={update=function() end},view={counter={},endDrag=function() end},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end
@@ -80,7 +90,8 @@ return function(h)
   local function refresh(mode)
    ui.mode=mode; local state=E.snapshot(d); state.ready=true; ui:update(state)
   end
-  refresh('upgrades')
+  ui:update({ready=false}); refresh('upgrades')
+  h.equals(ui.view.inputBlocked,false,'готовый профиль снова разрешает резать')
   h.equals(ui.cards.kitchen.frame.Visible,true); h.equals(ui.cards.craft.frame.Visible,true)
   h.equals(ui.cards.clock_1.frame.Visible,false); h.equals(ui.cards.speed.frame.Visible,false); h.equals(ui.cards.cafes.frame.Visible,false)
   assert(E.buy(d,'kitchen')); refresh('upgrades'); h.equals(ui.cards.kitchen.frame.Visible,false)

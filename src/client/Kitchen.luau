@@ -77,6 +77,7 @@ function Kitchen.new(view,atelier)
  self.previewInfo=label(previewPanel,'Info',UDim2.fromOffset(12,38),UDim2.new(1,-24,0,32))
  self.previewBuy=button(previewPanel,'Buy','Buy',UDim2.fromOffset(12,78),UDim2.new(1,-24,0,36),function()
   local state=self.state; local id=self.preview and self.preview.id
+  if not state or not state.ready then return end
   if not id or os.clock()<(self.previewNextBuy or 0) then return end
   if Catalog.byId[id].group=='workers' and state.equipped.workers==id then return end
   local price=state.prices[id]
@@ -99,7 +100,7 @@ function Kitchen.new(view,atelier)
   local anchor=part(world,name,Vector3.new(.2,.2,.2),self.origin+position,cocoa); anchor.Transparency=1
   local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(caption); prompt.ObjectText=L.text(name)
   prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
-  prompt.Triggered:Connect(function() if self.opened and not self.focus and not self.shopping and not self.browsing then callback() end end)
+  prompt.Triggered:Connect(function() if self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing then callback() end end)
   self.prompts[name]=prompt
  end
  prompt('My worktable','Cut chocolate',Vector3.new(-3.7,2,3),function() self:setOpen(false) end)
@@ -149,7 +150,7 @@ function Kitchen:setWalking()
  self.atelier.remotes.kitchenMode:FireServer('walk')
 end
 function Kitchen:openShop()
- if not self.state or self.state.levels.kitchen<1 then return end
+ if not self.state or not self.state.ready or self.state.levels.kitchen<1 then return end
  self.shopping=true; self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  local shop=self.atelier
  shop.external=true; shop:setMode('kitchen'); shop.overlay.Parent=self.gui; shop:fit(); shop:setOpen(true)
@@ -176,8 +177,16 @@ function Kitchen:setOpen(open)
  for name,prompt in self.prompts do prompt.Enabled=open and (name~='Apprentice worktable' or self.state.levels.workers>0) end
 end
 function Kitchen:update(state)
- local justUnlocked=self.state and self.state.levels.kitchen==0 and state.levels.kitchen>0
- self.state=state; self.syncedAt=os.clock()
+ if not state then return end
+ local previous=self.state; self.state=state
+ -- Ответ во время загрузки содержит только ready=false. Его нельзя читать
+ -- как экономический снимок, иначе следующий готовый профиль тоже падает.
+ if not state.ready then
+  for _,prompt in self.prompts do prompt.Enabled=false end
+  return
+ end
+ local justUnlocked=previous and previous.ready and previous.levels.kitchen==0 and state.levels.kitchen>0
+ self.syncedAt=os.clock()
  if justUnlocked and not self.opened then self.atelier:setOpen(false) end
  if state.ready then
   if self.preview then self:updatePreview() else Decor.update(self,state) end
@@ -186,7 +195,7 @@ end
 function Kitchen:step(dt)
  self.online:step(dt)
  self:updateOnboarding()
- if not self.opened or not self.state then return end
+ if not self.opened or not self.state or not self.state.ready then return end
  local state=self.state; local working=state.levels.workers>0
  for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and not self.browsing and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
  self.panel.Visible=self.focus
@@ -282,7 +291,7 @@ function Kitchen:updateOnboarding()
 end
 
 function Kitchen:watchPlayer(peer)
- if not self.opened or self.shopping then return end
+ if not self.opened or self.shopping or not self.state or not self.state.ready then return end
  self.watchPeer=peer; self.focus=true
  self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  self.stage:activate(self.world,self.camera); self:step(0)
