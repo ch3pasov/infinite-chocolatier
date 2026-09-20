@@ -70,7 +70,22 @@ return function(h)
   assert(hall.Foundation.Position.Y+hall.Foundation.Size.Y/2<-.3)
   h.near(hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2,1017)
   h.equals(hall.HallFloor.TopSurface,R.Enum.SurfaceType.Smooth)
-  local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2; local max=foundation.Position+foundation.Size/2
+  local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2
+  local max=R.Vector3.new(foundation.Position.X+foundation.Size.X/2,0,hall.HallFloor.Position.Z+hall.HallFloor.Size.Z/2)
+  -- Плиты стыкуются без щели и без объёмного пересечения: тогда их
+  -- внешние боковые грани не могут конкурировать за один пиксель.
+  h.near(foundation.Position.Z+foundation.Size.Z/2,hall.HallFloor.Position.Z-hall.HallFloor.Size.Z/2)
+  local opaque={}
+  for _,part in hall:GetChildren() do if part.Transparency==0 then table.insert(opaque,part) end end
+  for i=1,#opaque do for j=i+1,#opaque do
+   local a,b=opaque[i],opaque[j]
+   local overlap=true
+   for _,axis in {'X','Y','Z'} do
+    local depth=math.min(a.Position[axis]+a.Size[axis]/2,b.Position[axis]+b.Size[axis]/2)-math.max(a.Position[axis]-a.Size[axis]/2,b.Position[axis]-b.Size[axis]/2)
+    if depth<=.0001 then overlap=false end
+   end
+   assert(not overlap,'видимые плиты платформы пересекаются')
+  end end
   for _,edge in {{'X',min.X,'Z',35},{'X',max.X,'Z',35},{'Z',min.Z,'X',foundation.Size.X},{'Z',max.Z,'X',foundation.Size.X}} do
    local covered=false
    for _,part in boundaries do if math.abs(part.Position[edge[1]]-edge[2])<.01 and part.Size[edge[3]]>=edge[4] then covered=true end end

@@ -18,8 +18,10 @@ function Rooms.start(remote)
  end
  local capacity=math.max(1,Players.MaxPlayers or 50)
  local length=capacity*24
+ -- Основание заканчивается у прохода: перекрывающиеся плиты давали
+ -- совпадающие передние и боковые грани, мерцавшие при движении камеры.
  -- Общий пол остаётся и после ухода владельца комнаты.
- local foundation=solid(corridor,'Foundation',Vector3.new(length,1,35),Vector3.new(length/2-12,-.85,1010.5))
+ local foundation=solid(corridor,'Foundation',Vector3.new(length,1,24),Vector3.new(length/2-12,-.85,1005))
  foundation.Transparency=0; foundation.Color=Color3.fromRGB(194,173,142)
  -- Коридор начинается ровно у торца комнат (Z=1017), а фундамент ниже
  -- чистового пола: ни одна видимая поверхность не делит с ним плоскость.
