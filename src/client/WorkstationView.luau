@@ -16,7 +16,7 @@ local function clone(source,parent)
 end
 function Station.new(view,parent,roomOrigin,x,isPlayer,userId)
  local world=Instance.new('Model'); world.Name='Workstation'; world.Parent=parent
- local self=setmetatable({view=view,world=world,origin=roomOrigin+Vector3.new(x-.75,2.37,-.3),parts={}},Station)
+ local self=setmetatable({view=view,world=world,origin=roomOrigin+Vector3.new(x-.75,2.37,-.3),parts={},positions={}},Station)
  self.whole=clone(view.scene3D.intact,world); self.whole:PivotTo(CFrame.new(self.origin))
  for name,model in view.scene3D.pieces do self.parts[name]=clone(model,world); show(self.parts[name],false) end
  self.knife=clone(view.scene3D.knife,world); show(self.knife,false)
@@ -29,9 +29,17 @@ function Station:pose(action,working,dt)
  local scale=Vector2.new(self.view.tileWidth*unit,self.view.tileHeight*unit)
  show(station.whole,not working or action.whole)
  for name,model in station.parts do
-  show(model,working and not action.whole and not (action.hidden and action.hidden[name]))
-  local offset=action.offsets[name]
-  model:PivotTo(CFrame.new(station.origin+Vector3.new(offset.X*scale.X,0,offset.Y*scale.Y)))
+  local visible=working and not action.whole and not (action.hidden and action.hidden[name])
+  show(model,visible)
+  if visible then
+   local offset=action.offsets[name]
+   local position=station.origin+Vector3.new(offset.X*scale.X,0,offset.Y*scale.Y)
+   -- PivotTo передвигает все части модели. Скрытые и неподвижные куски
+   -- не требуют этой работы; при появлении сразу получают актуальную позу.
+   if station.positions[name]~=position then
+    station.positions[name]=position; model:PivotTo(CFrame.new(position))
+   end
+  end
  end
  show(station.knife,working and action.cutting)
  local grip=nil
@@ -39,7 +47,7 @@ function Station:pose(action,working,dt)
   local point=station.origin+Vector3.new(action.knifePoint.X*scale.X,(Config.Scene3D.surfaceHeight+.06)*Config.Scene3D.renderScale,action.knifePoint.Y*scale.Y)
   local direction=Vector3.new(action.knifeDirection.X*scale.X,0,action.knifeDirection.Y*scale.Y)
   local frame=Knife.frame(point,direction,Config.Scene3D,Knife.cutRoll)
-  station.knife:PivotTo(frame)
+  if station.knifeFrame~=frame then station.knifeFrame=frame; station.knife:PivotTo(frame) end
   grip=Knife.grip(frame,Config.Scene3D)
  end
  self.actor:step(action,station.origin,scale,dt,grip)

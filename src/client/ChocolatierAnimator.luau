@@ -72,6 +72,8 @@ end
 function Animator:setVisible(visible)
  self.visible=visible
  if not self.rig then return end
+ if self.visibleRig==self.rig and self.appliedVisibility==visible then return end
+ self.visibleRig=self.rig; self.appliedVisibility=visible
  for part,rest in self.rest do part.Transparency=if visible then rest else 1 end
 end
 function Animator:step(action, origin, scale, dt, knifeGrip)
@@ -101,5 +103,6 @@ end
 function Animator:destroy()
  self.alive=false
  if self.rig then self.rig:Destroy() end
+ self.visibleRig=nil
 end
 return Animator
