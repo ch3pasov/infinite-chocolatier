@@ -147,7 +147,7 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	send(player, notice, amount)
 end)
 
-remotes.purchase.OnServerEvent:Connect(function(player, id)
+remotes.purchase.OnServerEvent:Connect(function(player, id, quantity)
 	local session = sessions[player]
 	if not session or session.closing or type(id) ~= "string" then return end
 	local now = os.clock()
@@ -161,8 +161,9 @@ remotes.purchase.OnServerEvent:Connect(function(player, id)
 		send(player)
 		return
 	end
-	local bought = Economy.buy(session.data, id)
-	send(player, if bought then "Upgrade purchased" else "Cannot purchase: check your balance and upgrade level")
+	local bought, count = Economy.buy(session.data, id, quantity)
+	send(player, if bought then (if count and count > 1 then {key="Purchased {count} upgrades",args={count=count}} else "Upgrade purchased")
+		else "Cannot purchase: check your balance and upgrade level")
 end)
 
 remotes.prestige.OnServerEvent:Connect(function(player)

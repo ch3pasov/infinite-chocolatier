@@ -5,15 +5,30 @@ local luau = require("@lune/luau")
 local R = require("@lune/roblox")
 local Config = require("../src/shared/Config")
 local Layout = require("../src/client/Layout")
-local modules = { Config = Config, Layout = Layout, Theme = {}, Localization={number=tostring,token=function(x) return x end,set=function(object,value) object.Text=value end}, KitchenCatalog=require("../src/shared/KitchenCatalog") }
+local modules = { Config = Config, Layout = Layout, Theme = {}, Economy=require("../src/shared/Economy"), Localization={number=tostring,token=function(x) return x end,set=function(object,value) object.Text=value end}, KitchenCatalog=require("../src/shared/KitchenCatalog") }
 local Atelier = luau.load(fs.readFile("src/client/Atelier.luau"), { environment = {
-	game = { GetService = function() return { WaitForChild = function() return { Config = "Config", KitchenCatalog="KitchenCatalog" } end } end },
+	game = { GetService = function() return { WaitForChild = function() return { Config = "Config", KitchenCatalog="KitchenCatalog", Economy="Economy" } end } end },
 	script = { Parent = { Theme = "Theme", Layout = "Layout", Localization="Localization" } },
 	require = function(name) return modules[name] end,
 	Vector2 = R.Vector2, UDim2 = R.UDim2,
 }, injectGlobals = true })()
 
 return function(h)
+ h.test("переключатель количества меняет запрос навыков, но не разовые покупки кухни",function()
+  local E=require('../src/shared/Economy')
+  local sent={}
+  local state=E.snapshot(E.load({slices=10000})); state.ready=true
+  local ui=setmetatable({state=state,update=function() end,remotes={purchase={FireServer=function(_,...) table.insert(sent,{...}) end}}},Atelier)
+  local craft,kitchen
+  for _,spec in Config.Economy.upgrades do if spec.id=='craft' then craft=spec elseif spec.id=='kitchen' then kitchen=spec end end
+  ui:setQuantity(10); local price,count=ui:quote(craft); h.equals(count,10)
+  h.equals(price,E.quote(state,'craft',10)); ui:purchase(craft)
+  h.equals(sent[1][1],'craft'); h.equals(sent[1][2],10)
+  ui:purchase(kitchen); h.equals(sent[2][1],'kitchen'); h.equals(sent[2][2],1)
+  ui:setQuantity('max'); ui:purchase(craft); h.equals(sent[3][2],'max')
+  state.slices=0; ui:purchase(craft); h.equals(#sent,3)
+  ui:setQuantity('invalid'); h.equals(ui.quantity,'max')
+ end)
 	h.test("магазин закрепляется сбоку без блокировки игры и возвращается в модальный режим", function()
 		local root = R.Instance.new("Frame")
 		local function make(class)
@@ -49,7 +64,7 @@ return function(h)
  h.test('два меню разделяют конечные покупки и бесконечные навыки, открытие исчезает после оплаты',function()
   local E=require('../src/shared/Economy')
   local C=require('../src/shared/KitchenCatalog')
-  local ui=setmetatable({journal={update=function() end},view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
+  local ui=setmetatable({quantityBar={},quantityButtons={},journal={update=function() end},view={counter={}},overlay={Visible=false},cards={},placeMap={},placesBack={},scroll={},metrics={},balance={},balanceTest={},togglePrestige={},saved={},open={},prestigeInfo={},fill={},ascend={},cancel={}},Atelier)
   local specs={}
   for _,spec in Config.Economy.upgrades do if spec.id=='kitchen' or spec.maxLevel==math.huge then table.insert(specs,spec) end end
   for _,spec in C.items do table.insert(specs,spec) end

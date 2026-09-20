@@ -5,6 +5,12 @@ local Catalog = require("./KitchenCatalog")
 local Orders = require("./Orders")
 local E = Config.Economy
 local Economy = {}
+local upgradeById = {}
+for _, spec in E.upgrades do upgradeById[spec.id] = spec end
+
+local function levelPrice(spec, level)
+	return math.min(E.maxValue, math.ceil(spec.baseCost * spec.growth ^ math.min(level, 200)))
+end
 
 local function number(value, fallback, maximum)
 	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
@@ -127,10 +133,30 @@ function Economy.price(data, id)
   if spec.id==id and (spec.id=='kitchen' or spec.maxLevel==math.huge) then
    if data.levels[id]>=spec.maxLevel then return nil end
    -- Ограничена цена, а не число покупок. Не допускаем переполнения степени.
-   return math.min(E.maxValue,math.ceil(spec.baseCost*spec.growth^math.min(data.levels[id],200)))
+   return levelPrice(spec, data.levels[id])
   end
  end
  return nil
+end
+
+-- Суммируем округлённую цену каждого уровня: пакет стоит ровно столько,
+-- сколько последовательные одиночные покупки. MAX ограничен работой цикла,
+-- а не присланным клиентом количеством или стоимостью.
+function Economy.quote(data, id, quantity)
+	quantity = if quantity == nil then 1 else quantity
+	if quantity ~= 1 and quantity ~= 10 and quantity ~= "max" then return nil, 0 end
+	local first = Economy.price(data, id)
+	if not first then return nil, 0 end
+	if quantity == 1 then return first, 1 end
+	local spec = upgradeById[id]
+	if not spec or spec.maxLevel ~= math.huge then return nil, 0 end
+	local total, count = 0, 0
+	for offset = 0, (if quantity == "max" then 99 else 9) do
+		local price = levelPrice(spec, data.levels[id] + offset)
+		if quantity == "max" and total + price > data.slices then break end
+		total += price; count += 1
+	end
+	return if count > 0 then total else first, count
 end
 
 function Economy.credit(data, amount)
@@ -162,20 +188,23 @@ function Economy.tick(data, elapsed)
 	return Economy.credit(data, data.levels.workers * Economy.manual(data) * cycles)
 end
 
-function Economy.buy(data, id)
+function Economy.buy(data, id, quantity)
  if type(id)~='string' then return false end
+ quantity = if quantity == nil then 1 else quantity
+ if quantity ~= 1 and quantity ~= 10 and quantity ~= 'max' then return false end
  local item=Catalog.byId[id]
  if item and data.levels.kitchen>0 and data.owned[id] then
+  if quantity ~= 1 then return false end
   data.equipped[item.group]=if item.group~='workers' and data.equipped[item.group]==id then nil else id
   recount(data); return true
  end
- local price=Economy.price(data,id)
- if not price or data.slices<price then return false end
+ local price,count=Economy.quote(data,id,quantity)
+ if not price or count == 0 or data.slices<price then return false end
  data.slices-=price
  if item then
   data.owned[id]=true; data.equipped[item.group]=id; recount(data)
- else data.levels[id]+=1; recount(data) end
- return true
+ else data.levels[id]+=count; recount(data) end
+ return true, count
 end
 
 function Economy.prestigeGain(data)

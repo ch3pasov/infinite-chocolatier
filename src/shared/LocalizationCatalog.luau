@@ -2,6 +2,10 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["MAX"]="МАКС",
+ ["Buy ×{count} · {price} pieces"]="Купить ×{count} · {price} долек",
+ ["×10: {price} · need {missing} more"]="×10: {price} · не хватает {missing}",
+ ["Purchased {count} upgrades"]="Куплено улучшений: {count}",
  ["Tasting box"]="Дегустационный набор",
  ["Coffee break"]="Кофейный перерыв",
  ["Celebration box"]="Праздничная коробка",

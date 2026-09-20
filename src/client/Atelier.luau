@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared").Config)
 local Catalog = require(ReplicatedStorage:WaitForChild("Shared").KitchenCatalog)
+local Economy = require(ReplicatedStorage:WaitForChild("Shared").Economy)
 local L = require(script.Parent.Localization)
 local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
@@ -68,7 +69,7 @@ local function button(parent, name, caption)
 end
 
 function Atelier.new(gui, gameView, remotes)
-	local self = setmetatable({ view = gameView, remotes = remotes, cards = {}, confirmed = false }, Atelier)
+	local self = setmetatable({ view = gameView, remotes = remotes, cards = {}, confirmed = false, quantity = 1, quantityButtons = {} }, Atelier)
 	gameView.inputBlocked = true
 	-- Системные кнопки Roblox могут оставаться видимыми на телефоне.
 	-- Счётчик занимает оставшуюся ширину, включая длинные суммы поздней игры.
@@ -124,6 +125,15 @@ function Atelier.new(gui, gameView, remotes)
 	self.balance = text(panel, "Balance", 15, Theme.text)
 	self.balance.Position = UDim2.fromOffset(16, 70)
 	self.balance.Size = UDim2.new(1, -32, 0, 36)
+	local quantityBar = Instance.new("Frame"); quantityBar.Name = "PurchaseQuantity"
+	quantityBar.BackgroundTransparency = 1; quantityBar.Position = UDim2.fromOffset(12,112)
+	quantityBar.Size = UDim2.new(1,-32,0,34); quantityBar.Parent = panel; self.quantityBar = quantityBar
+	for index, value in {1,10,"max"} do
+		local choice = button(quantityBar,"Quantity"..tostring(value),if value == "max" then "MAX" else "×"..value)
+		choice.Position = UDim2.new((index-1)/3,0,0,0); choice.Size = UDim2.new(1/3,-6,1,0)
+		self.quantityButtons[value] = choice
+		choice.Activated:Connect(function() self:setQuantity(value) end)
+	end
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Name = "Upgrades"
 	scroll.BackgroundTransparency = 1
@@ -204,10 +214,7 @@ function Atelier.new(gui, gameView, remotes)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		local function activate()
             if spec.group and self.onPreview and self.state and self.state.ready then self.returningFromPreview=true; self.onPreview(spec.id); return end
-			if self.state and self.state.ready and ((spec.cosmetic and self.state.levels[spec.id] > 0) or (self.state.prices[spec.id]
-				and self.state.slices >= self.state.prices[spec.id])) then
-				remotes.purchase:FireServer(spec.id)
-			end
+			self:purchase(spec)
 		end
 		buy.Activated:Connect(activate)
 		if spec.group then
@@ -364,6 +371,24 @@ function Atelier:setOpen(open)
 	if not open and self.onClose then self.onClose() end
 end
 
+function Atelier:setQuantity(quantity)
+	if quantity ~= 1 and quantity ~= 10 and quantity ~= "max" then return end
+	self.quantity = quantity
+	if self.state then self:update(self.state) end
+end
+
+function Atelier:quote(spec)
+	local quantity = if spec.group or spec.id == "kitchen" then 1 else (self.quantity or 1)
+	local price, count = Economy.quote(self.state,spec.id,quantity)
+	return price, count, quantity
+end
+
+function Atelier:purchase(spec)
+	if not self.state or not self.state.ready then return end
+	local price, count, quantity = self:quote(spec)
+	if price and count > 0 and self.state.slices >= price then self.remotes.purchase:FireServer(spec.id,quantity) end
+end
+
 function Atelier:update(state)
 	if not state then return end
 	self.state = state
@@ -373,8 +398,14 @@ function Atelier:update(state)
 	self.placeMap.Visible=kitchen and self.selectedPlace==nil
 	self.placesBack.Visible=kitchen and self.selectedPlace~=nil
 	self.scroll.Visible=not kitchen or self.selectedPlace~=nil
-	self.scroll.Position=UDim2.fromOffset(12,if kitchen then 160 else 116)
-	self.scroll.Size=UDim2.new(1,-24,1,if kitchen then -202 else -158)
+	self.scroll.Position=UDim2.fromOffset(12,160)
+	self.scroll.Size=UDim2.new(1,-24,1,-202)
+	self.quantityBar.Visible=not kitchen
+	for value, choice in self.quantityButtons do
+		local selected=value==(self.quantity or 1)
+		choice.BackgroundColor3=if selected then Theme.accent else Theme.chocolateDark
+		choice.TextColor3=if selected then Theme.background else Theme.muted
+	end
 	self.balanceTest.Visible=state.canTestBalance==true and self.mode~='kitchen'
 	L.set(self.togglePrestige,if state.prestigeDisabled then "Prestige bonus OFF · enable" else "Disable prestige bonus")
 	self.view.inputBlocked = self.overlay.Visible and not self.docked
@@ -405,8 +436,8 @@ function Atelier:update(state)
         end
         if catalog or id=='kitchen' then L.set(card.heading,card.spec.name)
         else L.set(card.heading,"{upgrade} · {level}",{upgrade=L.token(card.spec.name),level=level}) end
-        local price=state.prices[id]
-        local canBuy=price~=nil and state.slices>=price
+        local price,count,quantity=self:quote(card.spec)
+        local canBuy=price~=nil and count>0 and state.slices>=price
         if canBuy and card.frame.Visible then affordable+=1 end
         card.buy.BackgroundColor3=if canBuy or catalog then Theme.accent else Theme.chocolateEdge
         card.buy.TextColor3=if canBuy or catalog then Theme.background else Theme.text
@@ -416,8 +447,8 @@ function Atelier:update(state)
             elseif price==0 then L.set(card.buy,'Preview · free apprentice')
             else L.set(card.buy,'Preview · {price} pieces',{price=format(price)}) end
         elseif not price then L.set(card.buy,'Maximum level')
-        elseif canBuy then L.set(card.buy,'Buy · {price} pieces',{price=format(price)})
-        else L.set(card.buy,'Price {price} · need {missing} more',{price=format(price),missing=format(price-state.slices)}) end
+        elseif canBuy then L.set(card.buy,if quantity==1 then 'Buy · {price} pieces' else 'Buy ×{count} · {price} pieces',{price=format(price),count=count})
+        else L.set(card.buy,if quantity==10 then '×10: {price} · need {missing} more' else 'Price {price} · need {missing} more',{price=format(price),missing=format(math.max(0,price-state.slices))}) end
 	end
 	if affordable>0 then L.set(self.open,"WORKSHOP · {count} available",{count=affordable}) else L.set(self.open,"WORKSHOP · upgrades") end
 	local gain = state.prestigeGain
