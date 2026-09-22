@@ -123,17 +123,13 @@ function Kitchen.new(view,atelier)
  self.catalogBook=book
  part(world,'CatalogPages',Vector3.new(1.7,.12,1.1),self.origin+Vector3.new(-8,1.9,8),cream)
  prompt('Kitchen upgrades','My Kitchen',Vector3.new(-8,2.5,8),function() self:openShop() end)
- self.characterConnection=player.CharacterAdded:Connect(function(char)
-  local humanoid=char:WaitForChild('Humanoid')
-  self.walkCamera.CameraSubject=humanoid
-  if self.opened and not self.focus and not self.shopping and not view.journalOpen then self:setWalking() else self.controls:Disable() end
- end)
+ self:bindCharacter()
  self.online=Online.new(self)
  self.directory=CafeDirectory.new(self)
  self.render=RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
  gui.Destroying:Connect(function()
   self.render:Disconnect(); self.walkController:destroy()
-  self.characterConnection:Disconnect(); self:setAvatarVisible(true)
+  self:unbindCharacter(); self:setAvatarVisible(true)
   self.online:destroy()
   self.directory:destroy()
   for _,station in self.stations do station:destroy() end
@@ -141,6 +137,31 @@ function Kitchen.new(view,atelier)
  end)
  view.gui.Destroying:Connect(function() gui:Destroy() end)
  return self
+end
+function Kitchen:bindCharacter()
+ if self.characterActive then return end
+ self.characterActive=true; self.boundCharacter=self.player.Character
+ self.characterConnection=self.player.CharacterAdded:Connect(function(char)
+  if not self.characterActive or self.player.Character~=char then return end
+  self.boundCharacter=char; self.walkController:resetInput()
+  local humanoid=char:WaitForChild('Humanoid',10)
+  -- Disconnect не отменяет уже начатый WaitForChild. Старый персонаж
+  -- не должен возвращать камеру/прогулку после нового спавна или cleanup.
+  if not humanoid or not self.characterActive or self.boundCharacter~=char or self.player.Character~=char then return end
+  self.walkCamera.CameraSubject=humanoid
+  if self:canWalk() then self:setWalking() else self:refreshControls() end
+ end)
+ self.characterRemovedConnection=self.player.CharacterRemoving:Connect(function(char)
+  if self.boundCharacter~=char then return end
+  self.boundCharacter=nil; self.walkCamera.CameraSubject=nil
+  self.walkController:resetInput(); self.avatarVisibility:set(nil,true)
+ end)
+end
+function Kitchen:unbindCharacter()
+ self.characterActive=false; self.boundCharacter=nil
+ for _,name in {'characterConnection','characterRemovedConnection'} do
+  if self[name] then self[name]:Disconnect(); self[name]=nil end
+ end
 end
 function Kitchen:canWalk()
  return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen) or false
