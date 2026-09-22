@@ -116,12 +116,18 @@ local function join(player)
 	local storage = if studio then nil else ProfileStore.new(dataStore, Economy,
 		Config.Economy, HttpService:GenerateGUID(false), os.time)
 	local data, offline, offlineReport
+	local claimTick
 	if studio then
 		data, offline = Economy.load(nil), 0
 	else
 		for _ = 1, 3 do
+			local started = os.clock()
 			local ok, loaded, away, report = pcall(function() return storage:claim(tostring(player.UserId)) end)
-			if ok and loaded then data, offline, offlineReport = loaded, away, report; break end
+			if ok and loaded then
+				data, offline, offlineReport = loaded, away, report
+				claimTick = started
+				break
+			end
 			task.wait(2)
 		end
 	end
@@ -137,7 +143,13 @@ local function join(player)
   if player.Parent then player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId)) end
   return
  end
-	sessions[player] = { data = data, storage = storage, offline = offline, offlineReport = offlineReport, tick = os.clock(), lastRound = -math.huge,
+	local tick = os.clock()
+	-- Claim начисляет офлайн до начала запроса. Пока шёл успешный ответ,
+	-- стажёры тоже работали; переносим это время в живой таймер без потери
+	-- дробного цикла. Время предыдущих попыток входит в офлайн-расчёт
+	-- повторного claim с обычным пределом отсутствия.
+	if claimTick then Economy.tick(data, math.max(0, tick - claimTick)) end
+	sessions[player] = { data = data, storage = storage, offline = offline, offlineReport = offlineReport, tick = tick, lastRound = -math.huge,
 		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
 	loading[player] = nil

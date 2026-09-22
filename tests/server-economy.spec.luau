@@ -26,6 +26,7 @@ local function fixture(studio, seed, userId, savedAt, options)
 	local record = if seed then { data = seed, savedAt = savedAt or now } else nil
 	local beforeUpdate
 	local store = { UpdateAsync = function(_, _, callback)
+		if options and options.beforeUpdate then options.beforeUpdate(function(seconds) now += seconds end) end
 		-- Однократная задержка запроса позволяет воспроизвести другой вход
 		-- до выполнения callback старого сохранения без настоящего DataStore.
 		local hook = beforeUpdate; beforeUpdate = nil
@@ -58,6 +59,47 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('ожидание успешной загрузки сохраняет целые циклы и дробный прогресс стажёра',function()
+  local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1},productionRemainder=.2},123,900,{
+   afterUpdate=function(_,advance) advance(15.5) end,
+  })
+  h.equals(f.latest().slices,11,'время ответа не вошло в производство')
+  h.near(f.latest().productionRemainder,.75)
+  h.equals(f.latest().offline,10); h.equals(f.latest().offlineReport.seconds,100)
+  h.equals(f.latest().rounds,0); h.equals(f.latest().ordersCompleted,0)
+  f.advance(2.5); f.events.purchase.OnServerEvent:Fire(f.player,'invalid')
+  h.equals(f.latest().slices,12); h.near(f.latest().productionRemainder,0)
+  f.players.PlayerRemoving:Fire(f.player)
+  h.equals(f.record().data.slices,12); h.near(f.record().data.productionRemainder,0)
+ end)
+ h.test('потерянный ответ загрузки не удваивает производство за ожидание',function()
+  for _,committed in {false,true} do
+   local replies=0
+   local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,900,{
+    beforeUpdate=function(advance)
+     replies+=1
+     if replies==1 and not committed then advance(7); error('Запрос не дошёл до хранилища') end
+    end,
+    afterUpdate=function(_,advance)
+     if replies==1 then advance(7); error('Ответ потерян после записи') end
+     if replies==2 then advance(8) end
+    end,
+   })
+   h.equals(replies,2); h.equals(f.player.kicked,nil)
+   h.equals(f.latest().slices,11); h.near(f.latest().productionRemainder,.5)
+   h.equals(f.latest().offline,10); h.equals(f.latest().offlineReport.seconds,if committed then 100 else 107)
+   f.players.PlayerRemoving:Fire(f.player)
+   h.equals(f.record().data.slices,11); h.near(f.record().data.productionRemainder,.5)
+  end
+ end)
+ h.test('офлайн-предел не отнимает производство за ожидание успешного ответа',function()
+  local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1}},123,1000-9*3600,{
+   afterUpdate=function(_,advance) advance(10) end,
+  })
+  h.equals(f.latest().offline,1440); h.equals(f.latest().offlineReport.seconds,14400)
+  h.equals(f.latest().offlineReport.capped,true)
+  h.equals(f.latest().slices,1441)
+ end)
  h.test('сервер не обещает неполученную награду при полном кошельке',function()
   local f=fixture(false,{slices=Config.Economy.maxValue-1.5,orderProgress=3,productionRemainder=0})
   f.events.roundComplete.OnServerEvent:Fire(f.player)
