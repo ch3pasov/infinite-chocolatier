@@ -2,6 +2,7 @@
 -- Азимут неизменен: экранное «вперёд» всегда ведёт к столам (-Z).
 -- Отдельная Scriptable-камера не наследует первое лицо и поворот Roblox.
 local Input=game:GetService('UserInputService')
+local Gui=game:GetService('GuiService')
 local Run=game:GetService('RunService')
 local Workspace=game:GetService('Workspace')
 local Camera={}; Camera.__index=Camera
@@ -38,12 +39,16 @@ function Camera.new(player,camera,enabled)
   if input.KeyCode==Enum.KeyCode.Thumbstick2 then self.stick=0 end
  end)
  connect(Input.WindowFocusReleased,function() self:resetInput() end)
+ -- Меню может забрать отпускание мыши/стика. Освобождаем захват сразу,
+ -- даже если следующий RenderStep придёт только после закрытия меню.
+ connect(Gui.MenuOpened,function() self:resetInput() end)
+ connect(Input.TextBoxFocused,function() self:resetInput() end)
  self.binding='ChocolateWalkCamera'
  Run:BindToRenderStep(self.binding,Enum.RenderPriority.Camera.Value+1,function(dt) self:step(dt) end)
  return self
 end
 function Camera:active()
- return Workspace.CurrentCamera==self.camera and self.enabled() and not Input:GetFocusedTextBox()
+ return Workspace.CurrentCamera==self.camera and self.enabled() and not Gui.MenuIsOpen and not Input:GetFocusedTextBox()
 end
 function Camera:adjust(pitch,zoom)
  self.pitch=math.clamp(self.pitch+pitch,25,70)

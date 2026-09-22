@@ -35,7 +35,8 @@ local function fixture(phase)
 	local pending = {}
 	local events = {
 		InputBegan = signal(), InputChanged = signal(), InputEnded = signal(),
-		WindowFocusReleased = signal(), MenuOpened = signal(),
+		WindowFocusReleased = signal(), MenuOpened = signal(), TextBoxFocused = signal(),
+		GetFocusedTextBox = function(self) return self.focused end,
 	}
 	local modules = { Localization = {set=function(label,source) label.Text=source end, token=function(source) return source end}, Config = Config, Geom = Geom, Recipe = Recipe, Theme = {}, Layout = Layout, Motion3D = {} }
 	local services = {
@@ -82,6 +83,29 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
+	harness.test("меню Roblox и текстовое поле блокируют новый разрез даже без processed",function()
+		for _,mode in {'menu','text'} do
+			local view,events=fixture()
+			if mode=='menu' then events.MenuIsOpen=true else events.focused={} end
+			local pointer=input('Touch')
+			events.InputBegan:Fire(pointer,false)
+			harness.equals(view.drag,nil); harness.equals(view.cutProgress,0)
+			events.MenuIsOpen=false; events.focused=nil
+			events.InputBegan:Fire(pointer,false); move(events,pointer,50)
+			harness.equals(view.cutProgress,50)
+		end
+	end)
+	harness.test("переход в текстовое поле отменяет захват и сохраняет часть разреза",function()
+		local view,events=fixture(); local pointer=input('Touch')
+		events.InputBegan:Fire(pointer,false); move(events,pointer,55)
+		events.focused={}; events.TextBoxFocused:Fire(events.focused)
+		harness.equals(view.drag,nil); harness.equals(view.cutProgress,55)
+		move(events,pointer,100); events.InputEnded:Fire(pointer)
+		harness.equals(view.completed,0); harness.equals(view.cutProgress,55)
+		events.focused=nil; local resumed=input('Touch',55)
+		events.InputBegan:Fire(resumed,false); move(events,resumed,100); events.InputEnded:Fire(resumed)
+		harness.equals(view.completed,1)
+	end)
 	harness.test("отмена почти готового разреза не запускает доводку", function()
 		local view, events = fixture()
 		local pointer = input("Touch")
@@ -206,7 +230,7 @@ return function(harness)
 	end)
 
 	harness.test("потеря фокуса и меню сохраняют разрез без завершения", function()
-		for _, event in { "WindowFocusReleased", "MenuOpened" } do
+		for _, event in { "WindowFocusReleased", "MenuOpened", "TextBoxFocused" } do
 			for _, progress in { 50, 100 } do
 				local view, events = fixture()
 				local pointer = input("Touch")

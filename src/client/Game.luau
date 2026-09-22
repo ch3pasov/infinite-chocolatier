@@ -1020,6 +1020,7 @@ function Game:bindInput()
 		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen then
 			return
 		end
+		if GuiService.MenuIsOpen or UserInputService:GetFocusedTextBox() then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
 		end
@@ -1095,6 +1096,11 @@ function Game:bindInput()
 		self:endDrag(true)
 	end)
 	self.menuOpened = GuiService.MenuOpened:Connect(function()
+		self:endDrag(true)
+	end)
+	-- Чат и экранная клавиатура тоже перехватывают отпускание пальца.
+	-- Сделанный участок остаётся, но ввод текста не завершает разрез.
+	self.textFocused = UserInputService.TextBoxFocused:Connect(function()
 		self:endDrag(true)
 	end)
 end
