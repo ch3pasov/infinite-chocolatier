@@ -114,15 +114,37 @@ return function(h)
  end)
  h.test('друзья стажёров уникальны на сервере и исключаются при входе настоящего игрока',function()
   local pools={[10]={100,101,102,102},[20]={100,101,103}}
-  local rosters=R.build(pools,{[10]=true,[20]=true})
-  h.equals(rosters[10][1],100); h.equals(rosters[20][1],103)
+  local capacities={[10]=3,[20]=3}
+  local rosters=R.build(pools,{[10]=true,[20]=true},capacities)
+  h.equals(rosters[10][1],100); h.equals(rosters[20][1],101)
   local seen={}
   for owner,list in rosters do for ordinal,id in list do
    assert(not seen[id]); seen[id]=true; h.equals(R.identity(rosters,owner,ordinal),id)
   end end
-  local changed=R.build(pools,{[100]=true,[10]=true,[20]=true})
+  local changed=R.build(pools,{[100]=true,[10]=true,[20]=true},capacities)
   h.equals(changed[10][1],101)
   local id,seed=R.identity(changed,10,20); h.equals(id,0)
   local _,otherSeed=R.identity(changed,10,21); assert(seed~=otherSeed)
+ end)
+ h.test('ненанятые стажёры не резервируют друзей других игроков',function()
+  local pools={[10]={100,101,102},[20]={100,101,102}}
+  local rosters=R.build(pools,{}, {[10]=0,[20]=1})
+  h.equals(#rosters[10],0); h.equals(#rosters[20],1); h.equals(rosters[20][1],100)
+  local hired=R.build(pools,{}, {[10]=1,[20]=1})
+  h.equals(#hired[10],1); h.equals(#hired[20],1)
+  h.equals(hired[10][1],100); h.equals(hired[20][1],101)
+ end)
+ h.test('общие друзья распределяются по одному между работающими фабриками',function()
+  local friends={106,105,104,103,102,101,100,100}
+  local pools={[30]=friends,[10]=friends,[20]=friends}
+  local rosters=R.build(pools,{[103]=true},{[10]=2000001,[20]=2000001,[30]=2000001})
+  h.equals(table.concat(rosters[10],','),'100,104')
+  h.equals(table.concat(rosters[20],','),'101,105')
+  h.equals(table.concat(rosters[30],','),'102,106')
+  h.equals(friends[1],106,'входной список нельзя сортировать на месте')
+  local smaller=R.build(pools,{[103]=true},{[10]=1,[20]=3,[30]=3})
+  h.equals(table.concat(smaller[10],','),'100')
+  h.equals(table.concat(smaller[20],','),'101,104,106')
+  h.equals(table.concat(smaller[30],','),'102,105')
  end)
 end

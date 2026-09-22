@@ -23,14 +23,22 @@ function Rooms.start(remote,visitRemote)
   if room.index==0 and room.owner then return end
   for _,visiting in visitors do if visiting==room then return end end
   slots[room.slot]=nil; byKey[room.key]=nil; room.model:Destroy()
-  for _,other in slots do if other.id==room.id then return end end
+  for _,other in slots do if other.id==room.id then return true end end
   pools[room.id]=nil
+  return true
  end
  local function refreshStaff()
   local online={}
   for _,player in Players:GetPlayers() do online[player.UserId]=true end
   for player in homes do online[player.UserId]=true end
-  local rosters=Roster.build(pools,online)
+  local capacities={}
+  for _,room in slots do if room.model:GetAttribute('HasApprentice') then
+   -- После ухода владельца в очереди остаются только комнаты с гостями.
+   -- Исчезнувшие покупные кафе больше не должны удерживать общих друзей.
+   local capacity=if room.index>0 then room.index*2+1 elseif room.owner then 1+room.count*2 else 1
+   capacities[room.id]=math.max(capacities[room.id] or 0,capacity)
+  end end
+  local rosters=Roster.build(pools,online,capacities)
   for _,room in slots do
    -- Дальние копии получают те же назначения, что посещаемая комната.
    room.model:SetAttribute("StaffRoster",table.concat(rosters[room.id] or {},","))
@@ -49,7 +57,7 @@ function Rooms.start(remote,visitRemote)
    char:PivotTo(CFrame.new(room.origin+Vector3.new(0,3,12)))
    root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyAngularVelocity=Vector3.zero
   end
-  if previous and previous~=room then cleanup(previous) end
+  if previous and previous~=room and cleanup(previous) then refreshStaff() end
  end
  local create
  local function sign(room,name,x,home)
@@ -226,13 +234,16 @@ function Rooms.start(remote,visitRemote)
   return Queue.animatedPlayers(Queue.build(records),current.id,current.index,player.UserId)
  end,sync=function(_,player,state)
   local home=homes[player]; if not home then return end
-  home.count=state.levels.cafes or 0; home.model:SetAttribute('CafeCount',home.count)
+  local count=state.levels.cafes or 0; local hired=state.owned.workers_1==true
+  local staffChanged=home.count~=count or home.model:GetAttribute('HasApprentice')~=hired
+  home.count=count; home.model:SetAttribute('CafeCount',home.count)
   local appearance=Catalog.appearance(state)
   if home.model:GetAttribute('CafeAppearance')~=appearance then home.model:SetAttribute('CafeAppearance',appearance) end
   for _,room in slots do if room.id==player.UserId then
    room.model:SetAttribute('CycleSeconds',state.cycleSeconds)
-   room.model:SetAttribute('HasApprentice',if room.index==0 then state.owned.workers_1==true else true)
+   room.model:SetAttribute('HasApprentice',if room.index==0 then hired else true)
   end end
+  if staffChanged then refreshStaff() end
  end}
 end
 return Rooms

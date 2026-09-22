@@ -187,6 +187,7 @@ return function(h)
   end
   local pending=#delayed
   local retryOwner=player(30)
+  controller:sync(retryOwner,{levels={cafes=0},owned={workers_1=true},cycleSeconds=10})
   h.equals(directory.KitchenRoom_30:GetAttribute('Staff1'),0)
   h.equals(directory.KitchenRoom_30:GetAttribute('FriendListStatus'),'retrying')
   delayed[pending+1]()
@@ -194,6 +195,38 @@ return function(h)
   h.equals(directory.KitchenRoom_30:GetAttribute('Staff1'),1001)
   h.equals(directory.KitchenRoom_30:GetAttribute('FriendListStatus'),'ready')
   players.PlayerRemoving:Fire(retryOwner)
-
+  players.GetFriendsAsync=fetch
+  -- Общих друзей занимают только нанятые места. Покупка/престиж должны
+  -- обновлять и домашнего актёра, и список для клиентской очереди.
+  local x,y=player(40),player(50)
+  local function roster(id) return directory['KitchenRoom_'..id]:GetAttribute('StaffRoster') end
+  local function hire(p,cafes,hired)
+   controller:sync(p,{levels={cafes=cafes},owned={workers_1=hired},cycleSeconds=10})
+  end
+  h.equals(roster(40),''); h.equals(roster(50),'')
+  h.equals(directory.KitchenRoom_40:GetAttribute('Staff1'),0)
+  hire(x,0,true); hire(y,0,true)
+  h.equals(roster(40),'1001'); h.equals(roster(50),'1002')
+  h.equals(directory.KitchenRoom_50:GetAttribute('Staff1'),1002)
+  hire(x,1,true)
+  h.equals(roster(40),'1001,1003,1004'); h.equals(roster(50),'1002')
+  hire(y,1,true)
+  h.equals(roster(40),'1001,1003'); h.equals(roster(50),'1002,1004')
+  hire(x,0,false)
+  h.equals(roster(40),''); h.equals(roster(50),'1001,1002,1003')
+  h.equals(directory.KitchenRoom_40:GetAttribute('Staff1'),0)
+  h.equals(directory.KitchenRoom_50:GetAttribute('Staff1'),1001)
+  hire(x,1,true)
+  -- Гость удерживает только домашнее кафе ушедшего хозяина, затем
+  -- освобождает и последнее назначение, не дожидаясь нового входа/покупки.
+  local guest=player(60); remote.OnServerEvent:Fire(guest,'walk')
+  visit(guest,60,false); h.equals(guest.VisitingKitchen,40)
+  players.PlayerRemoving:Fire(x)
+  h.equals(roster(40),'1001'); h.equals(roster(50),'1002,1003,1004')
+  visit(guest,40,true)
+  h.equals(directory:FindFirstChild('KitchenRoom_40'),nil)
+  h.equals(roster(50),'1001,1002,1003')
+  players.PlayerRemoving:Fire(y); players.PlayerRemoving:Fire(guest)
+  h.equals(#directory:GetChildren(),0)
  end)
 end
