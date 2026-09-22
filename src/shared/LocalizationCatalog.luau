@@ -107,6 +107,7 @@ Catalog.entries = {
  ["One apprentice · +{reward} per {seconds}s cycle"] = "Один стажёр · +{reward} за цикл {seconds} с",
  ["Hire for free · prepaid"] = "Нанять бесплатно · уже оплачено",
  ["Put away · purchase bonuses remain"] = "Убрано · бонусы покупок сохраняются",
+ ["Bonus active · changing the look adds no bonus"] = "Бонус уже действует · выбор меняет только вид",
  ["2 · Open this book"] = "2 · Открой эту книгу",
  ["1/3 · Tap Walk around kitchen above to meet your apprentice."] = "1/3 · Нажми «Прогуляться по кухне» сверху, чтобы встретить стажёра.",
  ["2/3 · Walk to the golden book on the left and open My Kitchen."] = "2/3 · Подойди к золотой книге слева и открой «Мою кухню».",

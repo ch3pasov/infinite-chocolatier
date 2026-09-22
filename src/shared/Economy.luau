@@ -163,7 +163,8 @@ end
 -- Он не списывает деньги; при пустом MAX показывает ближайший один уровень.
 function Economy.preview(data, id, quantity)
 	local spec = upgradeById[id]
-	if not spec or spec.maxLevel ~= math.huge then return nil end
+	local item = Catalog.byId[id]
+	if not item and (not spec or spec.maxLevel ~= math.huge) then return nil end
 	local price, count = Economy.quote(data, id, quantity)
 	if not price then return nil end
 	local after = Economy.load(data)
@@ -179,7 +180,11 @@ function Economy.preview(data, id, quantity)
 		local cycles = math.ceil(missing / (workers * manual))
 		waitSeconds = math.max(0, cycles - after.productionRemainder) * cycle
 	end
-	after.levels[id] += math.max(1, count)
+	if item then
+		-- Бонус конечного предмета даёт владение, а не выбранный облик.
+		-- price/quote выше исключают уже купленный предмет и пакетный найм.
+		after.owned[id] = true
+	else after.levels[id] += math.max(1, count) end
 	recount(after)
 	return {
 		manualGain = math.max(0, Economy.manual(after) - manual),

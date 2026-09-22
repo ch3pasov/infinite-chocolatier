@@ -232,6 +232,8 @@ function Atelier.new(gui, gameView, remotes)
 		 heading.TextScaled=true
 		 local titleLimit=Instance.new('UITextSizeConstraint'); titleLimit.MinTextSize=12; titleLimit.MaxTextSize=17; titleLimit.Parent=heading
 		 description.Position=UDim2.fromOffset(108,42); description.Size=UDim2.new(1,-120,0,42); description.TextSize=12
+		 description.TextScaled=true
+		 local effectLimit=Instance.new('UITextSizeConstraint'); effectLimit.MinTextSize=10; effectLimit.MaxTextSize=12; effectLimit.Parent=description
 		end
 		local buy = button(card, "Buy", "Buy")
 		local installed
@@ -473,6 +475,21 @@ function Atelier:updateSaveStatus(state)
  else L.set(self.saved,state.saveStatus or "") end
 end
 
+-- Одинаковые числа в списке и в крупном предпросмотре. Повторная установка
+-- уже купленного предмета не обещает ещё один прирост дохода.
+function Atelier:updatePurchaseBenefit(label,id,quantity)
+ local preview=Economy.preview(self.state,id,quantity)
+ if not preview then return false end
+ if preview.cycleAfter<preview.cycleBefore then
+  L.set(label,'Cycle: {before}s → {after}s\n+{rate}/s from apprentices',{before=format(preview.cycleBefore),after=format(preview.cycleAfter),rate=format(preview.rateGain)})
+ elseif preview.workersGain>0 then
+  L.set(label,'+{workers} apprentices\n+{rate}/s automatic income',{workers=preview.workersGain,rate=format(preview.rateGain)})
+ elseif self.state.rate>0 then
+  L.set(label,'+{manual} per trick\n+{rate}/s from apprentices',{manual=format(preview.manualGain),rate=format(preview.rateGain)})
+ else L.set(label,'+{manual} pieces per trick',{manual=format(preview.manualGain)}) end
+ return true,preview
+end
+
 function Atelier:update(state)
 	if not state then return end
 	self.state = state
@@ -527,23 +544,17 @@ function Atelier:update(state)
             L.set(card.description,"+20% apprentice speed · current cycle: {seconds}s",{seconds=format(state.cycleSeconds)})
         elseif card.spec.group=='workers' then
             L.set(card.description,"One apprentice · +{reward} per {seconds}s cycle",{reward=format(state.cycleReward),seconds=format(state.cycleSeconds)})
+        elseif catalog and card.frame.Visible and (card.spec.group=='temper' or card.spec.group=='library' or card.spec.group=='clock') then
+            if state.owned[id] then L.set(card.description,'Bonus active · changing the look adds no bonus')
+            else self:updatePurchaseBenefit(card.description,id,1) end
         end
         if catalog or id=='kitchen' then L.set(card.heading,card.spec.name)
         else L.set(card.heading,"{upgrade} · {level}",{upgrade=L.token(card.spec.name),level=level}) end
         local price,count,quantity=self:quote(card.spec)
         local canBuy=price~=nil and count>0 and state.slices>=price
         if card.benefit and card.frame.Visible then
-            local preview=Economy.preview(state,id,quantity)
+            local _,preview=self:updatePurchaseBenefit(card.benefit,id,quantity)
             if preview then
-                if id=='speed' then
-                    L.set(card.benefit,'Cycle: {before}s → {after}s\n+{rate}/s from apprentices',{before=format(preview.cycleBefore),after=format(preview.cycleAfter),rate=format(preview.rateGain)})
-                elseif id=='cafes' then
-                    L.set(card.benefit,'+{workers} apprentices\n+{rate}/s automatic income',{workers=preview.workersGain,rate=format(preview.rateGain)})
-                elseif state.rate>0 then
-                    L.set(card.benefit,'+{manual} per trick\n+{rate}/s from apprentices',{manual=format(preview.manualGain),rate=format(preview.rateGain)})
-                else
-                    L.set(card.benefit,'+{manual} pieces per trick',{manual=format(preview.manualGain)})
-                end
                 local seconds=preview.waitSeconds
                 if canBuy then L.set(card.waitHint,'Ready to buy')
                 elseif seconds and seconds<60 then L.set(card.waitHint,'~{time}s with apprentices',{time=math.ceil(seconds)})

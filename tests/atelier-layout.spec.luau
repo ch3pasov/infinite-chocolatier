@@ -129,6 +129,57 @@ return function(h)
   h.equals(ui.cards.craft.frame.Visible,false); h.equals(ui.cards.recipe.frame.Visible,false)
   h.equals(ui.balance.Text,'3/3 · Choose the apprentice spot, then hire for free.')
   assert(E.buy(d,'workers_1')); refresh('upgrades'); h.equals(ui.cards.speed.frame.Visible,true); h.equals(ui.cards.cafes.frame.Visible,true)
+  ui.selectedPlace='library'; refresh('kitchen')
+  local description=ui.cards.library_3.description
+  h.equals(description.Text,'+{manual} per trick\n+{rate}/s from apprentices')
+  local expected=E.preview(E.snapshot(d),'library_3',1)
+  h.equals(description.Args.manual,tostring(expected.manualGain)); h.equals(description.Args.rate,tostring(expected.rateGain))
+  E.credit(d,1000); assert(E.buy(d,'library_3')); refresh('kitchen')
+  h.equals(description.Text,'Bonus active · changing the look adds no bonus')
+  h.equals(ui.cards.library_3.buy.Text,'View · in your kitchen')
+  assert(E.buy(d,'library_3')); refresh('kitchen')
+  h.equals(description.Text,'Bonus active · changing the look adds no bonus')
+  h.equals(ui.cards.library_3.buy.Text,'View · owned')
+ end)
+
+ h.test('крупный предпросмотр показывает ту же прибавку, а после покупки переключается на действующий бонус',function()
+  local E=modules.Economy; local C=modules.KitchenCatalog
+  local Preview=require('../src/client/DecorPreview')
+  local stub=setmetatable({},{__index=function(_,key) return key end})
+  local Kitchen=luau.load(fs.readFile('src/client/Kitchen.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},
+   script={Parent=stub},Color3=R.Color3,
+   require=function(name)
+    if name=='KitchenDecor' then return {update=function() end} end
+    if name=='DecorPreview' then return Preview end
+    return modules[name] or {}
+   end,
+  },injectGlobals=true})()
+  local d=E.load({collectionVersion=2,slices=10000,stars=10,levels={kitchen=1,craft=5},owned={workers_1=true}})
+  d.ignorePrestige=true
+  local function state() local s=E.snapshot(d); s.ready=true; s.prestigeDisabled=true; return s end
+  local s=state(); local ui=setmetatable({state=s},Atelier)
+  local k=setmetatable({state=s,atelier=ui,preview=Preview.begin('clock_3',s),previewSpec=C.byId.clock_3,
+   previewTitle={},previewInfo={},previewBuy={}},{__index=Kitchen})
+  local card={}; ui:updatePurchaseBenefit(card,'clock_3',1); k:updatePreview()
+  h.equals(k.previewInfo.Text,card.Text)
+  for key,value in card.Args do h.equals(k.previewInfo.Args[key],value) end
+  h.equals(k.previewBuy.Text,'Buy · {price} pieces')
+  h.equals(k.previewBuy.Args.price,tostring(C.byId.clock_3.price))
+  local rate=E.rate(d); assert(E.buy(d,'clock_3'))
+  k.state=state(); ui.state=k.state; k:updatePreview()
+  h.equals(k.previewInfo.Text,'Bonus active · changing the look adds no bonus')
+  h.equals(k.previewBuy.Text,'Put away · owned'); h.equals(k.preview.confirmed,true)
+  assert(E.rate(d)>rate); rate=E.rate(d)
+  assert(E.buy(d,'clock_3')); k.state=state(); ui.state=k.state; k:updatePreview()
+  h.equals(E.rate(d),rate); h.equals(k.previewBuy.Text,'Place · owned')
+  h.equals(k.previewInfo.Text,'Bonus active · changing the look adds no bonus')
+  h.equals(ui:updatePurchaseBenefit({},'clock_3',1),false)
+  for _,id in {'plant','workers_1'} do
+   s=E.snapshot(E.load({collectionVersion=2,levels={kitchen=1}}))
+   k.state=s; ui.state=s; k.preview=Preview.begin(id,s); k.previewSpec=C.byId[id]; k:updatePreview()
+   h.equals(k.previewInfo.Text,if id=='plant' then 'Preview · not purchased' else '3/3 · Hire your prepaid apprentice below.')
+  end
  end)
 
 end

@@ -52,6 +52,7 @@ Key,Source,Context,Example,ru
 "Berry Clock","Berry Clock","","","Ягодные часы"
 "Berry Recipes","Berry Recipes","","","Ягодные рецепты"
 "Berry Temperer","Berry Temperer","","","Ягодный темперёр"
+"Bonus active · changing the look adds no bonus","Bonus active · changing the look adds no bonus","","","Бонус уже действует · выбор меняет только вид"
 "Bonus already added. This receipt stays until you leave.","Bonus already added. This receipt stays until you leave.","","","Премия уже на балансе. Квитанция доступна до выхода из игры."
 "Bonus received: +{bonus}","Bonus received: +{bonus}","","","Получена премия: +{bonus}"
 "Bug report","Bug report","","","Сообщение об ошибке"

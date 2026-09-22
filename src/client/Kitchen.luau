@@ -296,6 +296,11 @@ function Kitchen:updatePreview()
  local installed=state.equipped[self.previewSpec.group]==id
  local worker=self.previewSpec.group=='workers'
  L.set(self.previewInfo,if id=='workers_1' and not owned then '3/3 · Hire your prepaid apprentice below.' elseif not owned then 'Preview · not purchased' elseif installed and worker then 'Working in your kitchen' elseif installed then 'Placed in your kitchen' elseif not self.preview.confirmed then 'Preview · already owned' else 'Put away · purchase bonuses remain')
+ local group=self.previewSpec.group
+ if group=='temper' or group=='library' or group=='clock' then
+  if owned then L.set(self.previewInfo,'Bonus active · changing the look adds no bonus')
+  else self.atelier:updatePurchaseBenefit(self.previewInfo,id,1) end
+ end
  local price=state.prices[id]
  local available=not (worker and installed) and (owned or (price and state.slices>=price))
  self.previewBuy.AutoButtonColor=available==true
