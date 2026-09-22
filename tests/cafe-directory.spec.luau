@@ -3,6 +3,11 @@
 -- может произойти между запросом картинки и ответом Roblox.
 local fs=require('@lune/fs'); local luau=require('@lune/luau'); local R=require('@lune/roblox')
 local Queue=require('../src/shared/CafeQueue')
+local kitchenStub=setmetatable({},{__index=function(_,key) return key end})
+local Kitchen=luau.load(fs.readFile('src/client/Kitchen.luau'),{environment={
+ game={GetService=function() return {WaitForChild=function() return kitchenStub end} end},
+ script={Parent=kitchenStub},Color3=R.Color3,require=function() return {} end,
+},injectGlobals=true})()
 local function signal()
  local listeners={}
  return {Connect=function(_,fn) listeners[fn]=true; return {Disconnect=function() listeners[fn]=nil end} end,
@@ -38,8 +43,8 @@ local function fixture()
  },injectGlobals=true})()
  local player={UserId=1,GetAttribute=function(self) return self.visiting end}
  local remote={OnClientEvent=signal(),FireServer=function(_,id) table.insert(visits,id) end}
- local kitchen={player=player,opened=true,gui={Parent={}},atelier={remotes={cafeVisit=remote}},
-  controls={Disable=function() end,Enable=function() end}}
+ local kitchen=setmetatable({player=player,opened=true,view={},state={ready=true},gui={Parent={}},atelier={remotes={cafeVisit=remote}},
+  controls={Disable=function(self) self.enabled=false end,Enable=function(self) self.enabled=true end}},{__index=Kitchen})
  local directory=Directory.new(kitchen)
  local function add(id,name,count)
   local model={OwnerId=id,DisplayName=name,Username='user'..id,CafeCount=count or 0,CafeIndex=0,OwnerOnline=true}
@@ -50,6 +55,16 @@ local function fixture()
  return directory,add,requests,finish,visits,remote,player,function(dt) now+=dt end
 end
 return function(h)
+ h.test('отчёт блокирует список кафе и его закрытие не снимает блокировку прогулки',function()
+  local d,add,_,_,visits,remote=fixture(); local k=d.kitchen
+  add(2,'Alice'); k.view.diagnosticsOpen=true
+  remote.OnClientEvent:Fire('open'); h.equals(d.overlay.Visible,false)
+  k.view.diagnosticsOpen=false; d:open(); h.equals(d.overlay.Visible,true)
+  k.view.diagnosticsOpen=true; d:visit(2); h.equals(#visits,0)
+  remote.OnClientEvent:Fire('arrived')
+  h.equals(d.overlay.Visible,false); h.equals(k.controls.enabled,false)
+  k.view.diagnosticsOpen=false; k:refreshControls(); h.equals(k.controls.enabled,true)
+ end)
  h.test('неготовый портрет повторяется с паузой без пересоздания карточки',function()
   local d,add,requests,finish,_,_,_,advance=fixture()
   add(2,'Alice'); d:open(); local row=d.rows[2]

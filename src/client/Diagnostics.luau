@@ -128,7 +128,7 @@ function Diagnostics:update(state)
 end
 
 function Diagnostics:open()
-	if not self.gui then return end
+	if not self.gui or self.view.diagnosticsOpen then return end
 	local player = Players.LocalPlayer
 	local friends = "?"
 	local directory = workspace:FindFirstChild("KitchenIslands")
@@ -159,13 +159,16 @@ function Diagnostics:open()
 	self.view:endDrag(true)
 	self.view.diagnosticsOpen = true
 	self.overlay.Visible = true
+	if self.view.onOverlayChanged then self.view.onOverlayChanged() end
 	self.body.Parent.CanvasPosition = Vector2.zero
 end
 
 function Diagnostics:close()
+	if not self.gui or not self.view.diagnosticsOpen then return end
 	self.body:ReleaseFocus()
 	self.overlay.Visible = false
 	self.view.diagnosticsOpen = false
+	if self.view.onOverlayChanged then self.view.onOverlayChanged() end
 end
 
 return Diagnostics

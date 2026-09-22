@@ -4,6 +4,11 @@
 local fs=require('@lune/fs'); local luau=require('@lune/luau'); local R=require('@lune/roblox')
 local Wire=require('../src/shared/WorkstationWire'); local Action=require('../src/client/WorkstationAction')
 local Config=require('../src/shared/Config'); local Recipe=require('../src/shared/Recipe')
+local kitchenStub=setmetatable({},{__index=function(_,key) return key end})
+local Kitchen=luau.load(fs.readFile('src/client/Kitchen.luau'),{environment={
+ game={GetService=function() return {WaitForChild=function() return kitchenStub end} end},
+ script={Parent=kitchenStub},Color3=R.Color3,require=function() return {} end,
+},injectGlobals=true})()
 local function signal()
  local callbacks={}
  return {Connect=function(_,fn) callbacks[fn]=true; return {Disconnect=function() callbacks[fn]=nil end} end,
@@ -25,7 +30,7 @@ return function(h)
     return if key=='OwnerId' then 2 elseif key=='Origin' then self.origin else 0
    end}
   end
-  local k={player={UserId=1},origin=R.Vector3.zero,opened=true}
+  local k=setmetatable({player={UserId=1},origin=R.Vector3.zero,opened=true,state={ready=true},view={}},{__index=Kitchen})
   function k:setWalking() self.watchPeer=nil; self.focus=false end
   local online=setmetatable({kitchen=k,peers={},packets={},cycles={},elapsed=0,scan=0,request=0,
    remote={FireServer=function() end},updateIslands=function() end},Online)
@@ -124,8 +129,8 @@ return function(h)
    return {GetAttribute=function(_,key) return attributes[key] end,SetAttribute=function(_,key,value) attributes[key]=value end,GetDescendants=function() return descendants or {} end}
   end
   local remote={OnClientEvent=signal(),FireServer=function(_,a) table.insert(calls,a or 'request') end}
-  local k={player=localPlayer,world={GetChildren=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
-   state={ready=true},atelier={remotes={kitchenAction=remote}}}
+  local k=setmetatable({player=localPlayer,world={GetChildren=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
+   state={ready=true},atelier={remotes={kitchenAction=remote}}},{__index=Kitchen})
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
   function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
   local modules={Catalog=require('../src/shared/KitchenCatalog'),Structure=require("../src/shared/KitchenStructure"),Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function(room,state) room.testEquipped=state.equipped end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
@@ -212,9 +217,17 @@ return function(h)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)
   attrs.KitchenOrigin=R.Vector3.new(24,0,1000)
-  models={model(1,k.origin),model(2,attrs.KitchenOrigin)}
+  local backSign={Name='HomeCafePrompt',Enabled=true,IsA=function(_,class) return class=='ProximityPrompt' end}
+  models={model(1,k.origin),model(2,attrs.KitchenOrigin,{backSign})}
   online:step(.5); assert(online.peers['2:0']); h.equals(#stations,2)
   local p=online.peers['2:0']; assert(p.prompt.Enabled)
+  localPlayer.GetAttribute=function(_,name) return if name=='VisitingKitchen' then 2 else nil end
+  online:step(.5); h.equals(backSign.Enabled,true)
+  k.view.diagnosticsOpen=true; online:blockPrompts()
+  h.equals(p.prompt.Enabled,false); h.equals(backSign.Enabled,false)
+  online:step(.5); h.equals(p.prompt.Enabled,false); h.equals(backSign.Enabled,false)
+  k.view.diagnosticsOpen=false; online:step(.5); h.equals(p.prompt.Enabled,true); h.equals(backSign.Enabled,true)
+  localPlayer.GetAttribute=function() return nil end; online:step(.5)
   local queue=online.queue; local station=online.queueStations[1].station
   models[2]:SetAttribute('CafeAppearance',',,clock_5,plant,,'); online:step(.5)
   h.equals(p.testEquipped.clock,'clock_5'); h.equals(p.testEquipped.plant,'plant')

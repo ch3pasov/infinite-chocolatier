@@ -104,7 +104,7 @@ function Journal.new(gui,view)
 end
 
 function Journal:open()
-	if not self.state or not self.state.ready or self.view.journalOpen then return end
+	if not self.state or not self.state.ready or self.view.journalOpen or self.view.diagnosticsOpen then return end
 	if self.canOpen and not self.canOpen() then return end
 	self.view:endDrag(true); self.view.journalOpen=true; self.overlay.Visible=true
 	if self.onToggle then self.onToggle(true) end

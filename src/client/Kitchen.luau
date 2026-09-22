@@ -64,7 +64,7 @@ function Kitchen.new(view,atelier)
  local world=self.stage:createWorld("KitchenStations"); self.world=world
  local camera=self.stage:createCamera("KitchenCamera",45); self.camera=camera
  self.walkCamera=self.stage:createCamera("KitchenWalkCamera",70)
- self.walkController=WalkCamera.new(player,self.walkCamera,function() return self.opened and not self.focus and not self.shopping and not self.browsing and not view.journalOpen and not view.diagnosticsOpen end)
+ self.walkController=WalkCamera.new(player,self.walkCamera,function() return self:canWalk() end)
  Shell.new(world,self.origin)
  self.stations={Station.new(view,world,self.origin,-3.7,true),Station.new(view,world,self.origin,3.7,false)}
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
@@ -102,20 +102,13 @@ function Kitchen.new(view,atelier)
  -- на каталог или наблюдение за чужим столом.
  self.journalButton=button(gui,"WalkingJournal","Journal",UDim2.new(.5,-72,0,12),UDim2.fromOffset(144,36),function() atelier.journal:open() end)
  self.journalButton.Visible=false; fitEnter()
- atelier.journal.canOpen=function() return not self.opened or self:canReadJournal() end
- atelier.journal.onToggle=function(open)
-  if self.online then self.online.scan=.5 end
-  if self.opened then
-   if open then self.controls:Disable()
-   elseif not self.focus and not self.shopping and not self.browsing then self.controls:Enable() end
-  end
- end
+ self:bindOverlays()
  self.prompts={}
  local function prompt(name,caption,position,callback)
   local anchor=part(world,name,Vector3.new(.2,.2,.2),self.origin+position,cocoa); anchor.Transparency=1
   local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(caption); prompt.ObjectText=L.text(name)
   prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
-  prompt.Triggered:Connect(function() if self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not view.journalOpen then callback() end end)
+  prompt.Triggered:Connect(function() if self:canWalk() then callback() end end)
   self.prompts[name]=prompt
  end
  prompt('My worktable','Cut chocolate',Vector3.new(-3.7,2,3),function() self:setOpen(false) end)
@@ -140,16 +133,39 @@ function Kitchen.new(view,atelier)
  self.render=RunService.RenderStepped:Connect(function(dt) self:step(dt) end)
  gui.Destroying:Connect(function()
   self.render:Disconnect(); self.walkController:destroy()
-  self.characterConnection:Disconnect(); self:setAvatarVisible(true); self.controls:Enable()
+  self.characterConnection:Disconnect(); self:setAvatarVisible(true)
   self.online:destroy()
   self.directory:destroy()
   for _,station in self.stations do station:destroy() end
+  view.onOverlayChanged=nil; self.controls:Enable()
  end)
  view.gui.Destroying:Connect(function() gui:Destroy() end)
  return self
 end
+function Kitchen:canWalk()
+ return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen) or false
+end
+function Kitchen:refreshControls()
+ if self:canWalk() then self.controls:Enable()
+ else
+  self.controls:Disable()
+  if self.walkController then self.walkController:resetInput() end
+  for _,prompt in self.prompts or {} do prompt.Enabled=false end
+  if self.online then self.online:blockPrompts() end
+ end
+end
+function Kitchen:bindOverlays()
+ -- Закрытие верхнего окна не снимает блокировку нижнего. Состояние
+ -- персонажа и камеры считается заново по всем открытым интерфейсам.
+ self.view.onOverlayChanged=function()
+  if self.online then self.online.scan=.5 end
+  self:refreshControls()
+ end
+ self.atelier.journal.canOpen=function() return not self.opened or self:canReadJournal() end
+ self.atelier.journal.onToggle=self.view.onOverlayChanged
+end
 function Kitchen:canReadJournal()
- return self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.diagnosticsOpen
+ return self:canWalk()
 end
 function Kitchen:setAvatarVisible(visible)
  self.avatarVisibility:set(self.player.Character,visible)
@@ -162,13 +178,13 @@ function Kitchen:setWalking()
  self.focus=false; self.shopping=false; self.watchPeer=nil
  self:setAvatarVisible(true)
  pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,true) end)
- if self.view.journalOpen then self.controls:Disable() else self.controls:Enable() end
+ self:refreshControls()
  self.stage:activate(self.world,self.walkCamera)
  self.walkController:step(0)
  self.atelier.remotes.kitchenMode:FireServer('walk')
 end
 function Kitchen:openShop()
- if not self.state or not self.state.ready or self.state.levels.kitchen<1 or self.view.journalOpen then return end
+ if not self:canWalk() or self.state.levels.kitchen<1 then return end
  self.shopping=true; self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  local shop=self.atelier
  shop.external=true; shop:setMode('kitchen'); shop.overlay.Parent=self.gui; shop:fit(); shop:setOpen(true)
@@ -178,6 +194,7 @@ function Kitchen:openShop()
  end
 end
 function Kitchen:setOpen(open)
+ if self.view.diagnosticsOpen then return end
  if open and not (self.state and self.state.ready) then return end
  self.view:endDrag(true)
  self.opened=open; self.root.Visible=open; self.enter.Visible=not open
@@ -218,7 +235,8 @@ function Kitchen:step(dt)
  if self.journalButton then self.journalButton.Visible=self:canReadJournal() and not self.view.journalOpen or false end
  if not self.opened or not self.state or not self.state.ready then return end
  local state=self.state; local working=state.levels.workers>0
- for name,prompt in self.prompts do prompt.Enabled=not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
+ local interactive=self:canWalk()
+ for name,prompt in self.prompts do prompt.Enabled=interactive and (name~='Apprentice worktable' or working) and (name~='Kitchen upgrades' or state.levels.kitchen>0) end
  self.panel.Visible=self.focus
  self.stations[1].actor:setVisible(false)
  if not working and self.focus and not self.watchPeer then self:setWalking() end
@@ -259,6 +277,7 @@ function Kitchen:step(dt)
  self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides,self.view.tileWidth,self.view.tileHeight),working or variant>0,dt)
 end
 function Kitchen:previewDecor(id)
+ if self.view.diagnosticsOpen or self.view.journalOpen then return end
  local spec=Catalog.byId[id]
  if not spec or not self.state or not self.state.ready then return end
  if self.atelier.external then self.atelier:setOpen(false) end
@@ -313,7 +332,7 @@ function Kitchen:updateOnboarding()
 end
 
 function Kitchen:watchPlayer(peer)
- if not self.opened or self.shopping or self.view.journalOpen or not self.state or not self.state.ready then return end
+ if not self:canWalk() then return end
  self.watchPeer=peer; self.focus=true
  self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  self.stage:activate(self.world,self.camera); self:step(0)

@@ -70,17 +70,18 @@ function Directory.new(kitchen)
 end
 function Directory:open()
  local k=self.kitchen
- if not k.opened or k.focus or k.shopping or (k.view and k.view.journalOpen) then return end
+ if not k:canWalk() then return end
  k.browsing=true; k.controls:Disable(); self.busy=false; self.noticeUntil=nil
  self.overlay.Visible=true; self:refresh()
 end
 function Directory:close()
  self.overlay.Visible=false; self.busy=false
  local k=self.kitchen; k.browsing=false
- if k.opened and not k.focus and not k.shopping and not (k.view and k.view.journalOpen) then k.controls:Enable() end
+ k:refreshControls()
 end
 function Directory:visit(id)
  if not self.overlay.Visible or self.busy then return end
+ if self.kitchen.view.diagnosticsOpen or self.kitchen.view.journalOpen then return end
  local allowed=false
  for _,entry in self.entries do if entry.owner==id then allowed=true; break end end
  if not allowed then return end
