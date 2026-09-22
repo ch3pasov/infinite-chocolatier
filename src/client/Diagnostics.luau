@@ -85,7 +85,7 @@ function Diagnostics.new(playerGui, view)
 	body.Focused:Connect(function()
 		-- Стандартная обработка первого клика сама ставит курсор после Focused.
 		task.defer(function()
-			if body:IsFocused() then body.CursorPosition = 1; body.SelectionStart = #body.Text + 1 end
+			if gui.Parent and body:IsFocused() then body.CursorPosition = 1; body.SelectionStart = #body.Text + 1 end
 		end)
 	end)
 	local function fitText()
@@ -100,15 +100,20 @@ function Diagnostics.new(playerGui, view)
 	body:GetPropertyChangedSignal("Text"):Connect(fitText)
 	badge.Activated:Connect(function() self:open() end)
 	close.Activated:Connect(function() self:close() end)
-	UserInputService.InputBegan:Connect(function(input)
+	local escapeConnection = UserInputService.InputBegan:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.Escape and overlay.Visible then self:close() end
 	end)
-	game:GetService("ScriptContext").Error:Connect(function(message, trace, source)
+	local errorConnection = game:GetService("ScriptContext").Error:Connect(function(message, trace, source)
 		if not source or not source:IsDescendantOf(Players.LocalPlayer.PlayerScripts) then return end
 		local entry = string.sub(message, 1, 300) .. " | " .. string.sub(trace, 1, 600)
 		if self.errors[1] == entry then return end
 		table.insert(self.errors, 1, entry)
 		if #self.errors > 3 then table.remove(self.errors) end
+	end)
+	local ownerCleanup = view.gui.Destroying:Connect(function() gui:Destroy() end)
+	gui.Destroying:Connect(function()
+		escapeConnection:Disconnect(); errorConnection:Disconnect(); ownerCleanup:Disconnect()
+		view.diagnosticsOpen = false
 	end)
 	self:refreshBadge()
 	return self

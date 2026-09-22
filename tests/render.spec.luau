@@ -48,6 +48,21 @@ local function render(mode)
 end
 
 return function(harness)
+	harness.test("отложенный разлёт старого раунда не меняет новый раунд с той же фазой", function()
+		local root = R.Instance.new("Frame")
+		local view = setmetatable({ active = "cut", cutIndex = 1, paths = { {} }, status = {},
+			trick = Config.Trick, tileWidth = 50, tileHeight = 80, animationToken = 0, tweens = {},
+			hintLayer = root, progressLayer = root, seamLayer = root, intactLayer = { Visible = true },
+			drawSeam = function() end,
+			tweenOffsets = function() error("старый callback запустил разлёт") end,
+		}, exports.Game)
+		view:finishCut()
+		harness.equals(view.active, "exploding")
+		view:cancelTweens() -- Новый раунд может уже дойти до одноимённой фазы.
+		while #pending > 0 do table.remove(pending, 1)() end
+		harness.equals(view.intactLayer.Visible, true)
+		root:Destroy()
+	end)
 	harness.test("эффект показывает точное начисление и удаляет свои объекты", function()
 		local root = R.Instance.new("Frame")
 		root.AbsoluteSize = V.new(400, 800)

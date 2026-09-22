@@ -309,9 +309,10 @@ function Atelier.new(gui, gameView, remotes)
 	self.saved.Size = UDim2.new(1, -32, 0, 24)
 	self.open.Activated:Connect(function() self:setOpen(true) end)
 	close.Activated:Connect(function() self:setOpen(false) end)
-	UserInputService.InputBegan:Connect(function(input)
+	local escapeConnection = UserInputService.InputBegan:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.Escape and self.overlay.Visible then self:setOpen(false) end
 	end)
+	gui.Destroying:Connect(function() escapeConnection:Disconnect() end)
 	self.sidebar = box(gameView.root, "Sidebar", Theme.panel)
 	self.sidebar.ZIndex = 900
 	self.sidebar.Visible = false

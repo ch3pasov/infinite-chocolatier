@@ -51,12 +51,15 @@ if Config.Scene3D.enabled then
 	Scene3D.new(gameView)
 	if Config.Kitchen.enabled then kitchen = require(script.Kitchen).new(gameView, atelier) end
 end
-remotes.stateSync.OnClientEvent:Connect(function(state)
+local stateConnection = remotes.stateSync.OnClientEvent:Connect(function(state)
+	if gameView.destroyed then return end
     atelier:update(state)
 	if kitchen then kitchen:update(state) end
     if state.reward then gameView:playRewardEffect(state.reward) end
 	if diagnostics then diagnostics:update(state) end
 end)
+-- RemoteEvent живёт дольше GUI и иначе удерживает всю старую сцену.
+gui.Destroying:Connect(function() stateConnection:Disconnect() end)
 -- PlayerAdded может сработать раньше подписки клиента, поэтому состояние
 -- запрашивается явно уже после создания интерфейса и обработчика.
 remotes.requestState:FireServer()

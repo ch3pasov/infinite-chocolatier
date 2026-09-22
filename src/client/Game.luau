@@ -453,7 +453,22 @@ function Game.new(gui: ScreenGui, remotes)
 	self:layout()
 	self:bindInput()
 	self:bindViewport()
+	self.cleanup = gui.Destroying:Connect(function() self:destroy() end)
 	return self
+end
+
+function Game:destroy()
+	if self.destroyed then return end
+	self.destroyed = true
+	-- Удаление интерфейса не является отпусканием жеста: не засчитываем
+	-- разрез и не запускаем возврат деталей в уже исчезающей сцене.
+	self.drag = nil
+	self.active = "destroyed"
+	self:cancelTweens()
+	for _, name in { "began", "changed", "ended", "focusReleased", "menuOpened", "textFocused", "viewportChanged", "cleanup" } do
+		local connection = self[name]
+		if connection then connection:Disconnect(); self[name] = nil end
+	end
 end
 
 -- Раскладку фиксируем на раунд: поворот телефона не перемещает куски под пальцем.
@@ -541,6 +556,7 @@ function Game:bindViewport()
 end
 
 function Game:fitViewport()
+	if self.destroyed then return end
 	local viewport = self.root.AbsoluteSize
 	if viewport == self.viewportSize then
 		return
@@ -832,11 +848,12 @@ function Game:setPieceOffset(name: string, offset: Vector2)
 end
 
 function Game:cancelTweens()
+	-- Сначала делаем недействительными callbacks, в том числе вызванные Cancel.
+	self.animationToken += 1
 	for _, tween in self.tweens do
 		tween:Cancel()
 	end
 	self.tweens = {}
-	self.animationToken += 1
 end
 
 function Game:tweenOffsets(targets, duration: number, callback)
@@ -1307,8 +1324,9 @@ function Game:finishCut()
 	for _, name in self.trick.pieceOrder do
 		targets[name] = self:definitionOffset(self.trick.exploded[name])
 	end
+	local token = self.animationToken
 	task.delay(0.14, function()
-		if self.active ~= "exploding" then
+		if self.active ~= "exploding" or self.animationToken ~= token then
 			return
 		end
 		-- До этого кадра все 25 дольки были клонами одного шаблона. Теперь
@@ -1366,6 +1384,7 @@ function Game:showRewardMarker()
 end
 
 function Game:playRewardEffect(amount: number)
+	if self.destroyed then return end
 	if type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount == math.huge then return end
 	local settings = Config.Feedback
 	local piece = self.pieces[self.trick.rewardPiece]

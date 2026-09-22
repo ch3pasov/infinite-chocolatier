@@ -97,8 +97,14 @@ function Journal.new(gui,view)
 	end
 	chip.Activated:Connect(function() self:open() end)
 	close.Activated:Connect(function() self:close() end)
-	game:GetService("UserInputService").InputBegan:Connect(function(input)
+	local escapeConnection=game:GetService("UserInputService").InputBegan:Connect(function(input)
 		if input.KeyCode==Enum.KeyCode.Escape and overlay.Visible then self:close() end
+	end)
+	-- Журнал — соседний ScreenGui; удаление основного GUI само его не убирает.
+	local ownerCleanup=gui.Destroying:Connect(function() journalGui:Destroy() end)
+	journalGui.Destroying:Connect(function()
+		escapeConnection:Disconnect(); ownerCleanup:Disconnect()
+		view.journalOpen=false
 	end)
 	return self
 end

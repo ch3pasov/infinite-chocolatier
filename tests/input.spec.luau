@@ -16,12 +16,14 @@ local function signal()
 	local handlers = {}
 	return {
 		Connect = function(_, callback)
-			table.insert(handlers, callback)
-			return {}
+			local connection = { Connected = true }
+			function connection:Disconnect() self.Connected = false end
+			table.insert(handlers, { connection = connection, callback = callback })
+			return connection
 		end,
 		Fire = function(_, ...)
-			for _, callback in handlers do
-				callback(...)
+			for _, handler in handlers do
+				if handler.connection.Connected then handler.callback(...) end
 			end
 		end,
 	}
@@ -55,6 +57,7 @@ local function fixture(phase)
 	})()
 	local view = setmetatable({
 		active = phase or "cut", cutIndex = 1, cutProgress = 0,
+		tweens = {}, animationToken = 0,
 		largeProgress = 0, stripProgress = 0, completed = 0,
 		paths = { { geom = Geom.path({ V.zero, V.new(100, 0) }) } },
 		status = {}, startPip = { Visible = true, Size = Roblox.UDim2.fromOffset(20, 20) },
@@ -83,6 +86,32 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
+	harness.test("удалённая игра отпускает все подписки и не завершает старый жест", function()
+		local view, events = fixture(); local pointer = input("Touch")
+		events.InputBegan:Fire(pointer, false); move(events, pointer, 50)
+		local connections = { view.began, view.changed, view.ended, view.focusReleased, view.menuOpened, view.textFocused }
+		view.viewportChanged = signal():Connect(function() end); table.insert(connections, view.viewportChanged)
+		local cancelled = 0
+		view.tweens = { { Cancel = function() cancelled += 1 end } }
+		view:destroy(); local token = view.animationToken; view:destroy()
+		harness.equals(cancelled, 1); harness.equals(view.animationToken, token)
+		for _, connection in connections do harness.equals(connection.Connected, false) end
+		harness.equals(view.drag, nil)
+		move(events, pointer, 100); events.InputEnded:Fire(pointer)
+		events.InputBegan:Fire(input("Touch"), false)
+		events.MenuOpened:Fire(); events.TextBoxFocused:Fire({}); events.WindowFocusReleased:Fire()
+		events:finishAnimation()
+		harness.equals(view.completed, 0); harness.equals(view.cutProgress, 50)
+	end)
+	harness.test("доводка разреза отменяется при удалении интерфейса", function()
+		local view, events = fixture(); local pointer = input("Touch")
+		events.InputBegan:Fire(pointer, false); move(events, pointer, 95); events.InputEnded:Fire(pointer)
+		harness.equals(view.active, "finishingCut")
+		view:destroy(); events:finishAnimation()
+		harness.equals(view.completed, 0); harness.equals(view.cutProgress, 95)
+		-- Поздняя награда не пытается создать объекты на уже удалённом Root.
+		view:playRewardEffect(10)
+	end)
 	harness.test("меню Roblox и текстовое поле блокируют новый разрез даже без processed",function()
 		for _,mode in {'menu','text'} do
 			local view,events=fixture()
