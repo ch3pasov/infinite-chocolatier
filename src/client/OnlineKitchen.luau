@@ -37,10 +37,14 @@ function Online:blockPrompts()
   for _,part in model:GetDescendants() do if part:IsA('ProximityPrompt') then part.Enabled=false end end
  end
 end
+function Online:releaseStations(peer)
+ for _,station in peer.stations do station:destroy() end
+ peer.stations={}; peer.station=nil
+end
 function Online:remove(key)
  local peer=self.peers[key]; if not peer then return end
  if self.kitchen.watchPeer==peer then self.kitchen:setWalking() end
- for _,station in peer.stations do station:destroy() end
+ self:releaseStations(peer)
  peer.world:Destroy(); self.peers[key]=nil
 end
 function Online:add(model)
@@ -126,8 +130,9 @@ function Online:step(dt)
  local k=self.kitchen; self.elapsed+=dt; self.scan+=dt
  if k.opened then self.lastPublished=nil end
  if self.elapsed>=.1 and not k.opened and k.state and k.state.ready then self.elapsed=0; self:publishPlayer() end
- if not k.opened then return end
- self.request+=dt; if self.request>=1.1 then self.request=0; self.remote:FireServer() end
+ if k.opened then
+  self.request+=dt; if self.request>=1.1 then self.request=0; self.remote:FireServer() end
+ end
  if self.scan>=.5 then
   self.scan=0
   local directory=Workspace:FindFirstChild('KitchenIslands'); local models=if directory then directory:GetChildren() else {}
@@ -141,8 +146,15 @@ function Online:step(dt)
      -- Между опросами хозяин может вернуться с тем же ключом комнаты.
      -- Прежняя оболочка тогда хранит удалённую модель и старые координаты.
      if peer and (peer.model~=model or peer.origin~=origin) then self:remove(key); peer=nil end
-     if not peer then peer=self:add(model) end
-     if not peer.staff then self:updateDecor(peer,model) end
+     if not peer and k.opened then peer=self:add(model) end
+     if peer then
+      if k.opened then
+       if not peer.staff then self:updateDecor(peer,model) end
+      else
+       if peer.station then self:releaseStations(peer) end
+       peer.prompt.Enabled=false
+      end
+     end
     end
    end
   end
@@ -151,6 +163,9 @@ function Online:step(dt)
   for id in self.cycles do if not owners[id] then self.cycles[id]=nil end end
   self:updateIslands(models)
  end
+ -- Ушедшие владельцы очищаются и во время ручной резки. Пока кухня
+ -- закрыта, новые модели, запросы чужих поз и анимации не запускаются.
+ if not k.opened then return end
  local now=os.clock()
  for _,entry in self.queueStations or {} do
   local phase=self:cyclePhase(entry.source,now)
@@ -173,7 +188,7 @@ function Online:step(dt)
    peer.stations[2]=Station.new(k.view,peer.world,peer.origin,3.7,false)
    peer.station=peer.stations[1]
   elseif not near and peer.station then
-   for _,station in peer.stations do station:destroy() end; peer.stations={}; peer.station=nil
+   self:releaseStations(peer)
   end
   peer.prompt.Enabled=near and k:canWalk()
   if peer.station then
@@ -219,7 +234,9 @@ function Online:updateIslands(models)
  local current; local records={}; local sources={}; local prompts={}
  for _,model in models do
   local id=model:GetAttribute('OwnerId'); local n=model:GetAttribute('CafeIndex') or 0
-  if id then
+  -- Атрибуты приходят отдельно от Model: до Origin комнату нельзя
+  -- использовать ни как место наблюдения, ни как источник дальней копии.
+  if id and model:GetAttribute('Origin') then
    local key=Queue.key(id,n); if key==currentKey then current=model end
    table.insert(records,{owner=id,index=n,online=model:GetAttribute('OwnerOnline'),count=model:GetAttribute('CafeCount') or 0})
    if not sources[id] or n==0 then sources[id]=model end
@@ -244,11 +261,22 @@ function Online:updateIslands(models)
   if prompt.ActionText~=text then prompt.ActionText=text end
   if prompt.Enabled~=enabled then prompt.Enabled=enabled end
  end
- if not current then return end
+ if not current then self:clearQueue(); return end
  local origin=current:GetAttribute('Origin')
- self:updateLocalVisibility(origin)
  local key=currentKey..':'..tostring(origin)
  for _,entry in preview do key..='/'..Queue.key(entry.owner,entry.index)..':'..tostring(sources[entry.owner]:GetAttribute('HasApprentice')) end
+ if not k.opened then
+  -- Неизменную очередь можно быстро вернуть при прогулке, но старые
+  -- комнаты не удерживаются до следующего открытия после ухода соседей,
+  -- престижа или замены серверного Instance. Новую очередь строим при входе.
+  local stale=self.queueKey~=key
+  for _,entry in self.queueStations or {} do
+   if entry.source~=sources[entry.owner] then stale=true; break end
+  end
+  if stale then self:clearQueue() end
+  return
+ end
+ self:updateLocalVisibility(origin)
  if self.queueKey==key then self:refreshQueueStaff(sources); self:refreshQueueDecor(sources); return end
  local anchor=currentKey..':'..tostring(origin)
  if self.queueAnchor~=anchor then

@@ -82,9 +82,9 @@ return function(h)
  h.test('неподвижная ручная станция шлёт редкий снимок, движение сохраняет частоту',function()
   local now=0; local calls={}
   local stub=setmetatable({},{__index=function(_,key) return key end})
-  local modules={WorkstationWire=Wire,WorkstationAction=Action}
+  local modules={WorkstationWire=Wire,WorkstationAction=Action,CafeQueue=require('../src/shared/CafeQueue')}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
-   game={GetService=function() return {WaitForChild=function() return stub end} end},
+   game={GetService=function() return {WaitForChild=function() return stub end,FindFirstChild=function() return nil end} end},
    script={Parent=stub},require=function(name) return modules[name] or {} end,
    os={clock=function() return now end},
   },injectGlobals=true})()
@@ -93,8 +93,8 @@ return function(h)
   for _,name in Config.Trick.pieceOrder do
    view.pieces[name]={origin=Vector2.zero,motion={Position={X={Offset=0},Y={Offset=0}},Visible=false}}
   end
-  local k={opened=false,state={ready=true},view=view}
-  local online=setmetatable({kitchen=k,elapsed=0,scan=0,
+  local k={opened=false,state={ready=true},view=view,player={UserId=1,GetAttribute=function() end}}
+  local online=setmetatable({kitchen=k,elapsed=0,scan=0,peers={},packets={},cycles={},
    remote={FireServer=function(_,a) table.insert(calls,a) end}},Online)
   -- За десять секунд было сто одинаковых пакетов. Редкий повтор остаётся,
   -- чтобы серверный лимит при сетевом всплеске не терял последнюю позу навсегда.
@@ -263,6 +263,48 @@ return function(h)
   h.equals(cafe.stations[1].actor.identity,101); h.equals(cafe.stations[2].actor.identity,102)
   h.equals(cafe.stations[1].actor.visible,true); h.equals(cafe.stations[2].actor.visible,true)
   models[2]:SetAttribute('Staff1',103); online:step(.1); h.equals(cafe.stations[1].actor.identity,103)
+  -- Возвращение к резке не должно останавливать уборку: сервер может
+  -- удалить последнее кафе соседа, пока экран кухни больше не открыт.
+  online.publishPlayer=function(self) self.testPublished=(self.testPublished or 0)+1 end
+  local oldStations=table.clone(cafe.stations); local oldWorld=cafe.world
+  k.opened=false; online:step(.5)
+  h.equals(cafe.station,nil,'невидимые близкие станции должны освобождаться')
+  h.equals(cafe.prompt.Enabled,false); assert(oldStations[1].destroyed and oldStations[2].destroyed)
+  assert(not oldWorld.destroyed,'оболочка существующего кафе сохраняется для возвращения')
+  local cachedQueue=online.queue
+  online:step(.5); h.equals(online.queue,cachedQueue,'неизменившаяся очередь остаётся кешем')
+  local queueStation=online.queueStations[1].station
+  remote.OnClientEvent:Fire(2,action); models={models[1]}; online:step(.5)
+  h.equals(online.peers['2:1'],nil); assert(oldWorld.destroyed)
+  h.equals(online.packets[2],nil); h.equals(online.cycles[2],nil)
+  assert(cachedQueue.destroyed and queueStation.destroyed); h.equals(online.queue,nil)
+  local count=#objects
+  models[1]:SetAttribute('CafeCount',20); models[2]=model(3,R.Vector3.new(512,0,1000))
+  for _=1,10 do online:step(.5) end
+  h.equals(#objects,count,'закрытая кухня не строит комнаты новых игроков или купленные кафе')
+  h.equals(online.peers['3:0'],nil); assert(online.testPublished>0,'ручные позы продолжают отправляться')
+  k.opened=true; online:step(.5)
+  assert(online.queue and online.peers['3:0'],'открытие восстанавливает только актуальную очередь')
+  -- Атрибут визита может прийти раньше модели назначения. Предыдущая
+  -- очередь не должна оставаться на экране или удерживать ушедшие источники.
+  local oldQueue=online.queue; local oldStation=online.queueStations[1].station
+  localPlayer.GetAttribute=function(_,name) return if name=='VisitingKitchen' then 99 else nil end
+  online:step(.5); h.equals(online.queue,nil); assert(oldQueue.destroyed and oldStation.destroyed)
+  h.equals(#online.queueStations,0)
+  localPlayer.GetAttribute=function() return nil end; online:step(.5)
+  assert(online.queue,'репликация домашней комнаты восстанавливает очередь')
+  local incompleteQueue=online.queue
+  models[1]:SetAttribute('Origin',nil); online:step(.5)
+  h.equals(online.queue,nil); assert(incompleteQueue.destroyed,'частичный источник не сохраняет старую очередь')
+  models[1]:SetAttribute('Origin',k.origin); online:step(.5); assert(online.queue)
+  -- Под тем же адресом может появиться новый серверный Instance. Во
+  -- время резки старый источник не удерживается до следующей прогулки.
+  k.opened=false; local replacedQueue=online.queue
+  local replacement=model(1,k.origin); replacement:SetAttribute('CafeCount',20)
+  models[1]=replacement; online:step(.5)
+  h.equals(online.queue,nil); assert(replacedQueue.destroyed)
+  local noBuild=#objects; online:step(.5); h.equals(#objects,noBuild)
+  k.opened=true; online:step(.5); assert(online.queue)
   local previous=online.packets[2]; online:destroy(); remote.OnClientEvent:Fire(2,action)
   h.equals(online.packets[2],previous)
  end)
