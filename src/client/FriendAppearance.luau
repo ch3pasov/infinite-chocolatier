@@ -25,11 +25,27 @@ end
 local cache={}
 local pending={}
 local order={}
-local function description(players,userId)
- while pending[userId] do task.wait() end
+local function description(players,userId,isCurrent)
+ local request=pending[userId]
+ if request then
+  -- Копия может исчезнуть, пока другая станция ждёт Roblox. Отменяем
+  -- собственное ожидание, не трогая запрос, нужный оставшимся станциям.
+  while not request.done do
+   if isCurrent and not isCurrent() then return nil end
+   task.wait()
+  end
+  if isCurrent and not isCurrent() then return nil end
+  -- Уже ожидающие копии получают тот же сбой, а не создают по запросу
+  -- каждая. Новая попытка после ответа по-прежнему может загрузить друга.
+  if not request.ok then return nil,request.error end
+ end
+ if isCurrent and not isCurrent() then return nil end
  if cache[userId] then return cache[userId]:Clone() end
- pending[userId]=true
+ request={done=false}; pending[userId]=request
  local ok,result=pcall(function() return players:GetHumanoidDescriptionFromUserIdAsync(userId) end)
+ request.ok=ok
+ request.error=if ok then nil else result
+ request.done=true
  pending[userId]=nil
  if not ok then return nil,result end
  -- Тестовые описания без Clone не попадают в кэш Roblox-объектов.
@@ -42,7 +58,7 @@ end
 function Appearance.createRig(players,defaultDescription,userId,rigType,isCurrent)
  if isCurrent and not isCurrent() then return false,nil,false end
  local appearance,loadError
- if userId and userId>0 then appearance,loadError=description(players,userId) end
+ if userId and userId>0 then appearance,loadError=description(players,userId,isCurrent) end
  -- Запрос описания может ждать сеть. Устаревшее назначение не должно после
  -- ответа запускать ещё и тяжёлое создание персонажа.
  if isCurrent and not isCurrent() then
