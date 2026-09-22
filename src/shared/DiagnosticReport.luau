@@ -39,7 +39,23 @@ function Report.build(s)
 	end
 	field("First apprentice", (state.owned or {}).workers_1 == true)
 	field("Friend list", s.friends)
-	field("Client friend rigs loaded/assigned", s.appearances)
+	local appearances, actorLoads
+	if s.actors then
+		local assigned, loaded = 0, 0
+		local counts = {ready=0, loading=0, retrying=0, fallback=0, failed=0}
+		for _, actor in s.actors do
+			if (actor.assigned or 0)>0 then
+				assigned+=1
+				if actor.appearance==actor.assigned then loaded+=1 end
+			end
+			-- Скрытая станция игрока при прогулке не означает пропавшего повара.
+			if actor.visible and counts[actor.status]~=nil then counts[actor.status]+=1 end
+		end
+		appearances=tostring(loaded).."/"..tostring(assigned)
+		actorLoads=string.format("%d/%d/%d/%d/%d",counts.ready,counts.loading,counts.retrying,counts.fallback,counts.failed)
+	end
+	field("Client friend rigs loaded/assigned", appearances)
+	field("Visible actor loads ready/loading/retrying/fallback/failed", actorLoads)
 	for index, message in s.errors or {} do
 		if index > 3 then break end
 		-- Ограничение сохраняет читаемость при повторяющейся ошибке движка.

@@ -1,6 +1,21 @@
 --!nonstrict
 local Report = require("../src/shared/DiagnosticReport")
 return function(h)
+	h.test("репорт учитывает назначения без модели и отличает их от скрытых станций",function()
+		local report=Report.build({actors={
+			{assigned=7,appearance=7,status='ready',visible=true},
+			{assigned=8,appearance=0,status='loading',visible=true},
+			{assigned=9,appearance=0,status='retrying',visible=true},
+			{assigned=10,appearance=0,status='fallback',visible=true},
+			{assigned=0,appearance=0,status='failed',visible=true},
+			{assigned=11,appearance=0,status='failed',visible=false},
+		}})
+		assert(report:find('Client friend rigs loaded/assigned: 1/5',1,true))
+		assert(report:find('Visible actor loads ready/loading/retrying/fallback/failed: 1/1/1/1/1',1,true))
+		local empty=Report.build({actors={}})
+		assert(empty:find('Client friend rigs loaded/assigned: 0/0',1,true))
+		assert(empty:find('Visible actor loads ready/loading/retrying/fallback/failed: 0/0/0/0/0',1,true))
+	end)
 	h.test("репорт различает старую версию, бонус престижа и ещё не загруженный профиль", function()
 		local pending = Report.build({version = 52, studio = false})
 		assert(pending:find("Version: 52", 1, true))

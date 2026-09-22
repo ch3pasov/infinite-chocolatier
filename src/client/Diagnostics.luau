@@ -137,12 +137,13 @@ function Diagnostics:open()
 			friends = room:GetAttribute("FriendListStatus") or "loading"
 		end
 	end
-	local assigned, loaded = 0, 0
+	local actors = {}
 	-- Обход только по запросу, а не на каждом кадре или сетевом обновлении.
 	for _, model in workspace:GetDescendants() do
-		if model:IsA("Model") and (model:GetAttribute("AssignedUserId") or 0) > 0 then
-			assigned += 1
-			if model:GetAttribute("AppearanceUserId") == model:GetAttribute("AssignedUserId") then loaded += 1 end
+		if model:IsA("Model") and model:GetAttribute("ActorLoadState") then
+			table.insert(actors, {assigned = model:GetAttribute("ActorAssignedUserId"),
+				appearance = model:GetAttribute("ActorAppearanceUserId"),
+				status = model:GetAttribute("ActorLoadState"), visible = model:GetAttribute("ActorVisible")})
 		end
 	end
 	local camera = workspace.CurrentCamera
@@ -153,7 +154,7 @@ function Diagnostics:open()
 		input = UserInputService:GetLastInputType().Name, locale = game:GetService("LocalizationService").RobloxLocaleId,
 		mode = player:GetAttribute("KitchenMode"), phase = self.view.active, cut = self.view.cutIndex,
 		progress = self.view.cutProgress, stateAge = if self.receivedAt then os.clock() - self.receivedAt else nil,
-		state = self.state, friends = friends, appearances = tostring(loaded) .. "/" .. tostring(assigned), errors = self.errors,
+		state = self.state, friends = friends, actors = actors, errors = self.errors,
 	})
 	self.view:endDrag(true)
 	self.view.diagnosticsOpen = true

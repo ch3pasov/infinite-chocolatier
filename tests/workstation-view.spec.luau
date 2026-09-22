@@ -61,9 +61,11 @@ return function(h)
  h.test('видимость аватара применяется один раз и заново при загрузке другого rig',function()
   local writes=0; local values={}
   local part=setmetatable({},{__index=values,__newindex=function(_,k,v) values[k]=v; writes+=1 end})
-  local actor=setmetatable({rig={},rest={[part]=.35}},Actor)
+  local attributes=0
+  local parent={SetAttribute=function() attributes+=1 end}
+  local actor=setmetatable({rig={},rest={[part]=.35},parent=parent},Actor)
   for _=1,120 do actor:setVisible(true) end
-  h.equals(writes,1); h.equals(part.Transparency,.35)
+  h.equals(writes,1); h.equals(part.Transparency,.35); h.equals(attributes,1)
   actor:setVisible(false); h.equals(writes,2); h.equals(part.Transparency,1)
   actor.rig={}; actor:setVisible(false); h.equals(writes,3)
   actor:setVisible(true); h.equals(writes,4); h.equals(part.Transparency,.35)

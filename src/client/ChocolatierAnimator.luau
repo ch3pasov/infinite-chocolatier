@@ -6,7 +6,8 @@ local Appearance=require(script.Parent.FriendAppearance)
 local Animator = {}
 Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
- local self=setmetatable({alive=true,visible=false,x=x,generation=0},Animator)
+ local self=setmetatable({alive=true,visible=false,x=x,generation=0,parent=parent},Animator)
+ parent:SetAttribute('ActorVisible',false)
  function self:setIdentity(nextId,seed,retry)
   if not self.alive then return end
   nextId=nextId or 0; seed=seed or 1
@@ -14,9 +15,14 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   local sameIdentity=self.identity==key
   if sameIdentity and not retry then return end
   self.identity=key; self.generation+=1; local generation=self.generation
+  -- Статус принадлежит станции, а не rig: иначе пустое место после
+  -- ошибки загрузки вообще отсутствует в диагностическом отчёте.
+  parent:SetAttribute('ActorAssignedUserId',nextId)
+  parent:SetAttribute('ActorLoadState','loading')
   -- При повторе того же назначения запасной повар остаётся до готовности
   -- внешности. Сменившийся друг убирается сразу, чтобы не дублировать игрока.
   if self.rig and not (sameIdentity and retry) then self.rig:Destroy(); self.rig=nil end
+  if not self.rig then parent:SetAttribute('ActorAppearanceUserId',0) end
   local function current() return self.alive and self.generation==generation and parent.Parent~=nil end
   -- Очередь назначает друга сразу после создания станции. Даём этому коду
   -- закончить назначение, чтобы не загружать запасной rig перед настоящим.
@@ -39,19 +45,23 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   local ok,rig,friendLoaded,loadError=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6,current)
   description:Destroy()
   if not current() then if ok and rig then rig:Destroy() end; return end
-  -- Временный сбой Roblox не закрепляет случайного персонажа навсегда.
+  -- Временный сбой Roblox не оставляет станцию без персонажа и не
+  -- закрепляет запасную внешность друга навсегда. Обычный rig тоже
+  -- создаётся через асинхронный API и может потребовать повтора.
   -- Повтор отменяется вместе со станцией или сменой назначенного друга.
-  if nextId>0 and not friendLoaded then
+  if not ok or (nextId>0 and not friendLoaded) then
    local attempt=retry or 0
+   parent:SetAttribute('ActorLoadState',if attempt<3 then 'retrying' elseif ok then 'fallback' else 'failed')
    warn("Apprentice avatar "..nextId..": "..tostring(loadError or rig))
    if attempt<3 then task.delay(({5,20,60})[attempt+1],function()
     if self.alive and self.generation==generation then self:setIdentity(nextId,seed,attempt+1) end
    end) end
-  end
+  else parent:SetAttribute('ActorLoadState','ready') end
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
   rig.Name=name; rig:ScaleTo(.8)
   rig:SetAttribute("AppearanceUserId",if friendLoaded then nextId else 0)
   rig:SetAttribute("AssignedUserId",nextId)
+  parent:SetAttribute('ActorAppearanceUserId',if friendLoaded then nextId else 0)
   if self.rig then self.rig:Destroy() end
   self.rig=rig; self.rest={}; self.motors={}
   local root=rig:FindFirstChild("HumanoidRootPart")
@@ -78,6 +88,7 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
  return self
 end
 function Animator:setVisible(visible)
+ if self.visible~=visible then self.parent:SetAttribute('ActorVisible',visible) end
  self.visible=visible
  if not self.rig then return end
  if self.visibleRig==self.rig and self.appliedVisibility==visible then return end
@@ -112,5 +123,9 @@ function Animator:destroy()
  self.alive=false
  if self.rig then self.rig:Destroy() end
  self.rig=nil; self.rest=nil; self.motors=nil; self.visibleRig=nil
+ self.parent:SetAttribute('ActorVisible',false)
+ self.parent:SetAttribute('ActorLoadState',nil)
+ self.parent:SetAttribute('ActorAssignedUserId',nil)
+ self.parent:SetAttribute('ActorAppearanceUserId',nil)
 end
 return Animator
