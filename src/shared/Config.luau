@@ -3,6 +3,21 @@
 
 local Config = {}
 Config.BalanceTesterUserId = 2630291964
+-- Бесплатные эффекты Pro Sound Effects из Creator Store. Короткие голоса
+-- и паузы ограничивают громкость и число звуков при быстром вводе.
+Config.Audio = {
+ effects = {
+  cutMotion={id="rbxassetid://9116190478",volume=0.10,cooldown=0.22,duration=0.18},
+  cut={id="rbxassetid://9126268216",volume=0.20,speed=1.15},
+  slide={id="rbxassetid://9125759799",volume=0.10,cooldown=0.24,duration=0.20},
+  snap={id="rbxassetid://9126268666",volume=0.18,speed=1.2},
+  ui={id="rbxassetid://9126268216",volume=0.09,speed=1.8},
+  reward={id="rbxassetid://9126073001",volume=0.22,cooldown=0.2},
+  purchase={id="rbxassetid://9126073001",volume=0.16,speed=1.35,cooldown=0.2},
+  prestige={id="rbxassetid://9126073001",volume=0.23,speed=0.8,cooldown=0.5},
+  denied={id="rbxassetid://9126268666",volume=0.10,speed=0.75,cooldown=0.3},
+ },
+}
 -- Отдельный флаг позволяет убрать эксперимент без изменения ручного фокуса.
 Config.Kitchen = {
 	enabled = true,

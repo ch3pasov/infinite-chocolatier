@@ -460,6 +460,7 @@ end
 function Game:destroy()
 	if self.destroyed then return end
 	self.destroyed = true
+	if self.audio then self.audio:destroy() end
 	-- Удаление интерфейса не является отпусканием жеста: не засчитываем
 	-- разрез и не запускаем возврат деталей в уже исчезающей сцене.
 	self.drag = nil
@@ -1181,6 +1182,8 @@ function Game:updateDrag(point: Vector2)
 		if self.startPip then
 			self.startPip.Visible = false
 		end
+		local advance=math.max(drag.progress,arc)-drag.progress
+		if advance>2 and self.audio then self.audio:play("cutMotion") end
 		drag.progress = math.max(drag.progress, arc)
 		self.cutProgress = drag.progress
 		self:drawProgress(path, drag.progress)
@@ -1201,6 +1204,8 @@ function Game:updateDrag(point: Vector2)
 			return
 		end
 		local progress = drag.startProgress + (point - drag.startPoint):Dot(driver) / denominator
+		local before=if drag.kind=="large" then self.largeProgress else self.stripProgress
+		if math.abs(math.clamp(progress,0,1)-before)>0.01 and self.audio then self.audio:play("slide") end
 		if drag.kind == "large" then
 			self:setLargeProgress(progress)
 		else
@@ -1239,6 +1244,7 @@ function Game:endDrag(cancelled: boolean?)
 	self.drag = nil
 
 	if drag.kind == "cut" then
+		if self.audio then self.audio:stopMotion() end
 		if self.active == "cut" then
 			local path = self.paths[self.cutIndex]
 			if not cancelled and (drag.ready or self.cutProgress >= path.geom.length * Config.Cutting.completeAt) then
@@ -1262,6 +1268,7 @@ function Game:endDrag(cancelled: boolean?)
 			L.set(self.status, "Cut {step} of {total}: continue from the highlighted point", {step=self.cutIndex,total=#self.paths})
 		end
 	elseif drag.kind == "large" then
+		if self.audio then self.audio:stopMotion() end
 		if not cancelled and self.largeProgress >= Config.Sliding.completeAt then
 			self:setLargeProgress(1)
 			self:finishLargeAssembly()
@@ -1279,6 +1286,7 @@ function Game:endDrag(cancelled: boolean?)
 			else self:tweenOffsets(targets,self.trick.snapDuration,returned) end
 		end
 	elseif drag.kind == "strip" then
+		if self.audio then self.audio:stopMotion() end
 		if not cancelled and self.stripProgress >= Config.Sliding.completeAt then
 			self:setStripProgress(1)
 			self:finishRound()
@@ -1301,6 +1309,7 @@ function Game:finishCut()
 		return
 	end
 	self.drag = nil
+	if self.audio then self.audio:stopMotion(); self.audio:play("cut") end
 	local path = self.paths[self.cutIndex]
 	if self.startPip then
 		self.startPip:Destroy()
@@ -1351,6 +1360,7 @@ function Game:finishLargeAssembly()
 		return
 	end
 	local function joined()
+		if self.audio then self.audio:play("snap") end
 		self.active="assembleStrip"; self.stripProgress=0
 		self:drawAssembledSeam(); self:showStripHint()
 	end
@@ -1439,6 +1449,7 @@ function Game:finishRound()
 		return
 	end
 	self.active = "done"
+	if self.audio then self.audio:play("snap") end
 	clear(self.hintLayer)
 	self:showRewardMarker()
 	local reward = self.pieces[self.trick.rewardPiece]

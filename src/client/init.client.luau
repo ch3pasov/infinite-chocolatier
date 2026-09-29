@@ -34,6 +34,7 @@ local remotes = {
 }
 
 local gameView = Game.new(gui, remotes)
+gameView.audio = require(script.Audio).new(gui)
 local atelier = Atelier.new(gui, gameView, remotes)
 -- Сбой вспомогательного отчёта не должен останавливать загрузку самой игры.
 local diagnosticOk, diagnostics = pcall(function()
@@ -53,6 +54,7 @@ if Config.Scene3D.enabled then
 end
 local stateConnection = remotes.stateSync.OnClientEvent:Connect(function(state)
 	if gameView.destroyed then return end
+    gameView.audio:update(state)
     atelier:update(state)
 	if kitchen then kitchen:update(state) end
     if state.reward then gameView:playRewardEffect(state.reward) end

@@ -72,6 +72,7 @@ return function(h)
    gui.Destroying:Connect(function() view.destroyed=true end); return view
   end}
   modules.Atelier={new=function() return {update=function() updates+=1 end} end}
+  modules.Audio={new=function() return {update=function() end} end}
   modules.Diagnostics={new=function() return {update=function() updates+=1 end} end}
   local remotes={StateSync={OnClientEvent=stateSync},RequestState={FireServer=function() requests+=1 end}}
   local services={Players={LocalPlayer={WaitForChild=function() return playerGui end}},

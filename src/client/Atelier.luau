@@ -75,7 +75,7 @@ function Atelier.new(gui, gameView, remotes)
 	-- Счётчик занимает оставшуюся ширину, включая длинные суммы поздней игры.
 	gameView.counter.AnchorPoint = Vector2.zero
 	gameView.counter.Position = UDim2.fromOffset(128, 12)
-	gameView.counter.Size = UDim2.new(1, -144, 0, 48)
+	gameView.counter.Size = UDim2.new(1, -204, 0, 48)
 	gameView.counter.TextScaled = true
 	local counterLimit = Instance.new("UITextSizeConstraint")
 	counterLimit.MinTextSize = 12
@@ -357,7 +357,9 @@ function Atelier:fit()
 	else
 		counter.Parent = self.view.root
 		counter.Position = UDim2.fromOffset(128, 12)
-		counter.Size = UDim2.new(1, -144, 0, 48)
+		-- Правая зона занята переключателем звука и остаётся свободной
+		-- после поворота телефона, а не только при создании интерфейса.
+		counter.Size = UDim2.new(1, -204, 0, 48)
 		self.metrics.Parent = self.view.root
 		self.metrics.Position = UDim2.new(0.04, 0, 0, 57)
 		self.metrics.Size = UDim2.new(0.92, 0, 0, 26)
