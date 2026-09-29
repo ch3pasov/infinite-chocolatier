@@ -336,10 +336,15 @@ local function dispatch(args)
   return {ok=true,queueStations=8,loadedAvatars=loaded,expectedAvatars=9,frames="explicit"}
  elseif args.action=="queueGrowth" then
   local Online=require(script.OnlineKitchen)
+  local Kitchen=require(script.Kitchen)
   local source=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId):Clone()
   source:SetAttribute('StaffRoster','')
   local world=Instance.new('Model'); world.Name='QueueGrowthQA'; world.Parent=workspace
-  local probe=setmetatable({kitchen={view=gameView,world=world,player=player,origin=kitchen.origin},queueStations={},cycles={}},Online)
+  -- Очередь строится только в открытой кухне; подсказки используют настоящий
+  -- canWalk. Отдельная копия состояния не меняет режим живого игрока.
+  local probeKitchen=setmetatable({view=gameView,world=world,player=player,
+   origin=kitchen.origin,opened=true,state=state},{__index=Kitchen})
+  local probe=setmetatable({kitchen=probeKitchen,queueStations={},cycles={}},Online)
   local function geometryCount(root)
    local count=if root:IsA('BasePart') then 1 else 0
    for _,child in root:GetChildren() do

@@ -13,6 +13,9 @@ local-recovery-backups/
 .DS_Store
 __pycache__/
 
+# Сборки и отчёты выпуска доступны локально, но не раздувают историю исходников.
+release-artifacts/
+
 # Codex local Git metadata
 .git-codex/
 
