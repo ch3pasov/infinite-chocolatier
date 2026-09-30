@@ -34,7 +34,7 @@ local remotes = {
 }
 
 local gameView = Game.new(gui, remotes)
-gameView.audio = require(script.Audio).new(gui)
+gameView.audio = require(script.Audio).new(gui, gameView)
 local atelier = Atelier.new(gui, gameView, remotes)
 -- Сбой вспомогательного отчёта не должен останавливать загрузку самой игры.
 local diagnosticOk, diagnostics = pcall(function()

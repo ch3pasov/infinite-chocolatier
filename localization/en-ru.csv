@@ -28,6 +28,7 @@ Key,Source,Context,Example,ru
 +{rate}/s automatic income","+{workers} apprentices
 +{rate}/s automatic income","","","+{workers} стажёров
 +{rate}/с автоматического дохода"
+"0% = off","0% = off","","","0% — выключено"
 "1/3 · Tap Walk around kitchen above to meet your apprentice.","1/3 · Tap Walk around kitchen above to meet your apprentice.","","","1/3 · Нажми «Прогуляться по кухне» сверху, чтобы встретить стажёра."
 "2 · Open this book","2 · Open this book","","","2 · Открой эту книгу"
 "2/3 · Walk to the golden book on the left and open My Kitchen.","2/3 · Walk to the golden book on the left and open My Kitchen.","","","2/3 · Подойди к золотой книге слева и открой «Мою кухню»."
@@ -44,6 +45,7 @@ Key,Source,Context,Example,ru
 "Apprentices worked: {minutes}m {seconds}s","Apprentices worked: {minutes}m {seconds}s","","","Стажёры работали: {minutes} мин {seconds} с"
 "Apprentices worked: {seconds}s","Apprentices worked: {seconds}s","","","Стажёры работали: {seconds} с"
 "Apprentices: {count} · {seconds}s per trick","Apprentices: {count} · {seconds}s per trick","","","Ученики: {count} · {seconds} с за фокус"
+"Audio settings","Audio settings","","","Звук"
 "B","B","",""," млрд"
 "Back to catalog","Back to catalog","","","Вернуться в каталог"
 "Back to my chocolate","Back to my chocolate","","","К моей шоколадке"
@@ -116,6 +118,7 @@ Key,Source,Context,Example,ru
 "Every trick is part of your story.","Every trick is part of your story.","","","Каждый фокус — часть твоей истории."
 "Factory: {count} cafes","Factory: {count} cafes","","","Кафе на фабрике: {count}"
 "First batch","First batch","","","Первая партия"
+"Game sounds","Game sounds","","","Звуки игры"
 "Goal · earn 5K pieces","Goal · earn 5K pieces","","","Цель · 5 тыс. заработанных долек"
 "Golden Cocoa","Golden Cocoa","","","Золотое какао"
 "Golden Pendulum Clock","Golden Pendulum Clock","","","Золотые часы с маятником"
@@ -144,6 +147,7 @@ Key,Source,Context,Example,ru
 "Mint Clock","Mint Clock","","","Мятные часы"
 "Mint Recipes","Mint Recipes","","","Мятные рецепты"
 "Mint Temperer","Mint Temperer","","","Мятный темперёр"
+"Music","Music","","","Музыка"
 "My Kitchen","My Kitchen","","","Моя кухня"
 "My factory","My factory","","","Моя фабрика"
 "My worktable","My worktable","","","Мой рабочий стол"

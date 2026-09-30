@@ -6,9 +6,13 @@ Config.BalanceTesterUserId = 2630291964
 -- Бесплатные эффекты Pro Sound Effects из Creator Store. Короткие голоса
 -- и паузы ограничивают громкость и число звуков при быстром вводе.
 Config.Audio = {
+ defaults = {effects=0.70,music=0.30},
+ -- Запись APM из Creator Store, а не случайная загрузка известной мелодии.
+ music = {id="rbxassetid://1842148154",volume=0.50},
  effects = {
-  cutMotion={id="rbxassetid://9116190478",volume=0.10,cooldown=0.22,duration=0.18},
-  cut={id="rbxassetid://9126268216",volume=0.20,speed=1.15},
+  -- Движение ножа молчит: повторный металлический скрежет раздражал
+  -- при медленном резе. Тихий щелчок отмечает только завершение.
+  cut={id="rbxassetid://9126268216",volume=0.12,speed=1.05},
   slide={id="rbxassetid://9125759799",volume=0.10,cooldown=0.24,duration=0.20},
   snap={id="rbxassetid://9126268666",volume=0.18,speed=1.2},
   ui={id="rbxassetid://9126268216",volume=0.09,speed=1.8},

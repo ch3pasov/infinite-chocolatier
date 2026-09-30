@@ -164,7 +164,7 @@ function Kitchen:unbindCharacter()
  end
 end
 function Kitchen:canWalk()
- return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen) or false
+ return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen and not self.view.audioSettingsOpen) or false
 end
 function Kitchen:refreshControls()
  if self:canWalk() then self.controls:Enable()

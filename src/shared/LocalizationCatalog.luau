@@ -2,6 +2,10 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Audio settings"]="Звук",
+ ["Music"]="Музыка",
+ ["Game sounds"]="Звуки игры",
+ ["0% = off"]="0% — выключено",
  ["Order packed · wallet full"]="Заказ готов · кошелёк заполнен",
  ["Trick complete · wallet full"]="Фокус удался · кошелёк заполнен",
  ["Last packed order"]="Последний готовый заказ",

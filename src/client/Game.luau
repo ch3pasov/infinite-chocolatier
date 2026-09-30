@@ -1035,7 +1035,7 @@ end
 
 function Game:bindInput()
 	self.began = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen then
+		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen or self.audioSettingsOpen then
 			return
 		end
 		if GuiService.MenuIsOpen or UserInputService:GetFocusedTextBox() then return end
@@ -1182,8 +1182,6 @@ function Game:updateDrag(point: Vector2)
 		if self.startPip then
 			self.startPip.Visible = false
 		end
-		local advance=math.max(drag.progress,arc)-drag.progress
-		if advance>2 and self.audio then self.audio:play("cutMotion") end
 		drag.progress = math.max(drag.progress, arc)
 		self.cutProgress = drag.progress
 		self:drawProgress(path, drag.progress)

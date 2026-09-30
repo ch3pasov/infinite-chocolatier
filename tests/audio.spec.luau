@@ -21,7 +21,8 @@ local function fixture()
  local objects,spawned,delayed={},{},{}
  local now=0
  local function instance(class)
-  local o={ClassName=class,Name=class,Destroying=signal(),Activated=signal(),IsLoaded=false,plays=0,stops=0,attributes={}}
+  local o={ClassName=class,Name=class,Destroying=signal(),Activated=signal(),InputBegan=signal(),IsLoaded=false,IsPlaying=false,
+   AbsolutePosition=R.Vector2.zero,AbsoluteSize=R.Vector2.new(200,36),plays=0,stops=0,attributes={}}
   function o:IsA(name) return self.ClassName==name or name=="GuiButton" and self.ClassName=="TextButton" end
   function o:FindFirstAncestorWhichIsA(name)
    local p=self.Parent; while p do if p:IsA(name) then return p end; p=p.Parent end
@@ -32,8 +33,8 @@ local function fixture()
    end; return out
   end
   function o:SetAttribute(key,value) self.attributes[key]=value end
-  function o:Play() self.plays+=1; self.Playing=true end
-  function o:Stop() self.stops+=1; self.Playing=false end
+  function o:Play() self.plays+=1; self.IsPlaying=true end
+  function o:Stop() self.stops+=1; self.IsPlaying=false end
   function o:Destroy()
    if self.destroyed then return end; self.destroyed=true; self.Destroying:Fire()
    for _,child in table.clone(objects) do if child.Parent==self then child:Destroy() end end
@@ -44,21 +45,29 @@ local function fixture()
  local playerGui=instance("PlayerGui"); playerGui.DescendantAdded=signal()
  local gui=instance("ScreenGui"); gui.Name="InfiniteChocolate"; gui.Parent=playerGui
  local button=instance("TextButton"); button.Parent=gui
- local input={WindowFocusReleased=signal()}; local menus={MenuOpened=signal()}
+ local input={WindowFocusReleased=signal(),InputBegan=signal(),InputChanged=signal(),InputEnded=signal()}; local menus={MenuOpened=signal()}
  local soundService=instance("SoundService")
- local services={SoundService=soundService,UserInputService=input,GuiService=menus,
+ local starter={enabled=true,GetCoreGuiEnabled=function(self) return self.enabled end,
+  SetCoreGuiEnabled=function(self,_,value) self.enabled=value end}
+ local services={SoundService=soundService,UserInputService=input,GuiService=menus,StarterGui=starter,
   ContentProvider={PreloadAsync=function(_,list) for _,s in list do s.IsLoaded=true end end},
   ReplicatedStorage={WaitForChild=function() return {Config="Config"} end}}
  local Audio=luau.load(fs.readFile("src/client/Audio.luau"),{environment={
   game={GetService=function(_,key) return assert(services[key],key) end},
-  require=function(key) return if key=="Config" then Config else {} end,
-  script={Parent={Theme="Theme"}},Instance={new=instance},Enum=R.Enum,
+  require=function(key)
+   if key=="Config" then return Config end
+   if key=="Localization" then return {set=function(label,text) label.Text=text end} end
+   return {}
+  end,
+  script={Parent={Theme="Theme",Localization="Localization"}},Instance={new=instance},Enum=R.Enum,
   UDim=R.UDim,UDim2=R.UDim2,Vector2=R.Vector2,os={clock=function() return now end},
   task={spawn=function(callback) table.insert(spawned,callback) end,
    delay=function(_,callback) table.insert(delayed,callback) end},
  },injectGlobals=true})()
- local audio=Audio.new(gui)
- return {audio=audio,gui=gui,playerGui=playerGui,button=button,input=input,menus=menus,objects=objects,
+ local view={cancelled=0,endDrag=function(self,cancelled) assert(cancelled); self.cancelled+=1; self.drag=nil end}
+ view.onOverlayChanged=function() view.overlayRefreshes=(view.overlayRefreshes or 0)+1 end
+ local audio=Audio.new(gui,view)
+ return {audio=audio,view=view,starter=starter,gui=gui,playerGui=playerGui,button=button,input=input,menus=menus,objects=objects,
   instance=instance,advance=function(dt) now+=dt end,
   load=function() for _,callback in spawned do callback() end; table.clear(spawned) end,
   flushOne=function() table.remove(delayed,1)() end,
@@ -73,23 +82,24 @@ return function(h)
  end)
  h.test("частые события движения используют постоянный пул и ограниченную частоту",function()
   local f=fixture(); f.load(); local count=#f.objects
-  for _=1,1000 do f.audio:play("cutMotion") end
-  h.equals(f.audio.sounds.cutMotion.plays,1); h.equals(#f.objects,count)
-  f.advance(.25); f.audio:play("cutMotion"); h.equals(f.audio.sounds.cutMotion.plays,2)
-  f.audio:stopMotion(); h.equals(f.audio.sounds.cutMotion.Playing,false)
-  f.flush(); h.equals(f.audio.sounds.cutMotion.Playing,false)
+  h.equals(f.audio.sounds.cutMotion,nil)
+  for _=1,1000 do f.audio:play("slide") end
+  h.equals(f.audio.sounds.slide.plays,1); h.equals(#f.objects,count)
+  f.advance(.25); f.audio:play("slide"); h.equals(f.audio.sounds.slide.plays,2)
+  f.audio:stopMotion(); h.equals(f.audio.sounds.slide.IsPlaying,false)
+  f.flush(); h.equals(f.audio.sounds.slide.IsPlaying,false)
  end)
  h.test("старый таймер не обрывает новый звук после отключения и включения",function()
   local f=fixture(); f.load(); f.audio:play("slide")
-  f.audio:setEnabled(false); h.equals(f.audio.group.Volume,0)
-  h.equals(f.audio.sounds.slide.Playing,false); h.equals(f.audio:play("reward"),false)
-  f.advance(.3); f.audio:setEnabled(true)
+  f.audio:setVolume("effects",0); h.equals(f.audio.groups.effects.Volume,0)
+  h.equals(f.audio.sounds.slide.IsPlaying,false); h.equals(f.audio:play("reward"),false)
+  f.advance(.3); f.audio:setVolume("effects",.7)
   f.audio:play("slide"); local sound=f.audio.sounds.slide
   local before=sound.stops
   -- Первый таймер устарел; отдельный новый голос продолжает играть.
-  f.flushOne(); h.equals(sound.stops,before); h.equals(sound.Playing,true)
-  f.flush(); h.equals(sound.Playing,false)
-  h.equals(f.audio.toggle.attributes.SoundEnabled,true)
+  f.flushOne(); h.equals(sound.stops,before); h.equals(sound.IsPlaying,true)
+  f.flush(); h.equals(sound.IsPlaying,false)
+  h.equals(f.audio.gui.attributes.effectsVolume,.7)
  end)
  h.test("пассивные снимки и загрузка молчат, ответ сервера подтверждает награду и покупку",function()
   local f=fixture(); f.load()
@@ -113,7 +123,53 @@ return function(h)
   f.gui:Destroy(); h.equals(f.audio.destroyed,true); h.equals(f.audio.folder.destroyed,true)
   h.equals(f.audio.gui.destroyed,true); h.equals(f.playerGui.DescendantAdded:count(),0)
   h.equals(f.input.WindowFocusReleased:count(),0); h.equals(f.menus.MenuOpened:count(),0)
+  h.equals(f.input.InputChanged:count(),0); h.equals(f.input.InputEnded:count(),0); h.equals(f.input.InputBegan:count(),0)
   h.equals(f.button.Activated:count(),0); f.load(); f.flush()
   h.equals(f.audio:play("cut"),false)
+ end)
+ h.test("музыка и эффекты независимы, выключение музыки не перематывает запись",function()
+  local f=fixture(); f.load(); local a=f.audio
+  h.equals(a.music.Looped,true); h.equals(a.music.plays,1)
+  a.music.TimePosition=45
+  a:setVolume("effects",0); h.equals(a.groups.music.Volume,Config.Audio.defaults.music)
+  h.equals(a.music.IsPlaying,true); h.equals(a:play("cut"),false)
+  a:setVolume("effects",.42); a:setVolume("music",0)
+  h.equals(a.groups.effects.Volume,.42); h.equals(a:play("cut"),true)
+  a:setVolume("music",.65); h.equals(a.music.plays,1); h.equals(a.music.TimePosition,45)
+  h.equals(a.groups.effects.Volume,.42); h.equals(a.rows.music.value.Text,"65%")
+  a:setVolume("music",100); h.equals(a.groups.music.Volume,1)
+  a:setVolume("effects",-10); h.equals(a.groups.effects.Volume,0)
+  a:setVolume("music",0/0); h.equals(a.groups.music.Volume,1)
+ end)
+ h.test("загрузка музыки после установки нуля не включает её до поднятия громкости",function()
+  local f=fixture(); f.audio:setVolume("music",0); f.load()
+  h.equals(f.audio.music.plays,0)
+  f.audio:setVolume("music",.25); h.equals(f.audio.music.plays,1)
+ end)
+ h.test("окно звука временно убирает список игроков и возвращает исходное состояние",function()
+  for _,enabled in {true,false} do
+   local f=fixture(); f.starter.enabled=enabled
+   f.audio:setOpen(true); h.equals(f.starter.enabled,false)
+   f.audio:setOpen(true); f.audio:setOpen(false); h.equals(f.starter.enabled,enabled)
+   f.audio:setOpen(true); f.audio:destroy(); h.equals(f.starter.enabled,enabled)
+  end
+ end)
+ h.test("ползунок владеет только своим пальцем, меню и потеря фокуса снимают захват",function()
+  local f=fixture(); f.load(); local a=f.audio
+  f.view.drag={}; a.toggle.Activated:Fire(); h.equals(a.panel.Visible,true)
+  h.equals(f.view.audioSettingsOpen,true); h.equals(f.view.cancelled,1)
+  h.equals(f.view.overlayRefreshes,1)
+  local track=a.rows.music.track; track.AbsolutePosition=R.Vector2.new(10,10); track.AbsoluteSize=R.Vector2.new(100,36)
+  local finger={UserInputType=R.Enum.UserInputType.Touch,Position=R.Vector3.new(35,0,0)}
+  track.InputBegan:Fire(finger); h.equals(a.volumes.music,.25)
+  local other={UserInputType=R.Enum.UserInputType.Touch,Position=R.Vector3.new(100,0,0)}
+  f.input.InputChanged:Fire(other); f.input.InputEnded:Fire(other); h.equals(a.volumes.music,.25); assert(a.drag)
+  finger.Position=R.Vector3.new(85,0,0); f.input.InputChanged:Fire(finger); h.equals(a.volumes.music,.75)
+  f.input.InputEnded:Fire(finger); h.equals(a.drag,nil)
+  track.InputBegan:Fire(finger); f.input.WindowFocusReleased:Fire()
+  h.equals(a.drag,nil); h.equals(a.panel.Visible,false); h.equals(f.view.audioSettingsOpen,false)
+  h.equals(f.view.overlayRefreshes,2)
+  a:setOpen(true); track.InputBegan:Fire(finger); f.menus.MenuOpened:Fire(); h.equals(a.drag,nil)
+  a:setOpen(true); f.input.InputBegan:Fire({KeyCode=R.Enum.KeyCode.Escape}); h.equals(a.panel.Visible,false)
  end)
 end
