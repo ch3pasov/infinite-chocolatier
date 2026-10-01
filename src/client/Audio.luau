@@ -37,7 +37,7 @@ end
 
 function Audio.new(gui,view)
  local self=setmetatable({view=view,sounds={},last={},tokens={},buttons={},connections={},rows={},
-  volumes=table.clone(Config.Audio.defaults),destroyed=false},Audio)
+  volumes=table.clone(Config.Audio.defaults),destroyed=false,paused=false,trackToken=0},Audio)
  self.folder=make("Folder",SoundService,"ChocolateAudio")
  self.groups={}
  for _,channel in {"effects","music"} do
@@ -49,17 +49,12 @@ function Audio.new(gui,view)
   sound.Volume=spec.volume; sound.PlaybackSpeed=spec.speed or 1; sound.SoundGroup=self.groups.effects
   self.sounds[name]=sound; table.insert(preload,sound)
  end
- self.music=make("Sound",self.folder,"ClassicalMusic"); self.music.SoundId=Config.Audio.music.id
- self.music.Volume=Config.Audio.music.volume; self.music.SoundGroup=self.groups.music; self.music.Looped=true
+ self.music=make("Sound",self.folder,"ClassicalMusic")
+ self.music.Volume=Config.Audio.music.volume; self.music.SoundGroup=self.groups.music; self.music.Looped=false
  -- Большая музыкальная запись загружается отдельно и не задерживает короткие
  -- эффекты. Ни звук, ни его сбой не блокируют профиль и первый жест.
  task.spawn(function()
   if not self.destroyed then pcall(function() ContentProvider:PreloadAsync(preload) end) end
- end)
- task.spawn(function()
-  if self.destroyed then return end
-  pcall(function() ContentProvider:PreloadAsync({self.music}) end)
-  self:startMusic()
  end)
  self.gui=make("ScreenGui",gui.Parent,"ChocolateAudioControls")
  self.gui.ResetOnSpawn=false; self.gui.IgnoreGuiInset=true; self.gui.DisplayOrder=40
@@ -69,15 +64,31 @@ function Audio.new(gui,view)
  self.shade=button(self.gui,"Dismiss",""); self.shade.Size=UDim2.fromScale(1,1)
  self.shade.BackgroundTransparency=1; self.shade.Visible=false; self.shade.ZIndex=2
  self.panel=make("Frame",self.gui,"Settings"); self.panel.AnchorPoint=Vector2.new(1,0)
- self.panel.Position=UDim2.new(1,-12,0,60); self.panel.Size=UDim2.new(1,-24,0,232)
+ self.panel.Position=UDim2.new(1,-12,0,60); self.panel.Size=UDim2.new(1,-24,1,-76)
  self.panel.BackgroundColor3=Theme.panel; self.panel.BorderSizePixel=0; self.panel.Visible=false; self.panel.Active=true; self.panel.ZIndex=3
  rounded(self.panel,12)
- local limit=make("UISizeConstraint",self.panel,"WidthLimit"); limit.MaxSize=Vector2.new(320,232)
+ local limit=make("UISizeConstraint",self.panel,"WidthLimit"); limit.MaxSize=Vector2.new(320,344)
  local title=label(self.panel,"Title",18); title.Position=UDim2.fromOffset(16,10); title.Size=UDim2.new(1,-68,0,30); title.ZIndex=4
  L.set(title,"Audio settings")
  local close=button(self.panel,"Close","×"); close.Position=UDim2.new(1,-44,0,8); close.Size=UDim2.fromOffset(32,32); close.ZIndex=4
- self:createRow("music","Music",48); self:createRow("effects","Game sounds",124)
- local note=label(self.panel,"Hint",12); note.Position=UDim2.fromOffset(16,204); note.Size=UDim2.new(1,-32,0,20); note.TextColor3=Theme.muted; note.ZIndex=4
+ -- На низком экране содержимое прокручивается; закрытие всегда под рукой.
+ self.content=make("ScrollingFrame",self.panel,"Content")
+ self.content.Position=UDim2.fromOffset(0,46); self.content.Size=UDim2.new(1,0,1,-46)
+ self.content.CanvasSize=UDim2.fromOffset(0,280); self.content.ScrollBarThickness=3
+ self.content.ScrollingDirection=Enum.ScrollingDirection.Y; self.content.BackgroundTransparency=1
+ self.content.BorderSizePixel=0; self.content.ZIndex=4
+ self.trackTitle=label(self.content,"TrackTitle",15); self.trackTitle.Position=UDim2.fromOffset(16,0)
+ self.trackTitle.Size=UDim2.new(1,-32,0,40); self.trackTitle.TextWrapped=true; self.trackTitle.ZIndex=4
+ self.trackState=label(self.content,"TrackState",12); self.trackState.Position=UDim2.fromOffset(16,40)
+ self.trackState.Size=UDim2.new(1,-32,0,18); self.trackState.TextColor3=Theme.muted; self.trackState.ZIndex=4
+ self.previous=button(self.content,"Previous","‹"); self.previous.Position=UDim2.fromOffset(16,60); self.previous.Size=UDim2.fromOffset(44,32); self.previous.ZIndex=4
+ self.pause=button(self.content,"Pause",""); self.pause.Position=UDim2.fromOffset(68,60); self.pause.Size=UDim2.new(1,-136,0,32); self.pause.TextSize=15; self.pause.ZIndex=4
+ self.next=button(self.content,"Next","›"); self.next.Position=UDim2.new(1,-60,0,60); self.next.Size=UDim2.fromOffset(44,32); self.next.ZIndex=4
+ self:connect(self.previous.Activated,function() self:selectTrack(self.trackIndex-1) end)
+ self:connect(self.next.Activated,function() self:selectTrack(self.trackIndex+1) end)
+ self:connect(self.pause.Activated,function() self:setMusicPaused(not self.paused) end)
+ self:createRow("music","Music",100); self:createRow("effects","Game sounds",176)
+ local note=label(self.content,"Hint",12); note.Position=UDim2.fromOffset(16,252); note.Size=UDim2.new(1,-32,0,20); note.TextColor3=Theme.muted; note.ZIndex=4
  L.set(note,"0% = off")
  self:connect(self.toggle.Activated,function() self:setOpen(not self.panel.Visible); self:play("ui") end)
  self:connect(close.Activated,function() self:setOpen(false); self:play("ui") end)
@@ -109,11 +120,12 @@ function Audio.new(gui,view)
  for _,channel in {"effects","music"} do self:renderVolume(channel) end
  for _,object in gui.Parent:GetDescendants() do self:bindButton(object) end
  self:connect(gui.Parent.DescendantAdded,function(object) self:bindButton(object) end)
+ self:selectTrack(1)
  return self
 end
 
 function Audio:createRow(channel,source,y)
- local frame=make("Frame",self.panel,channel.."Row"); frame.Position=UDim2.fromOffset(0,y); frame.Size=UDim2.new(1,0,0,76)
+ local frame=make("Frame",self.content,channel.."Row"); frame.Position=UDim2.fromOffset(0,y); frame.Size=UDim2.new(1,0,0,76)
  frame.BackgroundTransparency=1; frame.ZIndex=4
  local caption=label(frame,"Label",15); caption.Position=UDim2.fromOffset(16,0); caption.Size=UDim2.new(1,-94,0,28); caption.ZIndex=4; L.set(caption,source)
  local value=label(frame,"Value",14); value.Position=UDim2.new(1,-76,0,0); value.Size=UDim2.fromOffset(60,28); value.TextXAlignment=Enum.TextXAlignment.Right; value.AutoLocalize=false; value.ZIndex=4
@@ -177,8 +189,52 @@ function Audio:setVolume(channel,value)
   for name,sound in self.sounds do sound:Stop(); self.tokens[name]=(self.tokens[name] or 0)+1 end
  elseif channel=="music" then self:startMusic() end
 end
+function Audio:renderMusic()
+ local playlist=Config.Audio.music.playlist
+ L.set(self.trackTitle,playlist[self.trackIndex].title)
+ L.set(self.pause,if self.paused then "Play" else "Pause")
+ if self.musicLoading then L.set(self.trackState,"Loading music…")
+ elseif not self.musicReady then L.set(self.trackState,"Music unavailable")
+ else L.set(self.trackState,"Track {index} of {total}",{index=self.trackIndex,total=#playlist}) end
+ self.gui:SetAttribute("TrackIndex",self.trackIndex)
+ self.gui:SetAttribute("MusicPaused",self.paused)
+ self.gui:SetAttribute("MusicLoading",self.musicLoading)
+end
+function Audio:selectTrack(index,failures)
+ if self.destroyed then return end
+ local playlist=Config.Audio.music.playlist
+ self.trackIndex=(index-1)%#playlist+1
+ self.trackToken+=1; local token=self.trackToken
+ if self.musicEnded then self.musicEnded:Disconnect() end
+ self.music:Stop(); self.music.TimePosition=0
+ self.music.SoundId=playlist[self.trackIndex].id
+ self.musicReady=false; self.musicLoading=true; self:renderMusic()
+ -- Один голос исключает наложение треков. Поколение защищает от запоздалой
+ -- загрузки и окончания старого трека при быстром переключении кнопками.
+ self.musicEnded=self.music.Ended:Connect(function()
+  if not self.destroyed and self.trackToken==token then self:selectTrack(self.trackIndex+1) end
+ end)
+ task.spawn(function()
+  if self.destroyed or self.trackToken~=token then return end
+  pcall(function() ContentProvider:PreloadAsync({self.music}) end)
+  if self.destroyed or self.trackToken~=token then return end
+  self.musicLoading=false; self.musicReady=self.music.IsLoaded
+  if not self.musicReady and (failures or 0)+1<#playlist then
+   -- Недоступную запись пропускаем, но не зацикливаем сетевые ошибки.
+   self:selectTrack(self.trackIndex+1,(failures or 0)+1); return
+  end
+  self:startMusic(); self:renderMusic()
+ end)
+end
+function Audio:setMusicPaused(paused)
+ if self.destroyed then return end
+ self.paused=paused==true
+ if self.paused and self.music.IsPlaying then self.music:Pause() else self:startMusic() end
+ self:renderMusic()
+end
 function Audio:startMusic()
- if not self.destroyed and self.volumes.music>0 and self.music.IsLoaded and not self.music.IsPlaying then self.music:Play() end
+ if self.destroyed or self.paused or not self.musicReady or self.volumes.music==0 or self.music.IsPlaying then return end
+ if self.music.IsPaused then self.music:Resume() else self.music:Play() end
 end
 
 function Audio:bindButton(object)
@@ -219,7 +275,8 @@ function Audio:update(state)
 end
 function Audio:destroy()
  if self.destroyed then return end
- self:setOpen(false); self.destroyed=true
+ self:setOpen(false); self.destroyed=true; self.trackToken+=1
+ if self.musicEnded then self.musicEnded:Disconnect() end
  for _,connection in self.connections do connection:Disconnect() end
  for _,connections in self.buttons do for _,connection in connections do connection:Disconnect() end end
  self.buttons={}; self.music:Stop(); self.folder:Destroy(); self.gui:Destroy()

@@ -8,7 +8,12 @@ Config.BalanceTesterUserId = 2630291964
 Config.Audio = {
  defaults = {effects=0.70,music=0.30},
  -- Запись APM из Creator Store, а не случайная загрузка известной мелодии.
- music = {id="rbxassetid://1842148154",volume=0.50},
+ music = {volume=0.50,playlist={
+  {id="rbxassetid://1842148154",title="Mozart · Eine kleine Nachtmusik"},
+  {id="rbxassetid://9045766074",title="Vivaldi · Spring"},
+  {id="rbxassetid://9045766377",title="Satie · Gymnopedie No. 1"},
+  {id="rbxassetid://9045765295",title="Strauss · The Blue Danube"},
+ }},
  effects = {
   -- Движение ножа молчит: повторный металлический скрежет раздражал
   -- при медленном резе. Тихий щелчок отмечает только завершение.

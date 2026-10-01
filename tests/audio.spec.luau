@@ -19,9 +19,9 @@ end
 
 local function fixture()
  local objects,spawned,delayed={},{},{}
- local now=0
+ local now=0; local failedIds={}; local hooks={}
  local function instance(class)
-  local o={ClassName=class,Name=class,Destroying=signal(),Activated=signal(),InputBegan=signal(),IsLoaded=false,IsPlaying=false,
+  local o={ClassName=class,Name=class,Destroying=signal(),Activated=signal(),InputBegan=signal(),Ended=signal(),IsLoaded=false,IsPlaying=false,IsPaused=false,
    AbsolutePosition=R.Vector2.zero,AbsoluteSize=R.Vector2.new(200,36),plays=0,stops=0,attributes={}}
   function o:IsA(name) return self.ClassName==name or name=="GuiButton" and self.ClassName=="TextButton" end
   function o:FindFirstAncestorWhichIsA(name)
@@ -33,8 +33,10 @@ local function fixture()
    end; return out
   end
   function o:SetAttribute(key,value) self.attributes[key]=value end
-  function o:Play() self.plays+=1; self.IsPlaying=true end
-  function o:Stop() self.stops+=1; self.IsPlaying=false end
+  function o:Play() self.plays+=1; self.IsPlaying=true; self.IsPaused=false end
+  function o:Pause() self.IsPlaying=false; self.IsPaused=true end
+  function o:Resume() self.IsPlaying=true; self.IsPaused=false end
+  function o:Stop() self.stops+=1; self.IsPlaying=false; self.IsPaused=false end
   function o:Destroy()
    if self.destroyed then return end; self.destroyed=true; self.Destroying:Fire()
    for _,child in table.clone(objects) do if child.Parent==self then child:Destroy() end end
@@ -50,7 +52,10 @@ local function fixture()
  local starter={enabled=true,GetCoreGuiEnabled=function(self) return self.enabled end,
   SetCoreGuiEnabled=function(self,_,value) self.enabled=value end}
  local services={SoundService=soundService,UserInputService=input,GuiService=menus,StarterGui=starter,
-  ContentProvider={PreloadAsync=function(_,list) for _,s in list do s.IsLoaded=true end end},
+  ContentProvider={PreloadAsync=function(_,list)
+   if #list==1 and hooks.preload then local hook=hooks.preload; hooks.preload=nil; hook() end
+   for _,s in list do s.IsLoaded=not failedIds[s.SoundId] end
+  end},
   ReplicatedStorage={WaitForChild=function() return {Config="Config"} end}}
  local Audio=luau.load(fs.readFile("src/client/Audio.luau"),{environment={
   game={GetService=function(_,key) return assert(services[key],key) end},
@@ -68,8 +73,9 @@ local function fixture()
  view.onOverlayChanged=function() view.overlayRefreshes=(view.overlayRefreshes or 0)+1 end
  local audio=Audio.new(gui,view)
  return {audio=audio,view=view,starter=starter,gui=gui,playerGui=playerGui,button=button,input=input,menus=menus,objects=objects,
-  instance=instance,advance=function(dt) now+=dt end,
-  load=function() for _,callback in spawned do callback() end; table.clear(spawned) end,
+  instance=instance,failedIds=failedIds,hooks=hooks,advance=function(dt) now+=dt end,
+  loadOne=function() table.remove(spawned,1)() end,
+  load=function() local n=0; while #spawned>0 do n+=1; assert(n<100,"загрузка зациклилась"); table.remove(spawned,1)() end end,
   flushOne=function() table.remove(delayed,1)() end,
   flush=function() local list=table.clone(delayed); table.clear(delayed); for _,callback in list do callback() end end}
 end
@@ -129,7 +135,7 @@ return function(h)
  end)
  h.test("музыка и эффекты независимы, выключение музыки не перематывает запись",function()
   local f=fixture(); f.load(); local a=f.audio
-  h.equals(a.music.Looped,true); h.equals(a.music.plays,1)
+  h.equals(a.music.Looped,false); h.equals(a.music.plays,1)
   a.music.TimePosition=45
   a:setVolume("effects",0); h.equals(a.groups.music.Volume,Config.Audio.defaults.music)
   h.equals(a.music.IsPlaying,true); h.equals(a:play("cut"),false)
@@ -172,4 +178,55 @@ return function(h)
   a:setOpen(true); track.InputBegan:Fire(finger); f.menus.MenuOpened:Fire(); h.equals(a.drag,nil)
   a:setOpen(true); f.input.InputBegan:Fire({KeyCode=R.Enum.KeyCode.Escape}); h.equals(a.panel.Visible,false)
  end)
+ h.test("окончание записи запускает следующую, очередь замыкается без новых голосов",function()
+  local f=fixture(); f.load(); local a=f.audio; local count=#f.objects
+  for index=2,#Config.Audio.music.playlist+1 do
+   a.music.IsPlaying=false; a.music.Ended:Fire(); f.load()
+   local expected=(index-1)%#Config.Audio.music.playlist+1
+   h.equals(a.trackIndex,expected); h.equals(a.music.SoundId,Config.Audio.music.playlist[expected].id)
+   h.equals(a.music.IsPlaying,true); h.equals(a.music.Ended:count(),1); h.equals(#f.objects,count)
+  end
+ end)
+ h.test("пауза сохраняет позицию, громкость и переключение не снимают её",function()
+  local f=fixture(); f.load(); local a=f.audio
+  a.music.TimePosition=42; a.pause.Activated:Fire()
+  h.equals(a.music.IsPlaying,false); h.equals(a.paused,true)
+  a:setVolume("music",.8); h.equals(a.music.IsPlaying,false)
+  a.pause.Activated:Fire(); h.equals(a.music.IsPlaying,true); h.equals(a.music.TimePosition,42); h.equals(a.music.plays,1)
+  a:setMusicPaused(true); a.next.Activated:Fire(); f.load()
+  h.equals(a.trackIndex,2); h.equals(a.music.IsPlaying,false); h.equals(a.music.TimePosition,0)
+  a.previous.Activated:Fire(); f.load(); h.equals(a.trackIndex,1); h.equals(a.paused,true)
+  a:setMusicPaused(false); h.equals(a.music.IsPlaying,true)
+ end)
+ h.test("пауза до загрузки и быстрая смена трека не дают позднего автозапуска",function()
+  local f=fixture(); local a=f.audio
+  a:setMusicPaused(true); a:selectTrack(3); a:selectTrack(2); f.load()
+  h.equals(a.trackIndex,2); h.equals(a.music.plays,0); h.equals(a.musicLoading,false)
+  a:setMusicPaused(false); h.equals(a.music.plays,1)
+  local oldEnded=a.musicEnded.callback
+  a:selectTrack(4); oldEnded(); f.load(); h.equals(a.trackIndex,4); h.equals(a.music.plays,2)
+ end)
+ h.test("переключение во время сетевой загрузки оставляет только новый трек",function()
+  local f=fixture(); local a=f.audio; f.loadOne()
+  f.hooks.preload=function() a:selectTrack(3) end
+  f.loadOne(); h.equals(a.music.plays,0); h.equals(a.trackIndex,3); h.equals(a.musicLoading,true)
+  f.load(); h.equals(a.music.plays,1); h.equals(a.musicLoading,false)
+ end)
+ h.test("недоступные записи пропускаются, полный отказ останавливает попытки",function()
+  local f=fixture(); local a=f.audio
+  f.failedIds[Config.Audio.music.playlist[1].id]=true; f.load()
+  h.equals(a.trackIndex,2); h.equals(a.music.IsPlaying,true)
+  for _,track in Config.Audio.music.playlist do f.failedIds[track.id]=true end
+  a:selectTrack(1); f.load(); h.equals(a.trackIndex,#Config.Audio.music.playlist)
+  h.equals(a.musicReady,false); h.equals(a.musicLoading,false); h.equals(a.music.IsPlaying,false)
+  h.equals(a.trackState.Text,"Music unavailable")
+  table.clear(f.failedIds); a.next.Activated:Fire(); f.load()
+  h.equals(a.trackIndex,1); h.equals(a.music.IsPlaying,true)
+ end)
+ h.test("удаление сцены отключает очередь и отменяет незавершённую загрузку",function()
+  local f=fixture(); local a=f.audio; local oldEnded=a.musicEnded.callback
+  a:destroy(); f.load(); oldEnded()
+  h.equals(a.music.Ended:count(),0); h.equals(a.music.plays,0); h.equals(a.trackIndex,1)
+ end)
+
 end
