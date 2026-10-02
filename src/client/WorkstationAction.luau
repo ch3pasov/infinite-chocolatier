@@ -43,11 +43,18 @@ function Action.cycle(t,config,slides,tileWidth,tileHeight)
  end
  return hands(a)
 end
-function Action.player(view)
+function Action.player(view,config)
  local a={whole=view.intactLayer.Visible,cutting=view.active=="cut" or view.active=="finishingCut",offsets={},hidden={}}
  for name,piece in view.pieces do
-  local pos=piece.motion.Position
-  a.offsets[name]=Vector2.new((pos.X.Offset-piece.origin.X)/view.tileWidth,(pos.Y.Offset-piece.origin.Y)/view.tileHeight)
+  if view.planarPhase and not a.whole then
+   -- В общей кухне у игрока и NPC один стол и один маршрут. Переносим
+   -- фактический прогресс жеста, сохраняя адаптивную раскладку самого игрока.
+   a.offsets[name]=Motion.pose(name,view.planarPhase,view.planarProgress,
+    config.Scene3D.layouts.landscape,view.recipe.slides,config.Scene3D.passageY)
+  else
+   local pos=piece.motion.Position
+   a.offsets[name]=Vector2.new((pos.X.Offset-piece.origin.X)/view.tileWidth,(pos.Y.Offset-piece.origin.Y)/view.tileHeight)
+  end
   a.hidden[name]=not piece.motion.Visible
  end
  if a.cutting then

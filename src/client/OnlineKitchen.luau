@@ -104,7 +104,7 @@ function Online:refreshQueueStaff(sources)
  end
 end
 function Online:publishPlayer()
- local action=Action.player(self.kitchen.view); local now=os.clock()
+ local action=Action.player(self.kitchen.view,Config); local now=os.clock()
  -- Редкое повторение восстанавливает последнюю позу, если сервер отбросил
  -- пакет при всплеске частоты. Новый зритель получает серверный кеш отдельно.
  if not Wire.samePose(self.lastPublished,action) or now-(self.publishedAt or -math.huge)>=1 then

@@ -82,7 +82,7 @@ return function(h)
  h.test('неподвижная ручная станция шлёт редкий снимок, движение сохраняет частоту',function()
   local now=0; local calls={}
   local stub=setmetatable({},{__index=function(_,key) return key end})
-  local modules={WorkstationWire=Wire,WorkstationAction=Action,CafeQueue=require('../src/shared/CafeQueue')}
+  local modules={Config=Config,WorkstationWire=Wire,WorkstationAction=Action,CafeQueue=require('../src/shared/CafeQueue')}
   local Online=luau.load(fs.readFile('src/client/OnlineKitchen.luau'),{environment={
    game={GetService=function() return {WaitForChild=function() return stub end,FindFirstChild=function() return nil end} end},
    script={Parent=stub},require=function(name) return modules[name] or {} end,
@@ -106,8 +106,18 @@ return function(h)
   h.near((calls[#calls].knifePoint-Action.player(view).knifePoint).Magnitude,0)
   now+=.1; view.pieces.stripSingle.motion.Visible=true; online:step(.1)
   h.equals(#calls,idle+11,'появление кусочка отправляется сразу')
+  view.active='assembleStrip'; view.intactLayer.Visible=false
+  view.recipe=Recipe.build(Config.Recipe); view.planarPhase='strip'; view.planarProgress=.5
+  for _,piece in view.pieces do piece.motion.Visible=true end
+  -- Экранные позиции намеренно не совпадают с общей кухней: отправляться
+  -- должен фактический этап жеста в маршруте станции, а не старые пиксели.
+  now+=.1; online:step(.1)
+  local station=assert(Wire.clean(calls[#calls]))
+  local npc=Action.cycle(.9,Config,view.recipe.slides)
+  for _,name in Config.Trick.pieceOrder do h.near((station.offsets[name]-npc.offsets[name]).Magnitude,0) end
+  h.equals(#calls,idle+12,'перестановка передаётся зрителю сразу')
   k.state.ready=false; now+=2; online:step(2)
-  h.equals(#calls,idle+11,'неготовое состояние не отправляется')
+  h.equals(#calls,idle+12,'неготовое состояние не отправляется')
  end)
  h.test('наблюдатель: поздние атрибуты, сеть, крупный план, дальние столы и уход игрока',function()
   local now=0; local calls={}; local objects={}; local stations={}

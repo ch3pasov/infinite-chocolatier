@@ -8,6 +8,9 @@ local Config = require("../src/shared/Config")
 local Geom = require("../src/shared/Geom")
 local Recipe = require("../src/shared/Recipe")
 local Layout = require("../src/client/Layout")
+local Motion = require("../src/client/Motion3D")
+local Action = require("../src/client/WorkstationAction")
+local Wire = require("../src/shared/WorkstationWire")
 local source = fs.readFile("src/client/Game.luau")
 local V = Roblox.Vector2
 local E = Roblox.Enum
@@ -40,9 +43,15 @@ local function fixture(phase)
 		WindowFocusReleased = signal(), MenuOpened = signal(), TextBoxFocused = signal(),
 		GetFocusedTextBox = function(self) return self.focused end,
 	}
-	local modules = { Localization = {set=function(label,source) label.Text=source end, token=function(source) return source end}, Config = Config, Geom = Geom, Recipe = Recipe, Theme = {}, Layout = Layout, Motion3D = {} }
+	local modules = { Localization = {set=function(label,source) label.Text=source end, token=function(source) return source end}, Config = Config, Geom = Geom, Recipe = Recipe, Theme = {}, Layout = Layout, Motion3D = Motion }
+	local tweenService = { Create = function(_, value, _, goal)
+		local tween = { Play = function() end, Cancel = function() end }
+		function tween:advance(progress) value.Value = progress; value.Changed:Fire(progress) end
+		tween.goal = goal.Value; events.tween = tween
+		return tween
+	end }
 	local services = {
-		UserInputService = events, GuiService = events, TweenService = {},
+		UserInputService = events, GuiService = events, TweenService = tweenService,
 		ReplicatedStorage = { WaitForChild = function() return { Config = "Config", Geom = "Geom", Recipe = "Recipe" } end },
 	}
 	local Game = luau.load(source, {
@@ -51,6 +60,11 @@ local function fixture(phase)
 			script = { Parent = { Localization = "Localization", Theme = "Theme", Motion3D = "Motion3D", Layout = "Layout" } },
 			require = function(name) return assert(modules[name]) end,
 			Enum = E, Vector2 = V, UDim2 = Roblox.UDim2,
+			Instance = { new = function(class)
+				assert(class == "NumberValue")
+				return { Changed = signal(), Destroy = function() end }
+			end },
+			TweenInfo = { new = function() return {} end },
 			task = { delay = function(_, callback) table.insert(pending, callback) end },
 		},
 		injectGlobals = true,
@@ -80,12 +94,77 @@ local function fixture(phase)
 	return view, events
 end
 
+local function planarFixture(layout)
+	local view, events = fixture("assembleStrip")
+	view.planarLayout = layout; view.trick = table.clone(Config.Trick)
+	view.trick.exploded = Config.Scene3D.layouts[layout]
+	view.intactLayer = { Visible = false }; view.pieces = {}
+	for index, name in view.trick.pieceOrder do
+		view.pieces[name] = { origin = V.new(index * 7, index * 11), motion = { Visible = true } }
+	end
+	-- Реальный обработчик обновляет экранные координаты; снимок станции
+	-- должен отличаться от них только выбранной раскладкой, а не прогрессом.
+	view.setPieceOffset = nil
+	return view, events
+end
+
 local function move(events, pointer, x, y)
 	pointer.Position = V.new(x, y or 0)
 	events.InputChanged:Fire(pointer)
 end
 
 return function(harness)
+	harness.test("телефон и широкий экран показывают зрителю ту же перестановку, что ученик", function()
+		for _, layout in { "portrait", "landscape" } do
+			local view = planarFixture(layout)
+			for _, stage in { {"explode", .45, .13}, {"large", .58, .16}, {"join", .74, .1}, {"strip", .84, .12} } do
+				for _, progress in { 0, .2, .5, .8, 1 } do
+					view:setPlanarProgress(stage[1], progress)
+					local manual = Action.player(view, Config)
+					local received = assert(Wire.clean(manual))
+					local npc = Action.cycle(stage[2] + stage[3] * progress, Config, view.recipe.slides)
+					for _, name in view.trick.pieceOrder do
+						harness.near((received.offsets[name] - npc.offsets[name]).Magnitude, 0)
+						local screen = view.pieces[name].offset
+						local actual = Motion.pose(name, stage[1], progress, view.trick.exploded, view.recipe.slides, Config.Scene3D.passageY)
+						harness.near((screen - V.new(actual.X * view.tileWidth, actual.Y * view.tileHeight)).Magnitude, 0)
+					end
+					harness.near((received.rightHand - npc.rightHand).Magnitude, 0)
+					harness.near((received.leftHand - npc.leftHand).Magnitude, 0)
+				end
+			end
+			view:setPlanarProgress("explode", 1)
+			local single = view.pieces.stripSingle.offset
+			harness.near(single.Y / view.tileHeight, Config.Scene3D.layouts[layout].stripSingle.dy)
+			local station = Action.player(view, Config).offsets.stripSingle
+			harness.near(station.Y, Config.Scene3D.layouts.landscape.stripSingle.dy)
+		end
+	end)
+	harness.test("начало анимации и отмена двух долек сразу обновляют снимок станции", function()
+		local view, events = planarFixture("portrait")
+		view:setPlanarProgress("large", 1)
+		view:tweenPlanar("join", 0, 1, .24, function() end)
+		harness.equals(view.planarPhase, "join"); harness.equals(view.planarProgress, 0)
+		events:finishAnimation()
+		view:setStripProgress(.6); view.drag = { kind = "strip" }
+		view:endDrag(true)
+		harness.equals(view.active, "snappingStrip"); harness.equals(view.planarPhase, "strip")
+		harness.near(view.planarProgress, .6); harness.equals(events.tween.goal, 0)
+		events.tween:advance(.3)
+		local received = assert(Wire.clean(Action.player(view, Config)))
+		local npc = Action.cycle(.84 + .12 * .3, Config, view.recipe.slides)
+		harness.near((received.offsets.stripSingle - npc.offsets.stripSingle).Magnitude, 0)
+		events:finishAnimation()
+		harness.equals(view.active, "assembleStrip"); harness.equals(view.stripProgress, 0)
+		harness.equals(view.planarProgress, 0); harness.equals(view.completed, 0)
+		-- Новый разрез не должен отправлять зрителям смещения старого раунда.
+		view.choosePieceLayout = function() return false end
+		view.fitViewport = function() end; view.showCutHint = function() end
+		view.seamLayer = { GetChildren = function() return {} end }; view.progressLayer = view.seamLayer
+		view:resetRound()
+		harness.equals(view.planarPhase, nil); harness.equals(view.planarProgress, nil)
+		for _, piece in view.pieces do harness.equals(piece.offset, V.zero) end
+	end)
 	harness.test("удалённая игра отпускает все подписки и не завершает старый жест", function()
 		local view, events = fixture(); local pointer = input("Touch")
 		events.InputBegan:Fire(pointer, false); move(events, pointer, 50)

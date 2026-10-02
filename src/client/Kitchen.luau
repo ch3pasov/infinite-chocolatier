@@ -313,7 +313,7 @@ function Kitchen:step(dt)
  elseif working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})
  else L.set(self.info,"Hire your first apprentice in the workshop") end
  local t=((state.productionRemainder or 0)+(os.clock()-(self.syncedAt or os.clock()))/state.cycleSeconds)%1
- self.stations[1]:pose(Action.player(self.view),true,dt)
+ self.stations[1]:pose(Action.player(self.view,Config),true,dt)
  self.stations[2]:pose(Action.cycle(t,Config,self.view.recipe.slides,self.view.tileWidth,self.view.tileHeight),working or variant>0,dt)
 end
 function Kitchen:previewDecor(id)

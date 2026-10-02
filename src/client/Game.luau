@@ -489,14 +489,18 @@ function Game:choosePieceLayout()
 end
 
 function Game:setPlanarProgress(phase,progress)
+	-- Станция в общей кухне воспроизводит этот же ход в одной раскладке:
+	-- экран телефона не должен менять положение долек у всех зрителей.
+	self.planarPhase=phase; self.planarProgress=math.clamp(progress,0,1)
 	for _,name in self.trick.pieceOrder do
-		local p=Motion3D.pose(name,phase,progress,self.trick.exploded,self.recipe.slides,Config.Scene3D.passageY)
+		local p=Motion3D.pose(name,phase,self.planarProgress,self.trick.exploded,self.recipe.slides,Config.Scene3D.passageY)
 		self:setPieceOffset(name,Vector2.new(p.X*self.tileWidth,p.Y*self.tileHeight))
 	end
 end
 
 function Game:tweenPlanar(phase,from,to,duration,callback)
 	self:cancelTweens()
+	self:setPlanarProgress(phase,from)
 	local token=self.animationToken
 	local value=Instance.new('NumberValue')
 	value.Value=from
@@ -1294,10 +1298,13 @@ function Game:endDrag(cancelled: boolean?)
 			for _, name in { "stripDouble", "stripSingle" } do
 				targets[name] = self:definitionOffset(self.trick.exploded[name])
 			end
-			self:tweenOffsets(targets, self.trick.snapDuration, function()
+			local function returned()
 				self.stripProgress = 0
 				self.active = "assembleStrip"
-			end)
+			end
+			if self.planarLayout then
+				self:tweenPlanar('strip',self.stripProgress,0,self.trick.snapDuration,returned)
+			else self:tweenOffsets(targets,self.trick.snapDuration,returned) end
 		end
 	end
 end
@@ -1496,6 +1503,7 @@ function Game:resetRound()
 		self.viewportSize=nil
 	end
 	self.active = "cut"
+	self.planarPhase=nil; self.planarProgress=nil
 	self.cutIndex = 1
 	self.cutProgress = 0
 	self.largeProgress = 0
