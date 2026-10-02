@@ -55,6 +55,26 @@ local function fixture()
  return directory,add,requests,finish,visits,remote,player,function(dt) now+=dt end
 end
 return function(h)
+ h.test('инициал и портрет не накладываются даже при пропущенном уведомлении загрузки',function()
+  local d,add,_,finish=fixture(); add(2,'Alice'); d:open(); local row=d.rows[2]
+  h.equals(row.initial.Visible,true); h.equals(row.portrait.ImageTransparency,1)
+  finish(1,'cached-portrait',false); h.equals(row.initial.Visible,true); h.equals(row.portrait.ImageTransparency,1)
+  -- Картинка готова, но движок не прислал событие IsLoaded: обычное
+  -- обновление меню всё равно убирает заглушку, сохраняя карточку.
+  row.portrait.IsLoaded=true; d:refresh()
+  h.equals(row.initial.Visible,false); h.equals(row.portrait.ImageTransparency,0)
+  d:close(); d:open(); h.equals(d.rows[2],row); h.equals(row.initial.Visible,false)
+  row.portrait.IsLoaded=false; d:refresh()
+  h.equals(row.initial.Visible,true); h.equals(row.portrait.ImageTransparency,1)
+  d:destroy()
+ end)
+ h.test('готовый ответ Roblox убирает букву даже если IsLoaded остаётся false',function()
+  local d,add,_,finish=fixture(); add(2,'Alice'); d:open(); local row=d.rows[2]
+  finish(1,'ready-portrait',true); h.equals(row.portrait.IsLoaded,false)
+  h.equals(row.initial.Visible,false); h.equals(row.portrait.ImageTransparency,0)
+  d:close(); d:open(); h.equals(row.initial.Visible,false); h.equals(d.rows[2],row)
+  d:destroy()
+ end)
  h.test('отчёт блокирует список кафе и его закрытие не снимает блокировку прогулки',function()
   local d,add,_,_,visits,remote=fixture(); local k=d.kitchen
   add(2,'Alice'); k.view.diagnosticsOpen=true

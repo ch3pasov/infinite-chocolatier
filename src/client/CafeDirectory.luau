@@ -121,6 +121,7 @@ function Directory:refresh()
    row.cafeCount=entry.count; L.set(row.count,"Factory: {count} cafes",{count=L.number(entry.count+1)})
   end
   self:requestPortrait(entry.owner,row)
+  self:updatePortrait(row)
  end
 end
 function Directory:createRow(entry)
@@ -130,15 +131,24 @@ function Directory:createRow(entry)
   portrait.Position=UDim2.fromOffset(10,16); portrait.Size=UDim2.fromOffset(56,56); portrait.Parent=row; round(portrait,28)
   local initial=label(portrait,"Initial",22,Theme.accentSoft); initial.Size=UDim2.fromScale(1,1); initial.TextXAlignment=Enum.TextXAlignment.Center
   initial.AutoLocalize=false
-  portrait:GetPropertyChangedSignal("IsLoaded"):Connect(function() initial.Visible=not portrait.IsLoaded end)
   local name=label(row,"Name",18,Theme.accentSoft); name.Position=UDim2.fromOffset(78,6); name.Size=UDim2.new(1,-116,0,27)
   local username=label(row,"Username",12,Theme.muted); username.Position=UDim2.fromOffset(78,33); username.Size=UDim2.new(1,-116,0,18)
   name.AutoLocalize=false; username.AutoLocalize=false
   local count=label(row,"Factory",12,Theme.text); count.Position=UDim2.fromOffset(78,55); count.Size=UDim2.new(1,-116,0,24)
   local arrow=label(row,"Visit",25,Theme.accent); arrow.Position=UDim2.new(1,-32,0,26); arrow.Size=UDim2.fromOffset(24,34); arrow.Text="›"
   local data={frame=row,portrait=portrait,initial=initial,name=name,username=username,count=count}
+  portrait:GetPropertyChangedSignal("IsLoaded"):Connect(function() self:updatePortrait(data) end)
+  self:updatePortrait(data)
   self.rows[entry.owner]=data
   return data
+end
+function Directory:updatePortrait(data)
+  -- Для миниатюр IsLoaded может оставаться false после готового ответа Roblox.
+  -- Учитываем готовность API и проверяем её также при обновлении списка.
+  -- Портрет и буква показываются по очереди, без наложения на лицо.
+  local loaded=data.portrait.Image~="" and (data.portraitReady or data.portrait.IsLoaded)
+  data.initial.Visible=not loaded
+  data.portrait.ImageTransparency=if loaded then 0 else 1
 end
 function Directory:requestPortrait(owner,data)
   -- Готовый портрет сохраняется, а временная ошибка повторяется с паузой,
@@ -150,7 +160,7 @@ function Directory:requestPortrait(owner,data)
    -- Поздний ответ для ушедшего игрока не меняет новую карточку после возвращения.
    if self.rows[owner]~=data or not data.portrait.Parent then return end
    data.loading=false; data.retryAt=os.clock()+15
-   if ok then data.portrait.Image=image; data.portraitReady=ready==true end
+   if ok then data.portrait.Image=image; data.portraitReady=ready==true; self:updatePortrait(data) end
   end)
 end
 function Directory:destroy()
