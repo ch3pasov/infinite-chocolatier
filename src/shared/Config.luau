@@ -7,9 +7,10 @@ Config.BalanceTesterUserId = 2630291964
 -- и паузы ограничивают громкость и число звуков при быстром вводе.
 Config.Audio = {
  defaults = {effects=0.70,music=0.30},
- -- Запись APM из Creator Store, а не случайная загрузка известной мелодии.
+ -- Записи APM с ISRC в каталоге Roblox: нативное What's Playing получает
+ -- название и автора из самого файла, а не из подписи нашего плеера.
  music = {volume=0.50,playlist={
-  {id="rbxassetid://1842148154",title="Mozart · Eine kleine Nachtmusik"},
+  {id="rbxassetid://1843596673",title="Mozart · Eine kleine Nachtmusik"},
   {id="rbxassetid://9045766074",title="Vivaldi · Spring"},
   {id="rbxassetid://9045766377",title="Satie · Gymnopedie No. 1"},
   {id="rbxassetid://9045765295",title="Strauss · The Blue Danube"},
