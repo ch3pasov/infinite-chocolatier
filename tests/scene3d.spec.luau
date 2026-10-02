@@ -40,6 +40,25 @@ sceneEnv.script={Parent=modules}
 sceneEnv.require=function(name)return assert(deps[name],name) end
 local Scene=luau.load(fs.readFile('src/client/Scene3D.luau'),{environment=sceneEnv,injectGlobals=true})()
 
+-- Камера движка проецирует на весь дисплей, а не на безопасный root.
+-- Отдельная модель рендера позволяет заметить ошибку, даже если ручные
+-- project/unproject согласованы между собой и проходят проверку туда-обратно.
+local function engineCamera(fullSize,screenOrigin)
+	screenOrigin=screenOrigin or R.Vector2.zero
+	local camera={}
+	function camera:WorldToScreenPoint(world)
+		local point=Projection.project(self.CFrame,fullSize,self.FieldOfView,world)+screenOrigin
+		return R.Vector3.new(point.X,point.Y,-self.CFrame:PointToObjectSpace(world).Z)
+	end
+	function camera:ScreenPointToRay(x,y)
+		local point=R.Vector2.new(x,y)-screenOrigin
+		local focal=fullSize.Y/(2*math.tan(math.rad(self.FieldOfView)/2))
+		local direction=self.CFrame:VectorToWorldSpace(R.Vector3.new((point.X-fullSize.X/2)/focal,-(point.Y-fullSize.Y/2)/focal,-1)).Unit
+		return {Origin=self.CFrame.Position+direction*.1,Direction=direction}
+	end
+	return camera
+end
+
 return function(h)
 	local settings=Config.Scene3D
 	local recipe=Recipe.build(Config.Recipe)
@@ -64,7 +83,7 @@ return function(h)
    local trick=table.clone(Config.Trick); trick.exploded=settings.layouts[if mode.landscape then 'landscape' else 'portrait']
    local b=Layout.bounds(recipe,trick,66,104,Geom)
    local view={root={AbsoluteSize=size},layoutBounds=b,boardWidth=330,boardHeight=520,boardScale={}}
-   local scene=setmetatable({view=view,camera={}},Scene); scene:fit()
+   local scene=setmetatable({view=view,camera=engineCamera(size)},Scene); scene:fit()
    local walk=Layout.toolbar(size.X,size.Y).walk
    for _,cut in recipe.cuts do for _,point in cut do
     local screen=Projection.project(scene.camera.CFrame,size,scene.camera.FieldOfView,R.Vector3.new(point.x*66*settings.unitsPerPixel,settings.surfaceHeight,point.y*104*settings.unitsPerPixel)*settings.renderScale)
@@ -79,7 +98,7 @@ return function(h)
 			local trick=table.clone(Config.Trick); trick.exploded=layout
 			trick.waypoints={upperRight={{dx=layout.upperRight.dx,dy=settings.passageY},{dx=-3,dy=settings.passageY}}}
 			local view={root={AbsoluteSize=size},layoutBounds=Layout.bounds(recipe,trick,66,104,Geom),boardWidth=330,boardHeight=520,boardScale={}}
-			local scene=setmetatable({view=view,camera={}},Scene); scene:fit()
+			local scene=setmetatable({view=view,camera=engineCamera(size)},Scene); scene:fit()
 			local walk=Layout.toolbar(size.X,size.Y).walk
 			local function project(point,offset)
 				return Projection.project(scene.camera.CFrame,size,scene.camera.FieldOfView,R.Vector3.new((point.X+offset.X*66)*settings.unitsPerPixel,settings.surfaceHeight,(point.Y+offset.Y*104)*settings.unitsPerPixel)*settings.renderScale)
@@ -92,6 +111,29 @@ return function(h)
 				for _,point in {R.Vector2.new(0,0),R.Vector2.new(132,0),R.Vector2.new(132,104),R.Vector2.new(0,104)} do
 					assert(project(point,offset).Y>=walk.y+walk.height,'две дольки заходят под прогулку: '..tostring(size))
 				end
+			end
+		end
+	end)
+	h.test('3D: касания совпадают с видимыми дольками при вырезе экрана и верхней панели',function()
+		for _,device in {
+			{safe=R.Vector2.new(400,777),full=R.Vector2.new(400,873),screen=R.Vector2.new(0,-120),root=R.Vector2.new(0,-58)},
+			{safe=R.Vector2.new(390,763),full=R.Vector2.new(390,844),screen=R.Vector2.new(0,-105),root=R.Vector2.new(0,-58)},
+			{safe=R.Vector2.new(777,400),full=R.Vector2.new(873,400),screen=R.Vector2.new(-62,-58),root=R.Vector2.new(0,-58)},
+			{safe=R.Vector2.new(1440,900),full=R.Vector2.new(1440,900),screen=R.Vector2.new(0,-58),root=R.Vector2.new(0,-58)},
+		} do
+			local layout=settings.layouts[if device.safe.X>device.safe.Y then 'landscape' else 'portrait']
+			local trick=table.clone(Config.Trick); trick.exploded=layout
+			local view={root={AbsoluteSize=device.safe,AbsolutePosition=device.root},layoutBounds=Layout.bounds(recipe,trick,66,104,Geom),boardWidth=330,boardHeight=520,boardScale={}}
+			local scene=setmetatable({view=view,frame={AbsolutePosition=device.root},camera=engineCamera(device.full,device.screen)},Scene); scene:fit()
+			local function check(point)
+				local visible=scene.camera:WorldToScreenPoint(R.Vector3.new(point.X*settings.unitsPerPixel,settings.surfaceHeight,point.Y*settings.unitsPerPixel)*settings.renderScale)
+				assert((scene:screenToBoard(visible)-point).Magnitude<.002,'касание промахнулось мимо видимой точки')
+				assert((scene:boardToScreen(point)+device.root-R.Vector2.new(visible.X,visible.Y)).Magnitude<.002,'экранная подсказка смещена относительно камеры')
+			end
+			for _,cut in recipe.cuts do for _,point in cut do check(R.Vector2.new(point.x*66,point.y*104)) end end
+			for tick=0,20 do
+				local offset=Motion.pose('stripDouble','strip',tick/20,layout,recipe.slides,settings.passageY)
+				for _,point in {R.Vector2.new(82,24),R.Vector2.new(132,52),R.Vector2.new(180,80)} do check(point+R.Vector2.new(offset.X*66,offset.Y*104)) end
 			end
 		end
 	end)

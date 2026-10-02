@@ -20,8 +20,9 @@ local renderScale = settings.renderScale
 local function renderFrame(frame)
 	return frame.Rotation + frame.Position*renderScale
 end
-local function project(camera,size,fov,point)
-	return Projection.project(camera,size,fov,point*renderScale)
+local function project(camera,point)
+	local screen = camera:WorldToScreenPoint(point*renderScale)
+	return Vector2.new(screen.X,screen.Y)
 end
 local function color(name) return Color3.fromRGB(table.unpack(settings.colors[name])) end
 
@@ -271,8 +272,9 @@ function Scene:fit()
 	local bottom = if mode.landscape then 12 else 96
 	local left = if mode.landscape then mode.left+12 else 8
 	local right = if mode.landscape then mode.right+12 else 8
-	-- Основная камера занимает весь экран. Симметричный запас оставляет
-	-- шоколадку между панелями, а ввод использует ту же полную проекцию.
+	-- Симметричный запас оставляет шоколадку между панелями интерфейса.
+	-- Проекцию ввода берём у движка: на телефоне камера рисует и под вырезом,
+	-- тогда как root и Camera.ViewportSize описывают безопасную область.
 	local area = Vector2.new(math.max(60,size.X-2*math.max(left,right)),math.max(60,size.Y-2*math.max(top,bottom)))
 	self.size=size
 	self.camera.FieldOfView=Projection.expandedFov(settings.fieldOfView,area.Y,size.Y)
@@ -281,20 +283,26 @@ function Scene:fit()
 	self.camera.Focus = CFrame.new(Vector3.new((b.minX+b.maxX)*unit/2,settings.surfaceHeight,(b.minY+b.maxY)*unit/2)*renderScale)
 	-- Консервативный масштаб сохраняет удобные допуски пальца при перспективе.
 	local center = Vector3.new(self.view.boardWidth*unit/2,settings.surfaceHeight,self.view.boardHeight*unit/2)
-	local p = project(self.camera.CFrame,size,self.camera.FieldOfView,center)
-	local px = project(self.camera.CFrame,size,self.camera.FieldOfView,center+Vector3.new(unit,0,0))
-	local py = project(self.camera.CFrame,size,self.camera.FieldOfView,center+Vector3.new(0,0,unit))
+	local p = project(self.camera,center)
+	local px = project(self.camera,center+Vector3.new(unit,0,0))
+	local py = project(self.camera,center+Vector3.new(0,0,unit))
 	self.view.boardScale.Scale = math.min((px-p).Magnitude,(py-p).Magnitude)
 end
 
 function Scene:screenToBoard(screen)
-	local p = Vector2.new(screen.X,screen.Y)-self.frame.AbsolutePosition
 	if not self.size then return Vector2.new(-100000,-100000) end
-	local hit = Projection.unproject(self.camera.CFrame,self.size,self.camera.FieldOfView,p,settings.surfaceHeight*renderScale)
-	return if hit then Vector2.new(hit.X/(unit*renderScale),hit.Z/(unit*renderScale)) else Vector2.new(-100000,-100000)
+	-- InputObject.Position и ScreenPointToRay учитывают верхнюю панель одинаково.
+	-- Ручная обратная проекция через root промахивалась мимо маленьких долек
+	-- на iPhone: безопасный прямоугольник меньше области рендера камеры.
+	local ray = self.camera:ScreenPointToRay(screen.X,screen.Y)
+	if math.abs(ray.Direction.Y)<1e-8 then return Vector2.new(-100000,-100000) end
+	local distance = (settings.surfaceHeight*renderScale-ray.Origin.Y)/ray.Direction.Y
+	if distance<=0 then return Vector2.new(-100000,-100000) end
+	local hit = ray.Origin+ray.Direction*distance
+	return Vector2.new(hit.X/(unit*renderScale),hit.Z/(unit*renderScale))
 end
 function Scene:boardToScreen(p)
-	return self.frame.AbsolutePosition-self.view.root.AbsolutePosition+project(self.camera.CFrame,self.size,self.camera.FieldOfView,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))
+	return project(self.camera,Vector3.new(p.X*unit,settings.surfaceHeight,p.Y*unit))-self.view.root.AbsolutePosition
 end
 
 -- След ножа лежит на том же профиле, из которого построены дольки.
