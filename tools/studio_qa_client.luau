@@ -546,20 +546,21 @@ local function dispatch(args)
    model.Parent=workspace.KitchenIslands; table.insert(models,model)
   end
   local ok,result=pcall(function()
-   d:open(); assert(created==8 and #d.entries==8,'Directory did not create eight visitors')
+   d:open(); assert(created==9 and #d.entries==9,'Directory did not create home and eight visitors')
+   assert(d.entries[1].owner==player.UserId,'Home is not first in directory')
    task.wait(.3); d.scroll.CanvasPosition=Vector2.new(0,80); task.wait(.1)
    local scroll=d.scroll.CanvasPosition; local first=d.rows[-88001]; local other=d.rows[-88002]
    models[1]:SetAttribute('CafeCount',99); models[1]:SetAttribute('DisplayName','Updated QA')
    d:refresh(); task.wait(.1)
-   assert(d.rows[-88001]==first and d.rows[-88002]==other and created==8,'Count update recreated cards')
+   assert(d.rows[-88001]==first and d.rows[-88002]==other and created==9,'Count update recreated cards')
    assert(first.name.Text=='Updated QA' and first.cafeCount==99,'Card contents were not updated')
    assert(d.scroll.CanvasPosition==scroll,'Count update moved the scroll position')
-   d:close(); d:open(); assert(created==8 and d.rows[-88001]==first,'Reopening recreated cards')
+   d:close(); d:open(); assert(created==9 and d.rows[-88001]==first,'Reopening recreated cards')
    models[1]:SetAttribute('OwnerOnline',false); d:refresh()
    assert(first.frame.Parent==nil and not d.rows[-88001] and d.rows[-88002]==other,'Leaving removed the wrong cards')
    models[1]:SetAttribute('OwnerOnline',true); d:refresh()
-   assert(created==9 and d.rows[-88001]~=first,'Returning did not create one new card')
-   return {ok=true,retainedCards=8,newCardsOnReturn=1,scrollY=scroll.Y,conditionalVisitors=true}
+   assert(created==10 and d.rows[-88001]~=first,'Returning did not create one new card')
+   return {ok=true,retainedCards=9,newCardsOnReturn=1,scrollY=scroll.Y,conditionalVisitors=true,homeFirst=true}
   end)
   d.createRow=original
   for _,model in models do model:Destroy() end

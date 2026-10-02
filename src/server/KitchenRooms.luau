@@ -67,7 +67,7 @@ function Rooms.start(remote,visitRemote)
   if previous and previous~=room and cleanup(previous) then refreshStaff() end
  end
  local create
- local function sign(room,name,x,home)
+ local function sign(room,name,x)
   local position=room.origin+Vector3.new(x,2,11)
   local rotation=CFrame.Angles(0,if x<0 then math.pi/2 else -math.pi/2,0)
   local board=solid(room.model,name..'Arrow',Vector3.new(3.6,1.3,.3),position+Vector3.new(0,1,0))
@@ -78,40 +78,33 @@ function Rooms.start(remote,visitRemote)
    mark.Transparency=0; mark.Color=Color3.fromRGB(71,38,27); mark.CanCollide=false; mark.CanQuery=false
    mark.CFrame=board.CFrame*CFrame.new(offset)*CFrame.Angles(0,0,angle or 0)
   end
-  if home then
-   stroke(Vector3.new(-.25,.22,.2),Vector3.new(.65,.13,.08),math.pi/4)
-   stroke(Vector3.new(.25,.22,.2),Vector3.new(.65,.13,.08),-math.pi/4)
-   stroke(Vector3.new(-.38,-.18,.2),Vector3.new(.13,.5,.08)); stroke(Vector3.new(.38,-.18,.2),Vector3.new(.13,.5,.08))
-   stroke(Vector3.new(0,-.42,.2),Vector3.new(.88,.13,.08))
-  else
-   stroke(Vector3.new(0,0,.2),Vector3.new(1.8,.16,.08))
-   stroke(Vector3.new(.65,.22,.2),Vector3.new(.7,.16,.08),-math.pi/4)
-   stroke(Vector3.new(.65,-.22,.2),Vector3.new(.7,.16,.08),math.pi/4)
-  end
-  local prompt=Instance.new('ProximityPrompt'); prompt.Name=name..'Prompt'; prompt.ActionText=if home then 'Return home' else 'Choose a cafe'
+  stroke(Vector3.new(0,0,.2),Vector3.new(1.8,.16,.08))
+  stroke(Vector3.new(.65,.22,.2),Vector3.new(.7,.16,.08),-math.pi/4)
+  stroke(Vector3.new(.65,-.22,.2),Vector3.new(.7,.16,.08),math.pi/4)
+  local prompt=Instance.new('ProximityPrompt'); prompt.Name=name..'Prompt'; prompt.ActionText='Choose a cafe'
   prompt.ObjectText='Infinite Chocolatier'; prompt.MaxActivationDistance=7; prompt.RequiresLineOfSight=false; prompt.Parent=board
   prompt.Triggered:Connect(function(player)
    local own=homes[player]; local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
    if not own or own.mode~='walk' or not root or (root.Position-board.Position).Magnitude>9 or visitors[player]~=room then return end
    local now=os.clock(); if now<(own.nextVisit or 0) then return end
-   if home then own.nextVisit=now+.5; enter(player,own); return end
    if now<(own.nextDirectory or 0) then return end
    own.nextDirectory=now+.5; visitRemote:FireClient(player,'open')
   end)
  end
  -- Выбор из меню не даёт обходить физическую стрелку, режим прогулки
- -- или уход владельца. Только его домашнее кафе может стать назначением.
+ -- или уход владельца. Возвращение домой проходит те же проверки.
  visitRemote.OnServerEvent:Connect(function(player,id)
-  if type(id)~='number' or id~=id or id==math.huge or id%1~=0 or id==player.UserId then return end
+  if type(id)~='number' or id~=id or id==math.huge or id%1~=0 then return end
   local own=homes[player]; local room=visitors[player]
   local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
   local board=room and room.model:FindFirstChild('NextCafeArrow')
   if not own or own.mode~='walk' or not root or not board or (root.Position-board.Position).Magnitude>9 then
    visitRemote:FireClient(player,'close'); return
   end
-  local now=os.clock(); if now<(own.nextVisit or 0) then return end; own.nextVisit=now+.5
   local target=byKey[Queue.key(id,0)]
-  if not target or not target.owner or target==room then visitRemote:FireClient(player,'unavailable'); return end
+  if target==room then visitRemote:FireClient(player,'close'); return end
+  local now=os.clock(); if now<(own.nextVisit or 0) then return end; own.nextVisit=now+.5
+  if not target or not target.owner then visitRemote:FireClient(player,'unavailable'); return end
   enter(player,target); visitRemote:FireClient(player,'arrived')
  end)
  create=function(player,index,source)
@@ -139,7 +132,7 @@ function Rooms.start(remote,visitRemote)
   for _,wall in Structure.walls do solid(model,wall.name,Vector3.new(table.unpack(wall.size)),origin+Vector3.new(table.unpack(wall.position))) end
   for _,x in {-3.7,3.7} do solid(model,'Worktable',Vector3.new(6.8,2.3,5.8),origin+Vector3.new(x,1,0)) end
   solid(model,'Cabinets',Vector3.new(18,2.3,1.8),origin+Vector3.new(0,1,-5))
-  sign(room,'NextCafe',10.25,false); sign(room,'HomeCafe',-10.25,true); refreshStaff()
+  sign(room,'NextCafe',10.25); refreshStaff()
   return room
  end
  local function mode(player,value)

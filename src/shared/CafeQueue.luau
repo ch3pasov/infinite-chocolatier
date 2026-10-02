@@ -28,21 +28,30 @@ function Queue.next(segments,owner,index)
  local first=segments[1]; if first then return first.owner,first.first end
  return nil
 end
--- Посещения отделены от декоративной очереди: только дома других игроков онлайн.
+-- Свой дом всегда первый: та же стрелка позволяет вернуться из гостей.
+-- Покупные кабинеты остаются декоративной очередью, а не целями перехода.
 function Queue.visitors(records,viewer,current)
- local result={}; local seen={}
+ local result={}; local seen={}; local home
  for _,r in records do
-  if r.index==0 and r.online and r.owner~=viewer and r.owner~=current and not seen[r.owner] then
-   seen[r.owner]=true; table.insert(result,r)
+  if r.index==0 and r.online and not seen[r.owner] then
+   seen[r.owner]=true
+   if r.owner==viewer then home=r
+   elseif r.owner~=current then table.insert(result,r) end
   end
  end
  table.sort(result,function(a,b) return a.owner<b.owner end)
+ if home then table.insert(result,1,home) end
  return result
 end
 function Queue.nextVisitor(records,viewer,current)
  local entries=Queue.visitors(records,viewer,current)
- for _,entry in entries do if entry.owner>current then return entry.owner end end
- return if entries[1] then entries[1].owner else nil
+ -- Быстрый переход по гостям не выбирает дом вместо следующего друга.
+ local first
+ for _,entry in entries do if entry.owner~=viewer then
+  first=first or entry.owner
+  if entry.owner>current then return entry.owner end
+ end end
+ return first
 end
 -- Свои стажёры чередуются с чужими кабинетами; чужие владельцы идут
 -- по кругу, чтобы большая фабрика одного игрока не заслоняла остальных.

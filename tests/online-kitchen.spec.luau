@@ -153,9 +153,9 @@ return function(h)
    table.insert(writes,{key=key,value=value}); values[key]=value
   end})
   local home=model(1,k.origin,{sign}); models={home}
-  online:step(.5); h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
+  online:step(.5); h.equals(sign.ActionText,'Choose a cafe'); h.equals(#writes,1)
   for _=1,8 do online:step(.5) end
-  h.equals(#writes,1,'ожидающая подсказка не должна обновляться каждый опрос')
+  h.equals(#writes,1,'подсказка выбора кафе не должна обновляться каждый опрос')
   home:SetAttribute('StaffRoster','1001,1002,1003'); home:SetAttribute('CafeCount',1); online:step(.5)
   h.equals(#online.queueStations,2); h.equals(online.queueStations[1].station.actor.identity,1002); h.equals(online.queueStations[2].station.actor.identity,1003)
   h.equals(online.queueStations[1].station.actor.visible,true)
@@ -173,10 +173,10 @@ return function(h)
   h.equals(online.queueStations[1].station,retainedOnPurchase,'покупка второго кафе не заменяет первый кабинет')
   assert(not retainedOnPurchase.destroyed,'неизменившаяся станция была удалена')
   local oldQueueStation=online.queueStations[1].station
-  h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
+  h.equals(sign.ActionText,'Choose a cafe'); h.equals(#writes,1)
   online:step(.5); h.equals(#writes,1)
   home:SetAttribute('CafeCount',0); online:step(.5)
-  h.equals(sign.ActionText,'Waiting for another cafe'); h.equals(#writes,1)
+  h.equals(sign.ActionText,'Choose a cafe'); h.equals(#writes,1)
   assert(oldQueueStation.destroyed); h.equals(#online.queueStations,0)
   local firstObject=#objects+1
   home:SetAttribute("CafeCount",1000000); online:step(.5)
@@ -217,7 +217,7 @@ return function(h)
   k.shopping=true; online:step(.5); h.equals(sign.Enabled,false)
   k.shopping=false; online:step(.5); h.equals(sign.Enabled,true)
   attrs.KitchenOrigin=R.Vector3.new(24,0,1000)
-  local backSign={Name='HomeCafePrompt',Enabled=true,IsA=function(_,class) return class=='ProximityPrompt' end}
+  local backSign={Name='NextCafePrompt',Enabled=true,IsA=function(_,class) return class=='ProximityPrompt' end}
   models={model(1,k.origin),model(2,attrs.KitchenOrigin,{backSign})}
   online:step(.5); assert(online.peers['2:0']); h.equals(#stations,2)
   local p=online.peers['2:0']; assert(p.prompt.Enabled)

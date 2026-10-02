@@ -64,14 +64,14 @@ return function(h)
   local directory=world.KitchenIslands
   local function visit(p,roomId,home)
    now+=1
-   local board=directory['KitchenRoom_'..roomId][if home then 'HomeCafeArrow' else 'NextCafeArrow']
+   local board=directory['KitchenRoom_'..roomId].NextCafeArrow
    p.root.Position=board.Position
    p.directoryAction=nil
    prompts[board:FindFirstChildOfClass('ProximityPrompt')](p)
-   if not home and p.directoryAction=='open' then
+   if p.directoryAction=='open' then
     local records={}
     for _,model in directory:GetChildren() do table.insert(records,{owner=model:GetAttribute('OwnerId'),index=model:GetAttribute('CafeIndex'),online=model:GetAttribute('OwnerOnline')}) end
-    local id=require('../src/shared/CafeQueue').nextVisitor(records,p.UserId,p.VisitingKitchen)
+    local id=if home then p.UserId else require('../src/shared/CafeQueue').nextVisitor(records,p.UserId,p.VisitingKitchen)
     if id then visitRemote.OnServerEvent:Fire(p,id) end
    end
   end
@@ -119,7 +119,11 @@ return function(h)
   h.equals(hall.Floor.Transparency,1)
   local foundation=hall.Foundation; local min=foundation.Position-foundation.Size/2
   local max=foundation.Position+foundation.Size/2
-  for _,name in {'HomeCafeArrow','NextCafeArrow'} do
+  h.equals(hall:FindFirstChild('HomeCafeArrow'),nil)
+  local travelPrompts=0
+  for _,part in hall:GetDescendants() do if part:IsA('ProximityPrompt') then travelPrompts+=1 end end
+  h.equals(travelPrompts,1)
+  for _,name in {'NextCafeArrow'} do
    local board=hall[name]
    h.near(math.abs(board.Position.X-a.KitchenOrigin.X),10.25)
    h.near(board.Position.Z-a.KitchenOrigin.Z,11)
@@ -148,6 +152,12 @@ return function(h)
   for _,bad in {1,{},0/0,math.huge,'2',2.5} do visitRemote.OnServerEvent:Fire(a,bad); h.equals(a.VisitingKitchen,1) end
   visitRemote.OnServerEvent:Fire(a,99999); h.equals(a.directoryAction,'unavailable')
   now+=1; visitRemote.OnServerEvent:Fire(a,2); h.equals(a.VisitingKitchen,2); h.equals(a.directoryAction,'arrived')
+  -- Свой пункт меню не обходит расстояние и режим прогулки.
+  now+=1; a.root.Position=b.KitchenOrigin
+  visitRemote.OnServerEvent:Fire(a,1); h.equals(a.VisitingKitchen,2); h.equals(a.directoryAction,'close')
+  remote.OnServerEvent:Fire(a,'watch'); a.root.Position=directory.KitchenRoom_2.NextCafeArrow.Position
+  visitRemote.OnServerEvent:Fire(a,1); h.equals(a.VisitingKitchen,2)
+  remote.OnServerEvent:Fire(a,'walk')
   visit(a,2,true); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'cut'); visit(a,1,false); h.equals(a.VisitingKitchen,1)
   remote.OnServerEvent:Fire(a,'walk'); visit(a,1,false)

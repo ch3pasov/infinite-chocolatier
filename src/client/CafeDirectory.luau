@@ -81,6 +81,7 @@ function Directory:close()
 end
 function Directory:visit(id)
  if not self.overlay.Visible or self.busy then return end
+ if id==(self.kitchen.player:GetAttribute("VisitingKitchen") or self.kitchen.player.UserId) then return end
  if self.kitchen.view.diagnosticsOpen or self.kitchen.view.journalOpen then return end
  local allowed=false
  for _,entry in self.entries do if entry.owner==id then allowed=true; break end end
@@ -96,12 +97,15 @@ function Directory:refresh()
    online=model:GetAttribute("OwnerOnline"),count=model:GetAttribute("CafeCount") or 0,
    name=model:GetAttribute("DisplayName") or tostring(id),username=model:GetAttribute("Username") or tostring(id)}) end
  end
- self.entries=Queue.visitors(records,k.player.UserId,k.player:GetAttribute("VisitingKitchen") or k.player.UserId)
- if not self.busy and os.clock()>(self.noticeUntil or 0) then L.set(self.status,"Players to visit: {count}",{count=#self.entries}) end
+ local current=k.player:GetAttribute("VisitingKitchen") or k.player.UserId
+ self.entries=Queue.visitors(records,k.player.UserId,current)
+ local others=0
+ for _,entry in self.entries do if entry.owner~=k.player.UserId then others+=1 end end
+ if not self.busy and os.clock()>=(self.noticeUntil or 0) then L.set(self.status,"Players to visit: {count}",{count=others}) end
  self.empty.Visible=#self.entries==0
- self.next.Active=#self.entries>0; self.next.AutoButtonColor=#self.entries>0
- self.next.BackgroundColor3=if #self.entries>0 then Theme.accent else Theme.chocolateDark
- self.next.TextColor3=if #self.entries>0 then Theme.background else Theme.muted
+ self.next.Active=others>0; self.next.AutoButtonColor=others>0
+ self.next.BackgroundColor3=if others>0 then Theme.accent else Theme.chocolateDark
+ self.next.TextColor3=if others>0 then Theme.background else Theme.muted
  -- Изменение размера фабрики не удаляет соседние карточки и их портреты.
  -- Строку заменяем только после исчезновения владельца из доступного списка.
  local present={}
@@ -112,12 +116,17 @@ function Directory:refresh()
  for index,entry in self.entries do
   local row=self.rows[entry.owner] or self:createRow(entry)
   row.frame.LayoutOrder=index
+  local home=entry.owner==k.player.UserId; local here=entry.owner==current
+  row.frame.Active=not here; row.frame.AutoButtonColor=not here; row.arrow.Visible=not here
   if row.displayName~=entry.name then
-   row.displayName=entry.name; row.name.Text=entry.name
+   row.displayName=entry.name; if not home then row.name.Text=entry.name end
    row.initial.Text=string.sub(entry.name,1,(utf8.offset(entry.name,2) or (#entry.name+1))-1)
   end
+  if home then L.set(row.name,"My cafe") end
   if row.usernameText~=entry.username then row.usernameText=entry.username; row.username.Text="@"..entry.username end
-  if row.cafeCount~=entry.count then
+  if home then
+   L.set(row.count,if here then "You are here" else "Return home")
+  elseif row.cafeCount~=entry.count then
    row.cafeCount=entry.count; L.set(row.count,"Factory: {count} cafes",{count=L.number(entry.count+1)})
   end
   self:requestPortrait(entry.owner,row)
@@ -136,7 +145,7 @@ function Directory:createRow(entry)
   name.AutoLocalize=false; username.AutoLocalize=false
   local count=label(row,"Factory",12,Theme.text); count.Position=UDim2.fromOffset(78,55); count.Size=UDim2.new(1,-116,0,24)
   local arrow=label(row,"Visit",25,Theme.accent); arrow.Position=UDim2.new(1,-32,0,26); arrow.Size=UDim2.fromOffset(24,34); arrow.Text="›"
-  local data={frame=row,portrait=portrait,initial=initial,name=name,username=username,count=count}
+  local data={frame=row,portrait=portrait,initial=initial,name=name,username=username,count=count,arrow=arrow}
   portrait:GetPropertyChangedSignal("IsLoaded"):Connect(function() self:updatePortrait(data) end)
   self:updatePortrait(data)
   self.rows[entry.owner]=data
