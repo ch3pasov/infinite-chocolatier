@@ -370,9 +370,12 @@ function Atelier:fit()
 		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = 28
 		self.open.Parent = self.view.root
 		self.open.AnchorPoint = Vector2.new(1, 0)
-		self.open.Position = UDim2.new(1, -12, 0, 90)
-		self.open.Size = UDim2.fromOffset(120, 38)
-		self.journal:fit(self.view.root,true,UDim2.fromOffset(12,90),UDim2.new(1,-156,0,38))
+		local toolbar=Layout.toolbar(size.X,size.Y)
+		self.open.AnchorPoint = Vector2.zero
+		self.open.Position = UDim2.fromOffset(toolbar.workshop.x,toolbar.workshop.y)
+		self.open.Size = UDim2.fromOffset(toolbar.workshop.width,toolbar.workshop.height)
+		local journal=toolbar.journal
+		self.journal:fit(self.view.root,true,UDim2.fromOffset(journal.x,journal.y),UDim2.fromOffset(journal.width,journal.height))
 	end
 	-- На широком экране тот же магазин закреплён справа. Он не становится
 	-- модальным и не перехватывает жесты над шоколадкой в центре.

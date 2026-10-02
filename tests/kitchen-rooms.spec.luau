@@ -6,17 +6,25 @@ local luau=require('@lune/luau')
 local R=require('@lune/roblox')
 local function signal()
  local callbacks={}
- return {Connect=function(_,fn) table.insert(callbacks,fn) end,Fire=function(_,...) for _,fn in callbacks do fn(...) end end}
+ return {Connect=function(_,fn)
+  local connection={active=true,callback=fn,Disconnect=function(self) self.active=false end}
+  table.insert(callbacks,connection); return connection
+ end,Fire=function(_,...) for _,connection in callbacks do if connection.active then connection.callback(...) end end end,
+ count=function() local n=0; for _,connection in callbacks do if connection.active then n+=1 end end; return n end}
 end
 return function(h)
  h.test('соседние кухни, возрождение и переиспользование места после выхода',function()
   local world=R.Instance.new('Folder'); local delayed={}
   local players={PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function() return {} end}
   function players:GetFriendsAsync() return {IsFinished=true,GetCurrentPage=function() return {{Id=1001},{Id=1002},{Id=1003},{Id=1004}} end} end
+  local physics={groups={}}
+  function physics:IsCollisionGroupRegistered(name) return self.groups[name]~=nil end
+  function physics:RegisterCollisionGroup(name) self.groups[name]=true end
+  function physics:CollisionGroupSetCollidable(a,b,enabled) assert(a==b); self.groups[a]=enabled end
   local remote={OnServerEvent=signal()}; local run={Heartbeat=signal()}; local prompts={}; local now=0
   local visitRemote={OnServerEvent=signal(),FireClient=function(_,player,action) player.directoryAction=action end}
   local Rooms=luau.load(fs.readFile('src/server/KitchenRooms.luau'):gsub('prompt.Triggered:Connect%(', 'connectPrompt(prompt,'),{environment={
-   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='ReplicatedStorage' then {WaitForChild=function(_,name) return if name=='Shared' then {WaitForChild=function(_,module) return module end} else name end} else world end},
+   game={GetService=function(_,name) return if name=='Players' then players elseif name=='RunService' then run elseif name=='PhysicsService' then physics elseif name=='ReplicatedStorage' then {WaitForChild=function(_,name) return if name=='Shared' then {WaitForChild=function(_,module) return module end} else name end} else world end},
    require=function(name) return require("../src/shared/"..name) end,
    Instance=R.Instance,Enum=R.Enum,Vector3=R.Vector3,CFrame=R.CFrame,Color3=R.Color3,UDim2=R.UDim2,
    os={clock=function() return now end},connectPrompt=function(prompt,fn) prompts[prompt]=fn end,
@@ -24,13 +32,14 @@ return function(h)
   },injectGlobals=true})()
   local controller=Rooms.start(remote,visitRemote)
   local function player(id)
-   local p={UserId=id,Parent=true,CharacterAdded=signal()}
+   local p={UserId=id,Parent=true,CharacterAdded=signal(),CharacterRemoving=signal()}
    function p:SetAttribute(k,v) self[k]=v end
    function p:LoadCharacterAsync()
+    if self.Character then self.CharacterRemoving:Fire(self.Character) end
     assert(#world:GetChildren()>0,'спавн без пола')
     local root={Position=R.Vector3.zero}; local hum={Died=signal()}
     local body={Transparency=.2,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}; self.body=body
-    self.Character={WaitForChild=function() return root end,FindFirstChild=function() return root end,
+    self.Character={DescendantAdded=signal(),WaitForChild=function() return root end,FindFirstChild=function() return root end,
      GetDescendants=function() return {body} end,FindFirstChildOfClass=function() return hum end,PivotTo=function(_,cf) self.position=cf.Position; root.Position=cf.Position end}
     self.CharacterAdded:Fire(self.Character); self.root=root; self.hum=hum
     -- Движок завершает размещение после CharacterAdded.
@@ -39,6 +48,11 @@ return function(h)
    players.PlayerAdded:Fire(p); return p
   end
   local a,b=player(1),player(2)
+  h.equals(physics.groups.ChocolateAvatars,false)
+  h.equals(a.body.CollisionGroup,'ChocolateAvatars'); h.equals(b.body.CollisionGroup,'ChocolateAvatars')
+  local accessory={IsA=function(_,kind) return kind=='BasePart' end}
+  a.Character.DescendantAdded:Fire(accessory); h.equals(accessory.CollisionGroup,'ChocolateAvatars')
+  local oldCharacter=a.Character
   h.equals(controller:visiblePlayers(a)[2],true)
   h.equals(controller:visiblePlayers(b)[1],true)
   h.equals(controller:visiblePlayers(a)[1],nil)
@@ -80,6 +94,10 @@ return function(h)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
   remote.OnServerEvent:Fire(a,'bogus'); h.equals(a.root.Anchored,false)
   a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
+  h.equals(oldCharacter.DescendantAdded:count(),0); h.equals(a.Character.DescendantAdded:count(),1)
+  h.equals(a.body.CollisionGroup,'ChocolateAvatars')
+  local staleAccessory={IsA=function() return true end}; oldCharacter.DescendantAdded:Fire(staleAccessory)
+  h.equals(staleAccessory.CollisionGroup,nil)
   h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,12))).Magnitude,0)
   local hall=directory.KitchenRoom_1; local boundaries={}
   for _,part in hall:GetChildren() do if part.Name=='IslandBoundary' then
@@ -134,7 +152,7 @@ return function(h)
   decorState.equipped.clock=nil; controller:sync(b,decorState)
   h.equals(directory.KitchenRoom_2:GetAttribute('CafeAppearance'),',,,plant,,')
   decorState.equipped.clock='clock_1'; controller:sync(b,decorState)
-  players.PlayerRemoving:Fire(b); assert(directory:FindFirstChild('KitchenRoom_2'))
+  players.PlayerRemoving:Fire(b); h.equals(b.Character.DescendantAdded:count(),0); assert(directory:FindFirstChild('KitchenRoom_2'))
   h.equals(directory.KitchenRoom_2:GetAttribute('CafeAppearance'),',,clock_1,plant,,')
   h.equals(directory.KitchenRoom_2:GetAttribute('OwnerOnline'),false)
   local c=player(3); assert(c.KitchenOrigin~=b.KitchenOrigin,'занятое гостем место переиспользовано')

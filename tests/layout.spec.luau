@@ -19,10 +19,26 @@ return function(harness)
 			local fit = Layout.fit(viewport[1], viewport[2], bounds, mode.padding)
 			assert(fit.x + bounds.minX * fit.scale >= mode.left + 24 - 1e-6)
 			assert(fit.x + bounds.maxX * fit.scale <= viewport[1] - mode.right - 24 + 1e-6)
-			assert(fit.y + bounds.minY * fit.scale >= 24 - 1e-6)
+			assert(fit.y + bounds.minY * fit.scale >= 60 - 1e-6)
 			assert(fit.y + bounds.maxY * fit.scale <= viewport[2] - 24 + 1e-6)
 		end
 	end)
+ harness.test("строка кнопок использует тот же порог, что счётчик и сцена",function()
+  for _,size in {{320,568},{390,844},{1280,1033},{1024,768},{568,320},{844,390}} do
+   local mode=Layout.presentation(size[1],size[2],padding)
+   local toolbar=Layout.toolbar(size[1],size[2]); local walk=toolbar.walk
+   assert(walk.x>=12 and walk.x+walk.width<=size[1]-12)
+   if mode.landscape then
+    assert(walk.x>=mode.left and walk.y+walk.height+16<=mode.padding.top)
+   else
+    local journal,shop=toolbar.journal,toolbar.workshop
+    assert(journal.x+journal.width+12<=walk.x+.001)
+    assert(walk.x+walk.width+12<=shop.x+.001)
+    assert(walk.y>60 and walk.y+walk.height+24<=mode.padding.top)
+   end
+  end
+ end)
+
 	harness.test("вертикальный телефон сохраняет прежние поля, большой экран увеличивает плитку", function()
 		local phone = Layout.presentation(390, 844, padding)
 		harness.equals(phone.landscape, false)

@@ -9,8 +9,15 @@ local Catalog=require(Shared:WaitForChild('KitchenCatalog'))
 local Players=game:GetService('Players')
 local Workspace=game:GetService('Workspace')
 local RunService=game:GetService('RunService')
+local PhysicsService=game:GetService('PhysicsService')
+local avatarGroup='ChocolateAvatars'
 local Rooms={}
 function Rooms.start(remote,visitRemote)
+ -- На месте входа остаётся скрытый аватар режущего хозяина. Humanoid может
+ -- восстановить коллизии тела; группа исключает опору на него и на гостей,
+ -- сохраняя обычное столкновение с полом, мебелью и границами острова.
+ if not PhysicsService:IsCollisionGroupRegistered(avatarGroup) then PhysicsService:RegisterCollisionGroup(avatarGroup) end
+ PhysicsService:CollisionGroupSetCollidable(avatarGroup,avatarGroup,false)
  local homes,slots,visitors,byKey,pools={},{},{},{},{}
  local directory=Instance.new('Folder'); directory.Name='KitchenIslands'; directory.Parent=Workspace
  local function solid(parent,name,size,position)
@@ -204,7 +211,17 @@ function Rooms.start(remote,visitRemote)
    if not homes[player] or not player.Character then return end
    enter(player,visitors[player] or room); mode(player,room.mode)
   end
+  local function clearCollisionBinding()
+   if room.collisionAdded then room.collisionAdded:Disconnect(); room.collisionAdded=nil end
+  end
+  player.CharacterRemoving:Connect(clearCollisionBinding)
   player.CharacterAdded:Connect(function(char)
+   clearCollisionBinding()
+   local function collision(part)
+    if homes[player]==room and player.Character==char and part:IsA('BasePart') then part.CollisionGroup=avatarGroup end
+   end
+   room.collisionAdded=char.DescendantAdded:Connect(collision)
+   for _,part in char:GetDescendants() do collision(part) end
    local root=char:WaitForChild('HumanoidRootPart',10); local humanoid=char:FindFirstChildOfClass('Humanoid')
    if not root or not homes[player] then return end
    char:PivotTo(CFrame.new((visitors[player] or room).origin+Vector3.new(0,3,12))); mode(player,room.mode)
@@ -214,7 +231,9 @@ function Rooms.start(remote,visitRemote)
  end
  remote.OnServerEvent:Connect(mode); Players.PlayerAdded:Connect(add)
  Players.PlayerRemoving:Connect(function(player)
-  local visiting=visitors[player]; homes[player]=nil; visitors[player]=nil
+  local visiting=visitors[player]; local home=homes[player]
+  if home and home.collisionAdded then home.collisionAdded:Disconnect(); home.collisionAdded=nil end
+  homes[player]=nil; visitors[player]=nil
   local owned={}; for _,room in slots do if room.id==player.UserId then table.insert(owned,room) end end
   for _,room in owned do
    room.owner=nil; room.character=nil; room.hidden={}; room.model:SetAttribute('OwnerOnline',false); cleanup(room)

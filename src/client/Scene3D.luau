@@ -267,7 +267,7 @@ function Scene:fit()
 	local size = self.view.root.AbsoluteSize
 	if size.X < 1 or size.Y < 1 then return end
 	local mode = Layout.presentation(size.X,size.Y,Config.Board.viewportPadding)
-	local top = if mode.landscape then 12 else 174
+	local top = mode.padding.top
 	local bottom = if mode.landscape then 12 else 96
 	local left = if mode.landscape then mode.left+12 else 8
 	local right = if mode.landscape then mode.right+12 else 8

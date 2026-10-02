@@ -11,9 +11,24 @@ function Layout.presentation(width: number, height: number, portraitPadding)
 	return {
 		landscape = landscape, docked = docked, left = left, right = right,
 		padding = if landscape then {
-			left = left + 24, right = right + 24, side = 0, top = 24, bottom = 24, maxScale = 2.5,
+			left = left + 24, right = right + 24, side = 0, top = 60, bottom = 24, maxScale = 2.5,
 		} else portraitPadding,
 	}
+end
+
+-- Кухня и ателье используют один порог ориентации и одну строку кнопок.
+-- Раньше почти квадратный экран получал счётчик и прогулку в одном месте.
+function Layout.toolbar(width: number, height: number)
+ local mode=Layout.presentation(width,height,nil)
+ if mode.landscape then
+  return {walk={x=(width-164)/2,y=12,width=164,height=32}}
+ end
+ local widthOfButton=(width-48)/3
+ return {
+  journal={x=12,y=90,width=widthOfButton,height=38},
+  walk={x=24+widthOfButton,y=90,width=widthOfButton,height=38},
+  workshop={x=36+widthOfButton*2,y=90,width=widthOfButton,height=38},
+ }
 end
 
 function Layout.bounds(recipe, trick, tileWidth: number, tileHeight: number, geom)

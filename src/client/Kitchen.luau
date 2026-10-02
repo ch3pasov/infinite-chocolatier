@@ -10,6 +10,7 @@ local Station=require(script.Parent.WorkstationView)
 local Shell=require(script.Parent.KitchenShell)
 local Online=require(script.Parent.OnlineKitchen)
 local L = require(script.Parent.Localization)
+local Layout = require(script.Parent.Layout)
 local Players=game:GetService("Players")
 local StarterGui=game:GetService("StarterGui")
 local Decor=require(script.Parent.KitchenDecor)
@@ -91,8 +92,14 @@ function Kitchen.new(view,atelier)
  self.info=label(panel,"Info",UDim2.fromOffset(12,44),UDim2.new(1,-24,0,30))
  self.back=button(panel,"Back","Back to walking",UDim2.new(0,12,1,-50),UDim2.new(1,-24,0,38),function() self:setWalking() end)
  self.enter=button(gui,"EnterKitchen","Walk around kitchen",UDim2.new(.5,-82,0,12),UDim2.fromOffset(164,32),function() self:setOpen(true) end)
+ self.enter.TextScaled=true
+ local textLimit=Instance.new('UITextSizeConstraint'); textLimit.MinTextSize=11; textLimit.MaxTextSize=16; textLimit.Parent=self.enter
  local function fitEnter()
-  self.enter.Position=UDim2.new(.5,-82,0,if view.root.AbsoluteSize.X>view.root.AbsoluteSize.Y then 12 else 134)
+  local size=view.root.AbsoluteSize
+  if size.X<=0 or size.Y<=0 then return end
+  local bounds=Layout.toolbar(size.X,size.Y).walk
+  self.enter.Position=UDim2.fromOffset(bounds.x,bounds.y)
+  self.enter.Size=UDim2.fromOffset(bounds.width,bounds.height)
   if self.journalButton then
    self.journalButton.Position=UDim2.new(.5,-72,0,if view.root.AbsoluteSize.X>=700 then 12 else 72)
   end

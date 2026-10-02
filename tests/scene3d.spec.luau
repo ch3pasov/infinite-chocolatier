@@ -58,6 +58,44 @@ return function(h)
 			end
 		end
 	end)
+ h.test('3D: все четыре линии и зона захвата лежат ниже верхних кнопок',function()
+  for _,size in {R.Vector2.new(320,568),R.Vector2.new(390,844),R.Vector2.new(1280,1033),R.Vector2.new(844,390)} do
+   local mode=Layout.presentation(size.X,size.Y,Config.Board.viewportPadding)
+   local trick=table.clone(Config.Trick); trick.exploded=settings.layouts[if mode.landscape then 'landscape' else 'portrait']
+   local b=Layout.bounds(recipe,trick,66,104,Geom)
+   local view={root={AbsoluteSize=size},layoutBounds=b,boardWidth=330,boardHeight=520,boardScale={}}
+   local scene=setmetatable({view=view,camera={}},Scene); scene:fit()
+   local walk=Layout.toolbar(size.X,size.Y).walk
+   for _,cut in recipe.cuts do for _,point in cut do
+    local screen=Projection.project(scene.camera.CFrame,size,scene.camera.FieldOfView,R.Vector3.new(point.x*66*settings.unitsPerPixel,settings.surfaceHeight,point.y*104*settings.unitsPerPixel)*settings.renderScale)
+    assert(screen.Y-Config.Cutting.startRadius>=walk.y+walk.height,'палец попадает в прогулку: '..tostring(size))
+   end end
+  end
+ end)
+	h.test('3D: две дольки можно захватить и вернуть в плитку ниже верхних кнопок',function()
+		for _,size in {R.Vector2.new(320,568),R.Vector2.new(390,844),R.Vector2.new(1280,1033),R.Vector2.new(844,390)} do
+			local mode=Layout.presentation(size.X,size.Y,Config.Board.viewportPadding)
+			local layout=settings.layouts[if mode.landscape then 'landscape' else 'portrait']
+			local trick=table.clone(Config.Trick); trick.exploded=layout
+			trick.waypoints={upperRight={{dx=layout.upperRight.dx,dy=settings.passageY},{dx=-3,dy=settings.passageY}}}
+			local view={root={AbsoluteSize=size},layoutBounds=Layout.bounds(recipe,trick,66,104,Geom),boardWidth=330,boardHeight=520,boardScale={}}
+			local scene=setmetatable({view=view,camera={}},Scene); scene:fit()
+			local walk=Layout.toolbar(size.X,size.Y).walk
+			local function project(point,offset)
+				return Projection.project(scene.camera.CFrame,size,scene.camera.FieldOfView,R.Vector3.new((point.X+offset.X*66)*settings.unitsPerPixel,settings.surfaceHeight,(point.Y+offset.Y*104)*settings.unitsPerPixel)*settings.renderScale)
+			end
+			local pickup=project(R.Vector2.new(66,52),Motion.pose('stripDouble','strip',0,layout,recipe.slides,settings.passageY))
+			assert(pickup.Y-Config.Cutting.startRadius>=walk.y+walk.height,'зона захвата двух долек перекрыта: '..tostring(size))
+			-- Проверяем весь блок на всём маршруте, включая положение выше плитки.
+			for tick=0,100 do
+				local offset=Motion.pose('stripDouble','strip',tick/100,layout,recipe.slides,settings.passageY)
+				for _,point in {R.Vector2.new(0,0),R.Vector2.new(132,0),R.Vector2.new(132,104),R.Vector2.new(0,104)} do
+					assert(project(point,offset).Y>=walk.y+walk.height,'две дольки заходят под прогулку: '..tostring(size))
+				end
+			end
+		end
+	end)
+
 	h.test('3D: след разреза повторяет вершины, фаски и канавки долек',function()
 		local scene=setmetatable({view={tileWidth=66,tileHeight=104}},Scene)
 		assert(math.abs(scene:surfaceAt(R.Vector2.new(33,52))-settings.surfaceHeight)<1e-6)
