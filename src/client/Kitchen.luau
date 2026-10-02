@@ -210,7 +210,7 @@ function Kitchen:setWalking()
  self.preview=nil
  if self.previewPanel then self.previewPanel.Visible=false end
  if self.state and self.state.ready then Decor.update(self,self.state) end
- self.focus=false; self.shopping=false; self.watchPeer=nil
+ self.focus=false; self.shopping=false; self.watchPeer=nil; self.watchSide=nil
  self:setAvatarVisible(true)
  pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,true) end)
  self:refreshControls()
@@ -279,8 +279,10 @@ function Kitchen:step(dt)
  self:setAvatarVisible(false)
  self.camera.CameraType=Enum.CameraType.Scriptable
  local aspect=self.root.AbsoluteSize.X/math.max(1,self.root.AbsoluteSize.Y-150)
- local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(if self.watchPeer.staff then 0 else -3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
- local actor=self.watchPeer and not self.watchPeer.staff and self.watchPeer.station and self.watchPeer.station.actor
+ local side=self.watchSide or 1
+ local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(if self.watchPeer.staff then 0 elseif side==2 then 3.7 else -3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
+ local station=self.watchPeer and self.watchPeer.stations[side]
+ local actor=self.watchPeer and not self.watchPeer.staff and station and station.actor
  local actorHeight=actor and actor.height or 4
  if actor then target+=Vector3.new(0,math.max(0,actorHeight*.5-2.1),0) end
  local lookOffset
@@ -308,6 +310,8 @@ function Kitchen:step(dt)
  self.stations[2].actor:setVisible(variant>0)
  if self.watchPeer and self.watchPeer.staff then
   L.set(self.info,"Watch apprentices")
+ elseif self.watchPeer and self.watchSide==2 then
+  L.set(self.info,"Watching {name}'s apprentice",{name=self.watchPeer.player.DisplayName})
  elseif self.watchPeer then
   L.set(self.info,if self.watchPeer.player:GetAttribute("KitchenMode")=="cut" then "Watching {name} · live" else "{name} is away from their worktable",{name=self.watchPeer.player.DisplayName})
  elseif working then L.set(self.info,"Apprentices: {count} · {seconds}s per trick",{count=state.levels.workers,seconds=L.number(state.cycleSeconds)})
@@ -376,9 +380,11 @@ function Kitchen:updateOnboarding()
  self.guide.Position=if self.opened then UDim2.new(.5,0,0,walkGuideY) else UDim2.new(.5,0,0,180)
 end
 
-function Kitchen:watchPlayer(peer)
+function Kitchen:watchPlayer(peer,side)
  if not self:canWalk() then return end
- self.watchPeer=peer; self.focus=true
+ side=if side==2 then 2 else 1
+ if side==2 and (not peer.stations[2] or (not peer.staff and peer.model:GetAttribute('HasApprentice')~=true)) then return end
+ self.watchPeer=peer; self.watchSide=side; self.focus=true
  self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
  self.stage:activate(self.world,self.camera); self:step(0)
 end

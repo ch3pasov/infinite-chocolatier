@@ -141,8 +141,8 @@ return function(h)
   local remote={OnClientEvent=signal(),FireServer=function(_,a) table.insert(calls,a or 'request') end}
   local k=setmetatable({player=localPlayer,world={GetChildren=function() return {} end},origin=R.Vector3.new(0,0,1000),opened=true,focus=false,view={recipe=Recipe.build(Config.Recipe)},
    state={ready=true},atelier={remotes={kitchenAction=remote}}},{__index=Kitchen})
-  function k:setWalking() self.focus=false; self.watchPeer=nil; self.walked=true end
-  function k:watchPlayer(p) self.watchPeer=p; self.focus=true end
+  function k:setWalking() self.focus=false; self.watchPeer=nil; self.watchSide=nil; self.walked=true end
+  function k:watchPlayer(p,side) self.watchPeer=p; self.watchSide=side or 1; self.focus=true end
   local modules={Catalog=require('../src/shared/KitchenCatalog'),Structure=require("../src/shared/KitchenStructure"),Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function(room,state) room.testEquipped=state.equipped end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
    local s={actor={setIdentity=function(self,id) self.identity=id end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
    if not string.match(parent.Name or "","^QueueRoom_") then table.insert(stations,s) end; return s
@@ -231,12 +231,23 @@ return function(h)
   models={model(1,k.origin),model(2,attrs.KitchenOrigin,{backSign})}
   online:step(.5); assert(online.peers['2:0']); h.equals(#stations,2)
   local p=online.peers['2:0']; assert(p.prompt.Enabled)
+  assert(p.apprenticePrompt and not p.apprenticePrompt.Enabled,'не нанятый стажёр не предлагает наблюдение')
+  models[2]:SetAttribute('HasApprentice',true); online:step(.1)
+  assert(p.apprenticePrompt.Enabled,'правый стол нанятого стажёра недоступен')
+  attrs.KitchenMode='walk'; p.apprenticePrompt.Triggered:Fire(); online:step(.1)
+  h.equals(k.watchPeer,p); h.equals(k.watchSide,2); h.equals(p.stations[2].actor.visible,true)
+  h.equals(p.prompt.Enabled,false); h.equals(p.apprenticePrompt.Enabled,false)
+  models[2]:SetAttribute('HasApprentice',false); online:step(.1)
+  h.equals(k.watchPeer,nil); h.equals(k.watchSide,nil); h.equals(k.focus,false)
+  assert(not p.apprenticePrompt.Enabled,'престиж хозяина оставил наблюдение за пустым столом')
+  p.apprenticePrompt.Triggered:Fire(); h.equals(k.focus,false,'устаревшая подсказка открыла пустой стол')
+  models[2]:SetAttribute('HasApprentice',true); attrs.KitchenMode='cut'; online:step(.1)
   localPlayer.GetAttribute=function(_,name) return if name=='VisitingKitchen' then 2 else nil end
   online:step(.5); h.equals(backSign.Enabled,true)
   k.view.diagnosticsOpen=true; online:blockPrompts()
-  h.equals(p.prompt.Enabled,false); h.equals(backSign.Enabled,false)
+  h.equals(p.prompt.Enabled,false); h.equals(p.apprenticePrompt.Enabled,false); h.equals(backSign.Enabled,false)
   online:step(.5); h.equals(p.prompt.Enabled,false); h.equals(backSign.Enabled,false)
-  k.view.diagnosticsOpen=false; online:step(.5); h.equals(p.prompt.Enabled,true); h.equals(backSign.Enabled,true)
+  k.view.diagnosticsOpen=false; online:step(.5); h.equals(p.prompt.Enabled,true); h.equals(p.apprenticePrompt.Enabled,true); h.equals(backSign.Enabled,true)
   localPlayer.GetAttribute=function() return nil end; online:step(.5)
   local queue=online.queue; local station=online.queueStations[1].station
   models[2]:SetAttribute('CafeAppearance',',,clock_5,plant,,'); online:step(.5)
@@ -256,16 +267,21 @@ return function(h)
   now=3; online:step(.1)
   h.near((stations[1].action.offsets.upperLeft-action.offsets.upperLeft).Magnitude,0)
   p.prompt.Triggered:Fire(); h.equals(k.watchPeer,p); online:step(.1)
+  h.equals(k.watchSide,1,'наблюдение игрока должно оставаться у левого стола')
+  k:setWalking(); p.apprenticePrompt.Triggered:Fire(); online:step(.1)
+  h.equals(k.watchPeer,p); h.equals(k.watchSide,2)
   models[2]:SetAttribute('OwnerOnline',false); players.PlayerRemoving:Fire(peer); online:step(.5)
   assert(online.peers['2:0'],'гость должен продолжать видеть кафе без владельца')
   h.equals(p.testEquipped.clock,'clock_2','уход хозяина не убирает его мебель перед гостем')
   h.equals(stations[1].actor.visible,false)
+  h.equals(stations[2].actor.visible,true); h.equals(k.watchPeer,p); h.equals(k.watchSide,2,'уход хозяина не прерывает оставшегося стажёра')
   models={models[1]}; online:step(.5)
   assert(k.walked); assert(stations[1].destroyed); h.equals(online.peers['2:0'],nil)
   h.equals(online.cycles[2],nil,'цикл ушедшего владельца освобождается вместе с кафе')
   models[2]=model(2,attrs.KitchenOrigin)
   online:step(.5); assert(online.peers['2:0'])
   position=R.Vector3.new(400,0,1000); online:step(.1); h.equals(online.peers['2:0'].station,nil)
+  h.equals(online.peers['2:0'].apprenticePrompt.Enabled,false,'дальний освобождённый стол не предлагает наблюдение')
   models[2]=model(2,R.Vector3.new(400,0,1000)); models[2]:SetAttribute('CafeIndex',1)
   models[2]:SetAttribute('Staff1',101); models[2]:SetAttribute('Staff2',102)
   online:step(.5)

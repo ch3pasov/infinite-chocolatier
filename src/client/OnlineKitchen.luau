@@ -31,7 +31,10 @@ end
 function Online:blockPrompts()
  -- Домашняя стрелка выполняется сервером напрямую: её нужно выключить
  -- сразу при открытии окна, не дожидаясь следующего опроса островов.
- for _,peer in self.peers do peer.prompt.Enabled=false end
+ for _,peer in self.peers do
+  peer.prompt.Enabled=false
+  if peer.apprenticePrompt then peer.apprenticePrompt.Enabled=false end
+ end
  local directory=Workspace:FindFirstChild('KitchenIslands')
  for _,model in if directory then directory:GetChildren() else {} do
   for _,part in model:GetDescendants() do if part:IsA('ProximityPrompt') then part.Enabled=false end end
@@ -65,6 +68,19 @@ function Online:add(model)
  prompt.ObjectText=author.DisplayName..(if peer.staff then ' · '..index else ' (@'..author.Name..')')
  prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor; peer.prompt=prompt
  prompt.Triggered:Connect(function() if k:canWalk() and peer.station then k:watchPlayer(peer) end end)
+ if not peer.staff then
+  -- Домашний стажёр работает за правым столом независимо от режима хозяина.
+  -- Отдельная подсказка выбирает именно этот стол, а не сетевую позу игрока.
+  local anchor=Instance.new('Part'); anchor.Name='ApprenticeWorktable'; anchor.Anchored=true
+  anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one; anchor.Position=origin+Vector3.new(3.7,2.5,3); anchor.Parent=world
+  local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text('Watch apprentice')
+  prompt.ObjectText=L.text('Apprentice of {name}',{name=author.DisplayName})
+  prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
+  peer.apprenticePrompt=prompt
+  prompt.Triggered:Connect(function()
+   if k:canWalk() and model:GetAttribute('HasApprentice')==true and peer.stations[2] then k:watchPlayer(peer,2) end
+  end)
+ end
  return peer
 end
 function Online:clearQueue()
@@ -153,6 +169,7 @@ function Online:step(dt)
       else
        if peer.station then self:releaseStations(peer) end
        peer.prompt.Enabled=false
+       if peer.apprenticePrompt then peer.apprenticePrompt.Enabled=false end
       end
      end
     end
@@ -182,6 +199,8 @@ function Online:step(dt)
  end
  local root=k.player.Character and k.player.Character:FindFirstChild('HumanoidRootPart'); local position=if root then root.Position else k.origin
  for _,peer in self.peers do
+  local apprentice=peer.model:GetAttribute('HasApprentice')==true
+  if k.watchPeer==peer and k.watchSide==2 and not peer.staff and not apprentice then k:setWalking() end
   local near=(position-peer.origin).Magnitude<55 or k.watchPeer==peer
   if near and not peer.station then
    peer.stations[1]=Station.new(k.view,peer.world,peer.origin,-3.7,not peer.staff,peer.player.UserId)
@@ -191,6 +210,7 @@ function Online:step(dt)
    self:releaseStations(peer)
   end
   peer.prompt.Enabled=near and k:canWalk()
+  if peer.apprenticePrompt then peer.apprenticePrompt.Enabled=near and apprentice and k:canWalk() end
   if peer.station then
    local packet=self.packets[peer.player.UserId]
    local phase=self:cyclePhase(peer.model,now)

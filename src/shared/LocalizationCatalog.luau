@@ -170,6 +170,8 @@ Catalog.entries = {
  ["Decoration put away"] = "Украшение убрано",
  ["Watch player"] = "Смотреть игрока",
  ["Watching {name} · live"] = "Смотрим: {name} · прямой эфир",
+ ["Apprentice of {name}"] = "Стажёр {name}",
+ ["Watching {name}'s apprentice"] = "Смотрим: стажёр {name}",
  ["{name} is away from their worktable"] = "{name} сейчас не за своим столом",
 
 	["Tempering Machine"] = "Темперирующая машина",
