@@ -11,6 +11,40 @@ local function resume(thread)
  local ok,err=coroutine.resume(thread); assert(ok,err)
 end
 return function(h)
+ h.test('игрок за столом сохраняет текущее описание и свой R15 или R6',function()
+  for _,kind in {'R15','R6'} do
+   local description={Destroy=function(self) self.destroyed=true end}
+   local humanoid={RigType=kind,GetAppliedDescription=function() return description end}
+   local character={FindFirstChildOfClass=function() return humanoid end}
+   local players={GetPlayerByUserId=function(_,id) h.equals(id,12); return {Character=character} end,
+    GetHumanoidDescriptionFromUserIdAsync=function() error('не брать устаревшее описание аккаунта') end,
+    CreateHumanoidModelFromDescriptionAsync=function(_,desc,rigType)
+     h.equals(desc,description); h.equals(rigType,kind); return 'current-avatar'
+    end}
+   local ok,rig,loaded,err,source=A.createPlayerRig(players,{},12,'R15')
+   assert(ok and loaded and not err); h.equals(rig,'current-avatar'); h.equals(source,character)
+   h.equals(description.destroyed,true)
+  end
+ end)
+ h.test('сбой или отмена текущего аватара освобождает описание и не подменяет его R6',function()
+  for _,cancelled in {false,true} do
+   local current=true; local calls=0
+   local description={Destroy=function(self) self.destroyed=true end}
+   local humanoid={RigType='R15',GetAppliedDescription=function() if cancelled then current=false end; return description end}
+   local players={GetPlayerByUserId=function() return {Character={FindFirstChildOfClass=function() return humanoid end}} end,
+    CreateHumanoidModelFromDescriptionAsync=function() calls+=1; error('temporary failure') end}
+   local ok=A.createPlayerRig(players,{},12,'R15',function() return current end)
+   h.equals(ok,false); h.equals(description.destroyed,true); h.equals(calls,if cancelled then 0 else 1)
+  end
+ end)
+ h.test('отсутствующий игрок загружается с сохранением современной одежды через R15',function()
+  local description={Destroy=function() end}
+  local players={GetPlayerByUserId=function() return nil end,
+   GetHumanoidDescriptionFromUserIdAsync=function() return description end,
+   CreateHumanoidModelFromDescriptionAsync=function(_,desc,kind) h.equals(desc,description); h.equals(kind,'R15'); return 'offline-avatar' end}
+  local ok,rig,loaded=A.createPlayerRig(players,{},9210,'R15')
+  assert(ok and loaded); h.equals(rig,'offline-avatar')
+ end)
  h.test('отменённая копия перестаёт ждать чужое описание и не повторяет запрос',function()
   local appearance=concurrentAppearance(); local calls,models=0,0
   local players={GetHumanoidDescriptionFromUserIdAsync=function()

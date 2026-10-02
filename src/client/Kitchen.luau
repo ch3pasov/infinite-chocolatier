@@ -67,7 +67,7 @@ function Kitchen.new(view,atelier)
  self.walkCamera=self.stage:createCamera("KitchenWalkCamera",70)
  self.walkController=WalkCamera.new(player,self.walkCamera,function() return self:canWalk() end)
  Shell.new(world,self.origin)
- self.stations={Station.new(view,world,self.origin,-3.7,true),Station.new(view,world,self.origin,3.7,false)}
+ self.stations={Station.new(view,world,self.origin,-3.7,true,player.UserId),Station.new(view,world,self.origin,3.7,false)}
  local panel=Instance.new("Frame"); panel.BackgroundColor3=cocoa; panel.BackgroundTransparency=.08
  panel.Position=UDim2.new(0,12,1,-150); panel.Size=UDim2.new(1,-24,0,138); panel.Parent=root
  self.panel=panel
@@ -273,12 +273,17 @@ function Kitchen:step(dt)
  self.camera.CameraType=Enum.CameraType.Scriptable
  local aspect=self.root.AbsoluteSize.X/math.max(1,self.root.AbsoluteSize.Y-150)
  local target=if self.watchPeer then self.watchPeer.origin+Vector3.new(if self.watchPeer.staff then 0 else -3.7,2.1,-.4) else self.origin+Vector3.new(3.7,2.1,-.4)
+ local actor=self.watchPeer and not self.watchPeer.staff and self.watchPeer.station and self.watchPeer.station.actor
+ local actorHeight=actor and actor.height or 4
+ if actor then target+=Vector3.new(0,math.max(0,actorHeight*.5-2.1),0) end
  local lookOffset
  if self.preview then
   local shots={workers={Vector3.new(3.7,3,-2),Vector3.new(0,3,7)},temper={Vector3.new(-6,3,-5),Vector3.new(2,2,5)},library={Vector3.new(-4,4,-6),Vector3.new(1,1,5)},clock={Vector3.new(6,5.6,-6),Vector3.new(-1,0,5)},plant={Vector3.new(8.5,1.5,9),Vector3.new(-3,2,5)},rug={Vector3.new(0,0,9),Vector3.new(0,8,5)},art={Vector3.new(-10.1,4,8),Vector3.new(6,1,1)}}
   local shot=shots[self.previewSpec.group]; target=self.origin+shot[1]; lookOffset=shot[2]
  end
  local distance=if self.focus then (if self.watchPeer and self.watchPeer.staff then 12 else 8) else 16
+ -- Современное тело и высокие аксессуары должны целиком входить в кадр.
+ if actor then distance*=math.max(1,actorHeight/5) end
  distance*=math.max(1,1.5/aspect)
  local cf=CFrame.lookAt(target+(if lookOffset then lookOffset*math.max(1,1.3/aspect) else Vector3.new(0,distance*.8,distance)),target)
  -- Нижняя панель занимает 150 px: центр кухни сдвигается выше неё.

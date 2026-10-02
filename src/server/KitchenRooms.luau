@@ -215,6 +215,11 @@ function Rooms.start(remote,visitRemote)
    if room.collisionAdded then room.collisionAdded:Disconnect(); room.collisionAdded=nil end
   end
   player.CharacterRemoving:Connect(clearCollisionBinding)
+  local avatarRevision=0
+  player.CharacterAppearanceLoaded:Connect(function(char)
+   if homes[player]~=room or player.Character~=char then return end
+   avatarRevision+=1; player:SetAttribute('AvatarRevision',avatarRevision)
+  end)
   player.CharacterAdded:Connect(function(char)
    clearCollisionBinding()
    local function collision(part)

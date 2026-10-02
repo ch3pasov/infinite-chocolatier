@@ -63,7 +63,7 @@ return function(h)
   local part=setmetatable({},{__index=values,__newindex=function(_,k,v) values[k]=v; writes+=1 end})
   local attributes=0
   local parent={SetAttribute=function() attributes+=1 end}
-  local actor=setmetatable({rig={},rest={[part]=.35},parent=parent},Actor)
+  local actor=setmetatable({rig={},rest={[part]=.35},parent=parent,ik={}},Actor)
   for _=1,120 do actor:setVisible(true) end
   h.equals(writes,1); h.equals(part.Transparency,.35); h.equals(attributes,1)
   actor:setVisible(false); h.equals(writes,2); h.equals(part.Transparency,1)

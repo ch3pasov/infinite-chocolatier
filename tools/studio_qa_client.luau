@@ -49,7 +49,7 @@ local function dispatch(args)
   local parent=Instance.new("Model"); parent.Name="AvatarLifecycleQA"; parent.Parent=kitchen.world
   local actor,cancelled
   local calls=0; local identity=-567890
-  -- Отрицательный QA-id использует обычную сборку R6, без запроса чужого
+  -- Отрицательный QA-id использует обычную сборку R15, без запроса чужого
   -- аккаунта. Остальные станции проходят через загрузчик без изменений.
   Appearance.createRig=function(players,description,id,rigType,current)
    if id==identity then calls+=1 end
@@ -63,9 +63,9 @@ local function dispatch(args)
    assert(waitUntil(function() return actor.rig~=nil end,15),"Avatar did not load")
    assert(calls==1,"Obsolete assignments started avatar loads: "..calls)
    assert(actor.rig.Parent==parent and actor.rig:GetAttribute("AssignedUserId")==identity,"Wrong avatar attached")
-   assert(math.abs(actor.rig:GetScale()-.8)<.001,"Avatar scale changed")
+   assert(math.abs(actor.rig:GetScale()-1)<.001,"Avatar scale changed")
    local root=actor.rig:FindFirstChild("HumanoidRootPart")
-   local torso=actor.rig:FindFirstChild("Torso")
+   local torso=actor.rig:FindFirstChild("UpperTorso")
    assert(root.Transparency==1 and torso.Transparency==0,"Initial visibility changed")
    actor:setVisible(false); assert(torso.Transparency==1,"Avatar did not hide")
    actor:setVisible(true); assert(torso.Transparency==0 and root.Transparency==1,"Avatar did not restore")
@@ -76,6 +76,38 @@ local function dispatch(args)
   if actor then actor:destroy() end
   if cancelled then cancelled:destroy() end
   parent:Destroy()
+  assert(ok,result); return result
+ elseif args.action=="playerAvatar" then
+  local Animator=require(script.ChocolatierAnimator)
+  assert(waitUntil(function() return player.Character and player.Character:FindFirstChildOfClass('Humanoid') end,30),'Walking avatar did not load')
+  local character=args.character or player.Character; local humanoid=character:FindFirstChildOfClass('Humanoid')
+  local parent=Instance.new('Model'); parent.Name='PlayerAppearanceQA'; parent.Parent=kitchen.world
+  local actor=Animator.new(parent,'LiveAvatar',-3.7,true,kitchen.origin,args.userId or player.UserId)
+  local ok,result=pcall(function()
+   actor:setVisible(true)
+   assert(waitUntil(function() return actor.rig~=nil end,20),'Live avatar did not load')
+   local copy=actor.rig:FindFirstChildOfClass('Humanoid')
+   assert(copy.RigType==humanoid.RigType,'Walking avatar changed rig type at table')
+   assert(math.abs(actor.rig:GetScale()-character:GetScale())<.001,'Walking avatar changed model scale')
+   local sourceDescription=humanoid:GetAppliedDescription(); local tableDescription=copy:GetAppliedDescription()
+   for _,property in {'Head','Torso','LeftArm','RightArm','LeftLeg','RightLeg','Shirt','Pants','GraphicTShirt','Face','HeightScale','WidthScale','DepthScale','HeadScale','BodyTypeScale','ProportionScale'} do
+    assert(sourceDescription[property]==tableDescription[property],'Avatar changed '..property)
+   end
+   local function accessories(description)
+    local ids={}; for _,accessory in description:GetAccessories(true) do table.insert(ids,accessory.AssetId) end
+    table.sort(ids); return table.concat(ids,',')
+   end
+   assert(accessories(sourceDescription)==accessories(tableDescription),'Avatar lost accessories or layered clothing')
+   sourceDescription:Destroy(); tableDescription:Destroy()
+   local ikCount=0
+   for _,entry in actor.ik do
+    assert(entry.control.ChainRoot and entry.control.EndEffector and entry.control.Target,'Incomplete arm IK')
+    ikCount+=1
+   end
+   assert(ikCount==(if humanoid.RigType==Enum.HumanoidRigType.R15 then 2 else 0),'Wrong arm rig')
+   return {ok=true,rigType=copy.RigType.Name,scale=actor.rig:GetScale(),accessoriesKept=true,descriptionKept=true,ikArms=ikCount}
+  end)
+  actor:destroy(); parent:Destroy()
   assert(ok,result); return result
  elseif args.action=="loadingRecovery" then
   local saved=state

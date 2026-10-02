@@ -6,7 +6,7 @@ local Appearance=require(script.Parent.FriendAppearance)
 local Animator = {}
 Animator.__index = Animator
 function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
- local self=setmetatable({alive=true,visible=false,x=x,generation=0,parent=parent},Animator)
+ local self=setmetatable({alive=true,visible=false,x=x,generation=0,parent=parent,appearanceConnections={}},Animator)
  parent:SetAttribute('ActorVisible',false)
  function self:setIdentity(nextId,seed,retry)
   if not self.alive then return end
@@ -15,6 +15,20 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
   local sameIdentity=self.identity==key
   if sameIdentity and not retry then return end
   self.identity=key; self.generation+=1; local generation=self.generation
+  for _,connection in self.appearanceConnections do connection:Disconnect() end
+  self.appearanceConnections={}
+  if isPlayer then
+   local player=Appearance.getPlayer(Players,nextId)
+   if player then
+    local function refresh(character)
+     if self.alive and player.Character==character then self:setIdentity(nextId,seed,0) end
+    end
+    table.insert(self.appearanceConnections,player.CharacterAdded:Connect(refresh))
+    -- CharacterAppearanceLoaded работает только на сервере. Ревизия
+    -- сообщает клиентам, что одежда нового персонажа уже загружена.
+    table.insert(self.appearanceConnections,player:GetAttributeChangedSignal('AvatarRevision'):Connect(function() refresh(player.Character) end))
+   end
+  end
   -- Статус принадлежит станции, а не rig: иначе пустое место после
   -- ошибки загрузки вообще отсутствует в диагностическом отчёте.
   parent:SetAttribute('ActorAssignedUserId',nextId)
@@ -41,8 +55,8 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
    description.TorsoColor=Color3.fromHSV(random:NextNumber(),.35,.85)
    description.LeftLegColor=Color3.fromHSV(random:NextNumber(),.3,.3); description.RightLegColor=description.LeftLegColor
   end
-  -- R6 сохраняет общие суставы и позы игрока и стажёра.
-  local ok,rig,friendLoaded,loadError=Appearance.createRig(Players,description,nextId,Enum.HumanoidRigType.R6,current)
+  local create=if isPlayer then Appearance.createPlayerRig else Appearance.createRig
+  local ok,rig,friendLoaded,loadError,character=create(Players,description,nextId,if isPlayer then Enum.HumanoidRigType.R15 else Enum.HumanoidRigType.R6,current)
   description:Destroy()
   if not current() then if ok and rig then rig:Destroy() end; return end
   -- Временный сбой Roblox не оставляет станцию без персонажа и не
@@ -58,12 +72,12 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
    end) end
   else parent:SetAttribute('ActorLoadState','ready') end
   if not ok then warn("Could not load chocolatier rig: "..tostring(rig)); return end
-  rig.Name=name; rig:ScaleTo(.8)
+  rig.Name=name; rig:ScaleTo(if isPlayer then (if character then character:GetScale() else 1) else .8)
   rig:SetAttribute("AppearanceUserId",if friendLoaded then nextId else 0)
   rig:SetAttribute("AssignedUserId",nextId)
   parent:SetAttribute('ActorAppearanceUserId',if friendLoaded then nextId else 0)
   if self.rig then self.rig:Destroy() end
-  self.rig=rig; self.rest={}; self.motors={}
+  self.rig=rig; self.rest={}; self.motors={}; self.ik={}
   local root=rig:FindFirstChild("HumanoidRootPart")
   -- Сгенерированная модель может иметь pivot не в корне; иначе персонаж
   -- оказывается по плечи внутри стола при одинаковой высоте станции.
@@ -80,7 +94,31 @@ function Animator.new(parent, name, x, isPlayer, roomOrigin, userId)
    elseif item:IsA("BaseScript") then item:Destroy() end
   end
   rig.Parent=parent
-  rig:PivotTo(CFrame.new((roomOrigin or Vector3.zero)+Vector3.new(x,2.4,-2.9))*CFrame.Angles(0,math.pi,0))
+  local height=2.4
+  if isPlayer then
+   local leg=rig:FindFirstChild('Left Leg')
+   height=root.Size.Y/2+(if humanoid.RigType==Enum.HumanoidRigType.R15 then humanoid.HipHeight else leg.Size.Y)
+  end
+  local modern=humanoid.RigType==Enum.HumanoidRigType.R15
+  -- У R15 плечи выше: рабочая стойка ближе к плитке позволяет согнуть
+  -- локти, сохранив реальные размеры рук и одежды.
+  rig:PivotTo(CFrame.new((roomOrigin or Vector3.zero)+Vector3.new(x,height,if modern then -1.9 else -2.9))*CFrame.Angles(0,math.pi,0))
+  self.height=if isPlayer then rig:GetExtentsSize().Y else 4
+  if humanoid.RigType==Enum.HumanoidRigType.R15 then
+   if not humanoid:FindFirstChildOfClass('Animator') then Instance.new('Animator').Parent=humanoid end
+   -- Локти и кисти R15 следуют ножу через штатный IK, без растягивания
+   -- частей тела. Цели принадлежат копии и уничтожаются вместе с ней.
+   for _,side in {'Left','Right'} do
+    local hand=rig:FindFirstChild(side..'Hand'); local arm=rig:FindFirstChild(side..'UpperArm')
+    if hand and arm then
+     local target=Instance.new('Attachment'); target.Name=side..'WorkTarget'; target.Parent=root
+     local ik=Instance.new('IKControl'); ik.Name=side..'WorkArm'; ik.Type=Enum.IKControlType.Position
+     ik.ChainRoot=arm; ik.EndEffector=hand:FindFirstChild(side..'GripAttachment') or hand; ik.Target=target
+     ik.SmoothTime=.08; ik.Weight=0; ik.Enabled=false; ik.Parent=humanoid
+     self.ik[side]={control=ik,target=target}
+    end
+   end
+  end
   self:setVisible(self.visible)
   end)
  end
@@ -91,6 +129,7 @@ function Animator:setVisible(visible)
  if self.visible~=visible then self.parent:SetAttribute('ActorVisible',visible) end
  self.visible=visible
  if not self.rig then return end
+ for _,entry in self.ik do if not visible then entry.control.Enabled=false end end
  if self.visibleRig==self.rig and self.appliedVisibility==visible then return end
  self.visibleRig=self.rig; self.appliedVisibility=visible
  for part,rest in self.rest do part.Transparency=if visible then rest else 1 end
@@ -102,10 +141,16 @@ function Animator:step(action, origin, scale, dt, knifeGrip)
  -- Одинаковые позы нарезки/переноса для любого источника Action.
  for _,side in {"Left","Right"} do
   local entry=self.motors[side.." Shoulder"]
+  local tile=if side=="Right" then action.rightHand else action.leftHand
+  local target=if side=="Right" and knifeGrip then knifeGrip else origin+Vector3.new(tile.X*scale.X,.2,tile.Y*scale.Y)
+  local ik=self.ik[side]
+  if ik then
+   ik.target.WorldPosition=target
+   ik.control.Weight+=((if active then 1 else 0)-ik.control.Weight)*alpha
+   ik.control.Enabled=active or ik.control.Weight>.001
+  end
   if entry then
    local joint=entry.joint
-   local tile=if side=="Right" then action.rightHand else action.leftHand
-   local target=if side=="Right" and knifeGrip then knifeGrip else origin+Vector3.new(tile.X*scale.X,.2,tile.Y*scale.Y)
    local shoulder=joint.Part0.CFrame:PointToWorldSpace(entry.c0.Position)
    local desired=entry.c0
    if active then
@@ -118,11 +163,15 @@ function Animator:step(action, origin, scale, dt, knifeGrip)
  end
  local neck=self.motors.Neck
  if neck then neck.joint.C0=neck.joint.C0:Lerp(neck.c0*CFrame.Angles(if active then -.2 else 0,0,0),alpha) end
+ local waist=self.motors.Waist
+ if waist then waist.joint.C0=waist.joint.C0:Lerp(waist.c0*CFrame.Angles(if active then -.5 else 0,0,0),alpha) end
 end
 function Animator:destroy()
  self.alive=false
+ for _,connection in self.appearanceConnections do connection:Disconnect() end
+ self.appearanceConnections={}
  if self.rig then self.rig:Destroy() end
- self.rig=nil; self.rest=nil; self.motors=nil; self.visibleRig=nil
+ self.rig=nil; self.rest=nil; self.motors=nil; self.ik=nil; self.visibleRig=nil
  self.parent:SetAttribute('ActorVisible',false)
  self.parent:SetAttribute('ActorLoadState',nil)
  self.parent:SetAttribute('ActorAssignedUserId',nil)

@@ -32,7 +32,7 @@ return function(h)
   },injectGlobals=true})()
   local controller=Rooms.start(remote,visitRemote)
   local function player(id)
-   local p={UserId=id,Parent=true,CharacterAdded=signal(),CharacterRemoving=signal()}
+   local p={UserId=id,Parent=true,CharacterAdded=signal(),CharacterRemoving=signal(),CharacterAppearanceLoaded=signal()}
    function p:SetAttribute(k,v) self[k]=v end
    function p:LoadCharacterAsync()
     if self.Character then self.CharacterRemoving:Fire(self.Character) end
@@ -53,6 +53,7 @@ return function(h)
   local accessory={IsA=function(_,kind) return kind=='BasePart' end}
   a.Character.DescendantAdded:Fire(accessory); h.equals(accessory.CollisionGroup,'ChocolateAvatars')
   local oldCharacter=a.Character
+  a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)
   h.equals(controller:visiblePlayers(a)[2],true)
   h.equals(controller:visiblePlayers(b)[1],true)
   h.equals(controller:visiblePlayers(a)[1],nil)
@@ -96,6 +97,8 @@ return function(h)
   a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
   h.equals(oldCharacter.DescendantAdded:count(),0); h.equals(a.Character.DescendantAdded:count(),1)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars')
+  a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)
+  a.CharacterAppearanceLoaded:Fire(a.Character); h.equals(a.AvatarRevision,2)
   local staleAccessory={IsA=function() return true end}; oldCharacter.DescendantAdded:Fire(staleAccessory)
   h.equals(staleAccessory.CollisionGroup,nil)
   h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,12))).Magnitude,0)

@@ -76,4 +76,27 @@ function Appearance.createRig(players,defaultDescription,userId,rigType,isCurren
  end
  return ok,rig,friendLoaded,loadError
 end
+function Appearance.getPlayer(players,userId)
+ if type(players.GetPlayerByUserId)~='function' then return nil end
+ return players:GetPlayerByUserId(userId)
+end
+-- За столом нужен текущий аватар, а не его преобразование в R6 или старое
+-- описание из кэша аккаунта. Transparency скрытого персонажа сюда не входит.
+function Appearance.createPlayerRig(players,defaultDescription,userId,fallbackRigType,isCurrent)
+ if isCurrent and not isCurrent() then return false,nil,false end
+ local player=Appearance.getPlayer(players,userId)
+ local character=player and player.Character
+ local humanoid=character and character:FindFirstChildOfClass('Humanoid')
+ if humanoid then
+  local ok,description=pcall(function() return humanoid:GetAppliedDescription() end)
+  if not ok then return false,nil,false,description end
+  if isCurrent and not isCurrent() then description:Destroy(); return false,nil,false end
+  local created,rig=pcall(function()
+   return players:CreateHumanoidModelFromDescriptionAsync(description,humanoid.RigType)
+  end)
+  description:Destroy()
+  return created,rig,created,if created then nil else rig,character
+ end
+ return Appearance.createRig(players,defaultDescription,userId,fallbackRigType,isCurrent)
+end
 return Appearance
