@@ -228,9 +228,13 @@ function Rooms.start(remote,visitRemote)
    room.collisionAdded=char.DescendantAdded:Connect(collision)
    for _,part in char:GetDescendants() do collision(part) end
    local root=char:WaitForChild('HumanoidRootPart',10); local humanoid=char:FindFirstChildOfClass('Humanoid')
-   if not root or not homes[player] then return end
+   if not root or homes[player]~=room or player.Character~=char then return end
    char:PivotTo(CFrame.new((visitors[player] or room).origin+Vector3.new(0,3,12))); mode(player,room.mode)
-   if humanoid then humanoid.Died:Connect(function() task.delay(3,spawn) end) end
+   if humanoid then
+    -- Клиент отдельно отключает этот же режим: настройка не реплицируется.
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing,false)
+    humanoid.Died:Connect(function() task.delay(3,spawn) end)
+   end
   end)
   task.spawn(spawn)
  end

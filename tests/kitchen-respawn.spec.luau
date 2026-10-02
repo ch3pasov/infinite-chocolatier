@@ -5,7 +5,8 @@ local fs=require('@lune/fs'); local luau=require('@lune/luau'); local R=require(
 local stub=setmetatable({},{__index=function(_,key) return key end})
 local Kitchen=luau.load(fs.readFile('src/client/Kitchen.luau'),{environment={
  game={GetService=function() return {WaitForChild=function() return stub end} end},
- script={Parent=stub},Color3=R.Color3,require=function() return {} end,
+ script={Parent=stub},Color3=R.Color3,Enum=R.Enum,require=function() return {} end,
+ task={spawn=function(fn,...) local co=coroutine.create(fn); local ok,err=coroutine.resume(co,...); assert(ok,err) end},
 },injectGlobals=true})()
 local function signal()
  local callbacks={}
@@ -20,7 +21,7 @@ local function signal()
   return threads
  end}
 end
-local function fixture()
+local function fixture(existing)
  local player={CharacterAdded=signal(),CharacterRemoving=signal()}
  local stats={walks=0,resets=0,enabled=true,clears=0}
  local k=setmetatable({player=player,opened=true,state={ready=true},view={cutIndex=2,cutProgress=47},walkCamera={},prompts={},
@@ -29,15 +30,16 @@ local function fixture()
   avatarVisibility={set=function(_,char,visible) assert(char==nil and visible); stats.clears+=1 end},
   setWalking=function(self) stats.walks+=1; self:refreshControls() end,
  },{__index=Kitchen})
- k:bindCharacter()
  local function character(pending)
-  local char={humanoid={}}
+  local char={humanoid={states={},SetStateEnabled=function(self,state,value) self.states[state.Name]=value end}}
   function char:WaitForChild(name,timeout)
    assert(name=='Humanoid'); self.timeout=timeout
    return if pending then coroutine.yield() else self.humanoid
   end
   return char
  end
+ if existing then player.Character=character() end
+ k:bindCharacter()
  local function appear(char)
   player.Character=char; return player.CharacterAdded:Fire(char)[1]
  end
@@ -47,6 +49,15 @@ local function finish(thread,value)
  local ok,err=coroutine.resume(thread,value); assert(ok,err)
 end
 return function(h)
+ h.test('карабканье отключено у уже появившегося персонажа и каждого нового спавна',function()
+  local k,_,char,appear=fixture(true)
+  h.equals(k.player.Character.humanoid.states.Climbing,false)
+  local nextChar=char(); appear(nextChar)
+  h.equals(nextChar.humanoid.states.Climbing,false)
+  h.equals(nextChar.humanoid.states.Jumping,nil)
+  h.equals(nextChar.humanoid.states.Running,nil)
+  k:unbindCharacter()
+ end)
  h.test('возрождение сохраняет открытые окна, текущий разрез и режим прогулки',function()
   for _,mode in {'walk','cut','browsing','shopping','focus','journal','report','loading'} do
    local k,stats,char,appear=fixture()
@@ -69,6 +80,7 @@ return function(h)
   local old=char(true); local pending=appear(old)
   local new=char(); appear(new); local resets=stats.resets
   finish(pending,old.humanoid)
+  h.equals(old.humanoid.states.Climbing,nil)
   h.equals(k.walkCamera.CameraSubject,new.humanoid); h.equals(stats.walks,1)
   h.equals(stats.resets,resets,'старый ответ не трогает ввод')
   -- Запоздалое удаление старой модели также не сбрасывает нового игрока.

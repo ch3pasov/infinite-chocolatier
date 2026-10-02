@@ -37,7 +37,7 @@ return function(h)
    function p:LoadCharacterAsync()
     if self.Character then self.CharacterRemoving:Fire(self.Character) end
     assert(#world:GetChildren()>0,'спавн без пола')
-    local root={Position=R.Vector3.zero}; local hum={Died=signal()}
+    local root={Position=R.Vector3.zero}; local hum={Died=signal(),states={},SetStateEnabled=function(self,state,value) self.states[state.Name]=value end}
     local body={Transparency=.2,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}; self.body=body
     self.Character={DescendantAdded=signal(),WaitForChild=function() return root end,FindFirstChild=function() return root end,
      GetDescendants=function() return {body} end,FindFirstChildOfClass=function() return hum end,PivotTo=function(_,cf) self.position=cf.Position; root.Position=cf.Position end}
@@ -48,6 +48,9 @@ return function(h)
    players.PlayerAdded:Fire(p); return p
   end
   local a,b=player(1),player(2)
+  h.equals(a.hum.states.Climbing,false)
+  h.equals(b.hum.states.Climbing,false)
+  h.equals(a.hum.states.Jumping,nil)
   h.equals(physics.groups.ChocolateAvatars,false)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars'); h.equals(b.body.CollisionGroup,'ChocolateAvatars')
   local accessory={IsA=function(_,kind) return kind=='BasePart' end}
@@ -95,6 +98,7 @@ return function(h)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
   remote.OnServerEvent:Fire(a,'bogus'); h.equals(a.root.Anchored,false)
   a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
+  h.equals(a.hum.states.Climbing,false)
   h.equals(oldCharacter.DescendantAdded:count(),0); h.equals(a.Character.DescendantAdded:count(),1)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars')
   a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)

@@ -148,21 +148,28 @@ end
 function Kitchen:bindCharacter()
  if self.characterActive then return end
  self.characterActive=true; self.boundCharacter=self.player.Character
- self.characterConnection=self.player.CharacterAdded:Connect(function(char)
+ local function characterReady(char)
   if not self.characterActive or self.player.Character~=char then return end
   self.boundCharacter=char; self.walkController:resetInput()
   local humanoid=char:WaitForChild('Humanoid',10)
   -- Disconnect не отменяет уже начатый WaitForChild. Старый персонаж
   -- не должен возвращать камеру/прогулку после нового спавна или cleanup.
   if not humanoid or not self.characterActive or self.boundCharacter~=char or self.player.Character~=char then return end
+  -- Детектор лестниц Roblox может цепляться за чужой аватар даже без
+  -- столкновений тел. В кухне нет лестниц; отключаем только карабканье.
+  -- SetStateEnabled не реплицируется, поэтому это нужно и на клиенте.
+  humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing,false)
   self.walkCamera.CameraSubject=humanoid
   if self:canWalk() then self:setWalking() else self:refreshControls() end
- end)
+ end
+ self.characterConnection=self.player.CharacterAdded:Connect(characterReady)
  self.characterRemovedConnection=self.player.CharacterRemoving:Connect(function(char)
   if self.boundCharacter~=char then return end
   self.boundCharacter=nil; self.walkCamera.CameraSubject=nil
   self.walkController:resetInput(); self.avatarVisibility:set(nil,true)
  end)
+ -- Первый персонаж мог появиться до создания интерфейса кухни.
+ if self.boundCharacter then task.spawn(characterReady,self.boundCharacter) end
 end
 function Kitchen:unbindCharacter()
  self.characterActive=false; self.boundCharacter=nil
