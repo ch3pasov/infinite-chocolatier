@@ -41,7 +41,9 @@ function Journal.new(gui,view)
 	self.chipInfo=label(chip,"Progress",12,Theme.muted); scaled(self.chipInfo,12)
 	self.chipFill=fill(chip,"ProgressTrack",68)
 	local journalGui=Instance.new("ScreenGui"); journalGui.Name="ChocolateJournal"; journalGui.ResetOnSpawn=false
-	journalGui.IgnoreGuiInset=true; journalGui.DisplayOrder=30; journalGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; journalGui.Parent=gui.Parent
+	-- Дневник начинается ниже системной панели: её кнопки всегда рисуются
+	-- поверх игры и прежде закрывали заголовок на телефоне.
+	journalGui.IgnoreGuiInset=false; journalGui.DisplayOrder=30; journalGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; journalGui.Parent=gui.Parent
 	local overlay=frame(journalGui,"JournalOverlay",Theme.background)
 	overlay.Size=UDim2.fromScale(1,1); overlay.BackgroundTransparency=.12
 	overlay.ZIndex=1100; overlay.Active=true; overlay.Visible=false; self.overlay=overlay
@@ -55,10 +57,39 @@ function Journal.new(gui,view)
 	close.Font=Enum.Font.GothamBold; close.TextColor3=Theme.background; close.BackgroundColor3=Theme.accent; close.BorderSizePixel=0
 	close.Position=UDim2.new(1,-54,0,16); close.Size=UDim2.fromOffset(38,38); close.Parent=panel; round(close)
 	local scroll=Instance.new("ScrollingFrame"); scroll.Name="Pages"; scroll.BackgroundTransparency=1; scroll.BorderSizePixel=0
-	scroll.Position=UDim2.fromOffset(12,70); scroll.Size=UDim2.new(1,-24,1,-84)
+	scroll.Position=UDim2.fromOffset(12,110); scroll.Size=UDim2.new(1,-24,1,-124)
 	scroll.ScrollBarThickness=4; scroll.ScrollBarImageColor3=Theme.accent
 	scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y; scroll.CanvasSize=UDim2.fromOffset(0,0); scroll.Parent=panel
 	local layout=Instance.new("UIListLayout"); layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Padding=UDim.new(0,12); layout.Parent=scroll
+ self.pages=scroll
+ local calculations=Instance.new('ScrollingFrame'); calculations.Name='Calculations'
+ calculations.BackgroundTransparency=1; calculations.BorderSizePixel=0
+ calculations.Position=scroll.Position; calculations.Size=scroll.Size
+ calculations.ScrollBarThickness=4; calculations.ScrollBarImageColor3=Theme.accent
+ calculations.AutomaticCanvasSize=Enum.AutomaticSize.Y; calculations.CanvasSize=UDim2.fromOffset(0,0)
+ calculations.Visible=false; calculations.Parent=panel; self.calculations=calculations
+ local calcLayout=Instance.new('UIListLayout'); calcLayout.SortOrder=Enum.SortOrder.LayoutOrder
+ calcLayout.Padding=UDim.new(0,10); calcLayout.Parent=calculations
+ self.tabs={}; self.bonusRows={}
+ for i,spec in {{'journal','Orders and progress'},{'bonuses','Bonuses and calculations'}} do
+  local tab=Instance.new('TextButton'); tab.Name=spec[1]; tab.TextSize=14; tab.Font=Enum.Font.GothamMedium
+  tab.TextColor3=Theme.accentSoft; tab.BackgroundColor3=Theme.chocolate; tab.BorderSizePixel=0
+  tab.Position=UDim2.new((i-1)*.5,12-(i-1)*6,0,66); tab.Size=UDim2.new(.5,-18,0,34)
+  tab.Parent=panel; round(tab); scaled(tab,14); L.set(tab,spec[2]); self.tabs[spec[1]]=tab
+  tab.Activated:Connect(function() self:selectPage(spec[1]) end)
+ end
+ for i,key in {'base','recipe','stars','temper','online','guests','spectators','total','manual','workers','speed','cycle','income','orders','rules'} do
+  local card=frame(calculations,key,Theme.chocolateDark); card.LayoutOrder=i
+  -- Высота следует переносу текста: русский и большие множители не обрезаются на телефоне.
+  card.Size=UDim2.new(1,-8,0,0); card.AutomaticSize=Enum.AutomaticSize.Y
+  local padding=Instance.new('UIPadding'); padding.PaddingTop=UDim.new(0,12); padding.PaddingBottom=UDim.new(0,12)
+  padding.PaddingLeft=UDim.new(0,12); padding.PaddingRight=UDim.new(0,12); padding.Parent=card
+  local stack=Instance.new('UIListLayout'); stack.SortOrder=Enum.SortOrder.LayoutOrder; stack.Padding=UDim.new(0,8); stack.Parent=card
+  local t=label(card,'Formula',16,Theme.accentSoft); t.Size=UDim2.new(1,0,0,0); t.AutomaticSize=Enum.AutomaticSize.Y; t.LayoutOrder=1
+  local help=label(card,'Explanation',13,Theme.muted); help.Size=UDim2.new(1,0,0,0); help.AutomaticSize=Enum.AutomaticSize.Y; help.LayoutOrder=2
+  self.bonusRows[key]={value=t,help=help}
+ end
+ self:selectPage('journal')
 	local away=frame(scroll,"OfflineEarnings",Theme.chocolateDark); away.LayoutOrder=0; away.Size=UDim2.new(1,-8,0,150); away.Visible=false; self.offlineCard=away
 	local awayTitle=label(away,"Title",18,Theme.accentSoft); awayTitle.Position=UDim2.fromOffset(12,8); awayTitle.Size=UDim2.new(1,-24,0,28)
 	L.set(awayTitle,"While you were away")
@@ -134,6 +165,47 @@ function Journal:fit(parent,compact,position,size)
 	if self.state then self:update(self.state) end
 end
 
+function Journal:selectPage(page)
+ self.pages.Visible=page=='journal'; self.calculations.Visible=page=='bonuses'
+ for key,tab in self.tabs do tab.BackgroundColor3=if key==page then Theme.chocolateRaised else Theme.chocolate end
+end
+
+function Journal:updateBonuses(state)
+ local b=state.bonuses
+ if not self.bonusRows then return end
+ self.tabs.bonuses.Visible=state.ready==true and b~=nil
+ if not b then return end
+ local function n(value)
+  -- Очень быстрый цикл нельзя округлять до нуля, огромный множитель — обрезать.
+  if (value>0 and value<.01) or value>=1e15 then return string.format('%.3g',value) end
+  return L.number(value)
+ end
+ local function row(key,formula,args,help,helpArgs)
+  L.set(self.bonusRows[key].value,formula,args); L.set(self.bonusRows[key].help,help,helpArgs)
+ end
+ row('base','Base: {base} + {craft} + {library} = {reward}',{base=n(b.base),craft=n(b.craft),library=n(b.library),reward=n(b.baseReward)},
+  'Base piece + craftsmanship + owned recipe books. Hidden furniture keeps its bonus.')
+ row('recipe','Recipe income: ×{factor}',{factor=n(b.recipe)},'Recipe upgrades multiply manual and apprentice rewards.')
+ row('stars','{stars} cocoa stars: ×{factor}',{stars=n(b.stars),factor=n(b.star)},
+  if b.starsEnabled then 'Each star adds {percent}% in this layer.' else 'Star income is temporarily disabled for this test session.',{percent=n(b.starPercent)})
+ row('temper','Owned tempering machines: ×{factor}',{factor=n(b.temper)},'Every owned machine contributes, including hidden models.')
+ row('online','Friends on this server: ×{factor}',{factor=n(b.online)},if b.friendStatus=='ready' then 'At least one online friend doubles income. No visit needed; more friends do not stack.'
+  else 'Friend list is loading or retrying. Only confirmed friendships count for now.')
+ row('guests','{count} unique guests: ×{factor}',{count=n(b.guestCount),factor=n(b.guests)},'Lifetime cafe guests: 1 + {count} × {percent}%. Repeat visits do not count.',{count=n(b.guestCount),percent=n(b.guestPercent)})
+ row('spectators','{count} unique friend spectators: ×{factor}',{count=n(b.spectatorCount),factor=n(b.spectators)},
+  '1 + {count} × {percent}%. A friend must watch at your manual table from the first cut through both moves. Joining late does not count.',{count=n(b.spectatorCount),percent=n(b.spectatorPercent)})
+ row('total','Total income multiplier: ×{factor}',{factor=n(b.multiplier)},
+  'Recipe × stars × machines × online friend × guests × spectators. The same friend can contribute to all three social layers.')
+ row('manual','Manual trick: {base} × {factor} = +{reward}',{base=n(b.baseReward),factor=n(b.multiplier),reward=n(b.manual)},
+  'Server reward, capped at {cap}. A new spectator bonus starts with the next trick.',{cap=n(b.maxValue)})
+ row('workers','Apprentices: {count} · +{reward} each cycle',{count=n(b.workers),reward=n(b.manual)},'Each new cafe adds two apprentices. Your home has the first one.')
+ row('speed','Cycle speed: 1 + {skill} + {clock} = ×{speed}',{skill=n(b.skillSpeed),clock=n(b.clockSpeed),speed=n(b.speed)},'Practiced Hands and owned clocks add speed. Income multipliers do not shorten the cycle.')
+ row('cycle','Cycle: {base}s ÷ {speed} = {seconds}s',{base=n(b.baseSeconds),speed=n(b.speed),seconds=n(b.cycleSeconds)},'This is the current server cycle, including hidden clocks.')
+ row('income','Factory income: +{rate}/s',{rate=n(b.rate)},'Payments arrive in whole cycles. {workers} apprentices × {reward} pieces ÷ {seconds}s.',{workers=n(b.workers),reward=n(b.manual),seconds=n(b.cycleSeconds)})
+ row('orders','Current order bonus: +{bonus}',{bonus=n(b.orderBonus)},'Manual reward × {factor}; only finished manual tricks advance the order.',{factor=n(b.orderFactor)})
+ row('rules','Lifetime progress and offline income',{},'Guests and spectators survive prestige and rejoining. Online-friend ×2 is never saved or used offline. All income layers affect manual tricks, apprentices and order rewards; plants, rugs and wall art are cosmetic.')
+end
+
 function Journal:updateProduction(state)
 	self.productionCard.Visible=state.ready==true
 	if not state.ready then return end
@@ -158,6 +230,7 @@ function Journal:update(state)
 		L.set(self.receiptBonus,"Bonus received: +{bonus}",{bonus=L.number(receipt.bonus)})
 	end
 	self:updateProduction(state)
+ self:updateBonuses(state)
 	self.offlineCard.Visible=(state.offline or 0)>=.1
 	if self.offlineCard.Visible then
 		L.set(self.offlineAmount,"+{amount} pieces",{amount=L.number(state.offline)})

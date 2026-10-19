@@ -207,7 +207,7 @@ def source_inventory(root=ROOT):
         for path in sorted((root / "src" / folder).glob("*.luau")):
             entrypoint = path.name.startswith("init.")
             source = path.read_text()
-            if QA_MARKER in source:
+            if any(marker in source for marker in (QA_MARKER, "StudioQaManualBegin")):
                 raise QaError("Тестовый обработчик попал в исходники: " + str(path))
             entries.append({"folder": folder, "name": path.stem, "base": base,
                             "entrypoint": entrypoint, "source": source,
@@ -267,7 +267,18 @@ def qa_overrides(entries, root=ROOT):
         raise QaError("Точка переключения языка изменилась; обновите сценарий QA")
     locale = "function L.__qaLocale(value) locale=value; for label,binding in bindings do render(label,binding) end end\nreturn L"
     client_path = "src/client/init.client.luau"
-    return {server_path: sources[server_path].replace(needle, seed),
+    # Синтетический фокус считает интервал от принятого сервером начала,
+    # а не от отправки пакета: сетевой джиттер не должен делать тест случайным.
+    receipt = """
+local qaStep=social.step
+function social:step(player,step)
+ qaStep(self,player,step)
+ local attempt=self.attempts[player]
+ if step=='begin' and attempt then player:SetAttribute('StudioQaManualBegin',attempt.started) end
+ player:SetAttribute('StudioQaManualStep',attempt and attempt.step)
+end
+"""
+    return {server_path: sources[server_path].replace(needle, seed) + receipt,
             localization_path: sources[localization_path].replace("return L", locale),
             client_path: sources[client_path] + "\n" + (root / "tools/studio_qa_client.luau").read_text()}
 
@@ -315,7 +326,7 @@ class Session:
 
     def control(self, action, **options):
         args = dict(action=action, **options)
-        return self.execute("local p=game.Players.LocalPlayer; local q=p and p:FindFirstChild('PlayerGui') and p.PlayerGui:FindFirstChild('" + QA_MARKER + "'); if not q then return {ready=false} end; return q:Invoke(" + lua(args) + ")", "Client")
+        return self.execute("local p=game.Players.LocalPlayer; local q=p and p:FindFirstChild('PlayerGui') and p.PlayerGui:FindFirstChild('" + QA_MARKER + "',true); if not q then return {ready=false} end; return q:Invoke(" + lua(args) + ")", "Client")
 
     def cleanup(self):
         # После таймаута сначала ждём тот же запрос. Не отправляем повторную запись.
@@ -339,7 +350,7 @@ class Session:
         self.report["stage"] = "wait-for-client"
         while time.monotonic() < deadline:
             state = self.control("snapshot")
-            if isinstance(state, dict) and state.get("ready"):
+            if isinstance(state, dict) and state.get("ready") and state.get("manualReady") is not False:
                 break
             time.sleep(.4)
         else:
@@ -413,8 +424,11 @@ class Session:
 
     def smoke(self):
         checks = self.start_test()
-        for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("journal", {}),
+        for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("cutInterruption", {}), ("journal", {}),
+                              ("rankings", {"locale": "en-us"}), ("rankings", {"locale": "ru-ru"}),
+                              ("hudLayout", {"locale": "en-us"}), ("hudLayout", {"locale": "ru-ru"}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),
+                              ("bonusLayout", {"locale": "en-us"}), ("bonusLayout", {"locale": "ru-ru"}),
                               ("kitchen", {}), ("rearDetail", {}), ("queueGrowth", {}), ("rosterRefresh", {}), ("peerReplacement", {}), ("directoryRefresh", {}), ("visibility", {}), ("catalog", {}), ("publicDecor", {}), ("idleNetwork", {})]:
             print("Studio QA: " + name + " " + options.get("locale", ""), flush=True)
             self.report["stage"] = name
@@ -422,7 +436,10 @@ class Session:
             if not isinstance(result, dict) or result.get("ok") is not True:
                 raise QaError(name + ": " + str(result))
             checks.append((name, result))
-        for name, check in [("storageReceipt", lambda: self.execute((ROOT / "tools/studio_qa_storage.luau").read_text(), "Server")),
+        for name, check in [("respawnPrepare", lambda: self.control("respawnPrepare")),
+                            ("respawnDeath", lambda: self.execute("local p=game.Players:GetPlayers()[1]; assert(p and p.Character); p.Character:FindFirstChildOfClass('Humanoid').Health=0; return {ok=true}", "Server")),
+                            ("respawnFinish", lambda: self.control("respawnFinish")),
+                            ("storageReceipt", lambda: self.execute((ROOT / "tools/studio_qa_storage.luau").read_text(), "Server")),
                             ("networkPrepare", lambda: self.control("networkPrepare")),
                             ("networkRelay", lambda: self.execute((ROOT / "tools/studio_qa_network.luau").read_text(), "Server")),
                             ("networkFinish", lambda: self.control("networkFinish"))]:

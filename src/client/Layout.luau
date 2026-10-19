@@ -3,6 +3,14 @@
 -- должна менять только масштаб сцены, не геометрию и не прогресс раунда.
 local Layout = {}
 
+-- Начало свободной части верхней панели сообщает Roblox: ширина меню
+-- меняется с версией клиента. На очень узком экране оставляем саму сумму.
+function Layout.counter(width: number, freeStart: number)
+ local left=math.max(128,freeStart+8)
+ local available=math.max(1,width-left-76)
+ return {x=left,width=available,compact=available<120}
+end
+
 function Layout.presentation(width: number, height: number, portraitPadding)
 	local landscape = width >= 568 and width >= height * 1.3
 	local docked = landscape and width >= 1100

@@ -47,6 +47,18 @@ return function(h)
   h.equals(ui.state,loading); h.equals(journalState,loading)
   h.equals(ui.metrics.Text,'Loading your progress')
  end)
+ h.test('готовый профиль ждёт живого персонажа, а закрытие меню не снимает серверную блокировку',function()
+  local cancelled=0
+  local ui=setmetatable({state={ready=true,manualReady=false},overlay={Visible=false},docked=false,
+   view={cutIndex=3,cutProgress=.4,endDrag=function(_,cancel) assert(cancel); cancelled+=1 end}},Atelier)
+  ui:updateInput(); h.equals(ui.view.inputBlocked,true); h.equals(cancelled,1)
+  ui.overlay.Visible=true; ui.state.manualReady=true; ui:updateInput(); h.equals(ui.view.inputBlocked,true)
+  ui.overlay.Visible=false; ui:updateInput(); h.equals(ui.view.inputBlocked,false)
+  ui.state.manualReady=false; ui.docked=true; ui:updateInput(); h.equals(ui.view.inputBlocked,true)
+  ui.state.manualReady=true; ui.overlay.Visible=true; ui:updateInput(); h.equals(ui.view.inputBlocked,false)
+  h.equals(ui.view.cutIndex,3); h.near(ui.view.cutProgress,.4)
+  ui.state=nil; ui:updateInput(); h.equals(ui.view.inputBlocked,true)
+ end)
  h.test("переключатель количества меняет запрос навыков, но не разовые покупки кухни",function()
   local E=require('../src/shared/Economy')
   local sent={}
@@ -77,7 +89,7 @@ return function(h)
 			panelBounds = make("UISizeConstraint"), title = make("TextLabel"), update = function() end,
 			journal = { fit = function(self,_,_,position,size) self.position=position; self.size=size end },
 		}, Atelier)
-		for _, size in { R.Vector2.new(390, 844), R.Vector2.new(1440, 900), R.Vector2.new(844, 390), R.Vector2.new(568,320), R.Vector2.new(812,375), R.Vector2.new(390, 844) } do
+		for _, size in { R.Vector2.new(390, 844), R.Vector2.new(1440, 900), R.Vector2.new(844, 390), R.Vector2.new(749,381), R.Vector2.new(568,320), R.Vector2.new(812,375), R.Vector2.new(390, 844) } do
 			root.AbsoluteSize = size
 			ui:fit()
 			local mode = Layout.presentation(size.X, size.Y, Config.Board.viewportPadding)
@@ -88,6 +100,9 @@ return function(h)
 			h.equals(status.Parent, counter.Parent)
 			h.equals(ui.view.cutProgress, 95)
 			if mode.landscape then
+				if size.Y>=375 and size.Y<=390 then
+					assert(status.Size.Y.Offset>=90,'длинной подсказке не хватает высоты на горизонтальном телефоне')
+				end
 				assert(status.Position.Y.Offset>=ui.journal.position.Y.Offset+ui.journal.size.Y.Offset+4)
 				if not mode.docked then
 					local buttonTop=ui.sidebar.Size.Y.Offset+ui.open.Position.Y.Offset-ui.open.Size.Y.Offset

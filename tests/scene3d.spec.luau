@@ -63,6 +63,43 @@ return function(h)
 	local settings=Config.Scene3D
 	local recipe=Recipe.build(Config.Recipe)
 	local bounds=Layout.bounds(recipe,Config.Trick,66,104,Geom)
+	h.test('3D: неподвижные подсказки не переписывают детали, изменённые сохраняют проекцию и видимость',function()
+		local writes=0
+		local environment=table.clone(sceneEnv)
+		environment.Instance={new=function(class)
+			local object=R.Instance.new(class)
+			return setmetatable({},{__index=function(_,key)
+				if key=='Destroy' then return function() object:Destroy() end end
+				return object[key]
+			end,__newindex=function(_,key,value) writes+=1; object[key]=value end})
+		end}
+		local MeasuredScene=luau.load(fs.readFile('src/client/Scene3D.luau'),{environment=environment,injectGlobals=true})()
+		local view={hintLayer=R.Instance.new('Frame'),progressLayer=R.Instance.new('Frame'),seamLayer=R.Instance.new('Frame')}
+		local start=R.Instance.new('Frame'); start.Name='Start'; start.Size=R.UDim2.fromOffset(20,20); start.Parent=view.hintLayer
+		local line=R.Instance.new('Frame'); line.Size=R.UDim2.fromOffset(60,3); line.Parent=view.progressLayer
+		local world=R.Instance.new('Model')
+		local scene=setmetatable({view=view,hints={},overlay={world=world}},MeasuredScene)
+		scene:syncHints(); local initial=writes
+		for _=1,100 do scene:syncHints() end
+		h.equals(writes,initial,'неизменный кадр повторно записывает свойства деталей')
+		local p=scene.hints[start]
+		start.AnchorPoint=R.Vector2.new(.5,.5); start.Position=R.UDim2.fromOffset(37,52)
+		start.Size=R.UDim2.fromOffset(24,28); start.Rotation=35
+		start.BackgroundColor3=R.Color3.fromRGB(18,50,91); start.BackgroundTransparency=.25
+		scene:syncHints()
+		local scale=settings.unitsPerPixel*settings.renderScale
+		assert((p.CFrame.Position-R.Vector3.new(37*scale,(settings.surfaceHeight+.08)*settings.renderScale,52*scale)).Magnitude<.0001)
+		assert((p.Size-R.Vector3.new(24*scale,.07*settings.renderScale,28*scale)).Magnitude<.0001)
+		assert((p.CFrame.LookVector-R.CFrame.Angles(0,-math.rad(35),0).LookVector).Magnitude<.0001)
+		h.equals(p.Color,start.BackgroundColor3); h.near(p.Transparency,.25)
+		start.Visible=false; scene:syncHints(); h.equals(p.Transparency,1)
+		start.Visible=true; scene:syncHints(); h.near(p.Transparency,.25)
+		local progressPart=scene.hints[line]; local oldHeight=progressPart.CFrame.Position.Y
+		line.Parent=view.hintLayer; scene:syncHints(); assert(progressPart.CFrame.Position.Y>oldHeight)
+		start:Destroy(); line:Destroy(); scene:syncHints()
+		h.equals(next(scene.hints),nil); h.equals(p.Parent,nil); h.equals(progressPart.Parent,nil)
+		world:Destroy()
+	end)
 	h.test('3D: основная камера сохраняет проекцию внутри безопасной области UI',function()
 		for _,size in {R.Vector2.new(390,844),R.Vector2.new(1440,900),R.Vector2.new(844,390)} do
 			local area=R.Vector2.new(size.X*.6,size.Y*.65)

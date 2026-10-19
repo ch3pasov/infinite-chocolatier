@@ -299,10 +299,10 @@ return function(h)
  h.test('хранилище переводит старую запись в формат коллекции и не читает будущую версию',function()
   local record={version=1,savedAt=1000,data={slices=200,levels={workers=7,clock=4}}}
   local store=Store.new({UpdateAsync=function(_,_,transform) local next=transform(record); if next then record=next end; return next end},E,Config.Economy,'A',function() return 1000 end)
-  local data=store:claim('user'); h.equals(record.version,4)
+  local data=store:claim('user'); h.equals(record.version,5)
   h.equals(data.levels.workers,7); assert(data.owned.clock_4); h.equals(data.equipped.clock,'clock_4')
   assert(store:save('user',data,true)); h.equals(record.data.collectionVersion,2)
-  record.version=5; h.equals(store:claim('user'),nil); h.equals(record.version,5)
+  record.version=6; h.equals(store:claim('user'),nil); h.equals(record.version,6)
  end)
 
 end

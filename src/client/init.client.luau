@@ -25,6 +25,7 @@ local remotesFolder = ReplicatedStorage:WaitForChild(Remotes.Names.Folder)
 local remotes = {
 	stateSync = remotesFolder:WaitForChild(Remotes.Names.StateSync) :: RemoteEvent,
 	roundComplete = remotesFolder:WaitForChild(Remotes.Names.RoundComplete) :: RemoteEvent,
+	manualStep = remotesFolder:WaitForChild(Remotes.Names.ManualStep) :: RemoteEvent,
 	requestState = remotesFolder:WaitForChild(Remotes.Names.RequestState) :: RemoteEvent,
 	purchase = remotesFolder:WaitForChild(Remotes.Names.Purchase) :: RemoteEvent,
 	prestige = remotesFolder:WaitForChild(Remotes.Names.Prestige) :: RemoteEvent,
@@ -52,6 +53,7 @@ if Config.Scene3D.enabled then
 	Scene3D.new(gameView)
 	if Config.Kitchen.enabled then kitchen = require(script.Kitchen).new(gameView, atelier) end
 end
+local rankings=if kitchen then require(script.Rankings).new(gui,gameView,kitchen) else nil
 local stateConnection = remotes.stateSync.OnClientEvent:Connect(function(state)
 	if gameView.destroyed then return end
     gameView.audio:update(state)

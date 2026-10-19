@@ -4,6 +4,32 @@
 local fs=require('@lune/fs'); local luau=require('@lune/luau')
 local Economy=require('../src/shared/Economy')
 return function(h)
+ h.test('страница бонусов показывает канонический снимок и компактные крайние числа',function()
+  local stub=setmetatable({},{__index=function(_,name) return name end})
+  local Journal=luau.load(fs.readFile('src/client/Journal.luau'),{environment={
+   game={GetService=function() return {WaitForChild=function() return stub end} end},script={Parent=stub},
+   require=function(name) return if name=='Localization' then {number=function(n) return n end,set=function(label,key,args) label.key=key; label.args=args end} else {} end,
+  },injectGlobals=true})()
+  local rows={}; for _,key in {'base','recipe','stars','temper','online','guests','spectators','total','manual','workers','speed','cycle','income','orders','rules'} do rows[key]={value={},help={}} end
+  local ui=setmetatable({bonusRows=rows,tabs={bonuses={},journal={}},pages={},calculations={}},Journal)
+  ui:updateBonuses({ready=false}); h.equals(ui.tabs.bonuses.Visible,false)
+  local data=Economy.load({stars=3,levels={workers=1,speed=8,recipe=2}})
+  data.onlineFriend=true; Economy.addSocial(data,'guests',77,1); Economy.addSocial(data,'spectators',77,1)
+  local state=Economy.snapshot(data); state.ready=true; ui:updateBonuses(state)
+  h.equals(ui.tabs.bonuses.Visible,true)
+  h.near(rows.total.value.args.factor,state.bonuses.multiplier)
+  h.near(rows.manual.value.args.reward,state.manual)
+  h.near(rows.income.value.args.rate,state.rate)
+  h.near(rows.cycle.value.args.seconds,state.cycleSeconds)
+  h.equals(rows.guests.value.args.count,1); h.equals(rows.spectators.value.args.count,1)
+  ui:selectPage('bonuses'); h.equals(ui.pages.Visible,false); h.equals(ui.calculations.Visible,true)
+  ui:selectPage('journal'); h.equals(ui.pages.Visible,true); h.equals(ui.calculations.Visible,false)
+  state.bonuses.multiplier=1e28; state.bonuses.cycleSeconds=1e-8
+  ui:updateBonuses(state)
+  h.equals(rows.total.value.args.factor,'1e+28'); h.equals(rows.cycle.value.args.seconds,'1e-08')
+  local catalog=require('../src/shared/LocalizationCatalog')
+  for _,row in rows do assert(catalog.entries[row.value.key],row.value.key); assert(catalog.entries[row.help.key],row.help.key) end
+ end)
  h.test('сводка фабрики учитывает найм, новые кафе, бонусы и сброс',function()
   local stub=setmetatable({},{__index=function(_,name) return name end})
   local Journal=luau.load(fs.readFile('src/client/Journal.luau'),{environment={

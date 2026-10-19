@@ -25,13 +25,14 @@ class FakeMCP:
             return {"studios":[{"id":"local-qa","name":qa.DEFAULT_PLACE}]}
         if name=="execute_luau":
             code=args["code"]
+            if "local entries=" in code: return {"scripts":47,"verified":True}
             if 'GetLogHistory()' in code: return {"count":0,"errors":[]}
             if 'local Relay=require(' in code: return {"ok":True,"packets":1}
             if 'local Store=require(' in code: return {"ok":True,"storage":"in-memory"}
+            if ".Health=0; return {ok=true}" in code: return {"ok":True}
             if "q:Invoke" in code:
                 if self.failure: raise qa.QaError("test interruption")
                 return {"ready":True,"workers":25,"manual":1,"ok":True}
-            if "local entries=" in code: return {"scripts":44,"verified":True}
             return {"placeId":0,"running":False}
         return "ok"
     def close(self): self.closed=True
@@ -137,6 +138,17 @@ class StudioQaTests(unittest.TestCase):
         self.assertEqual(len([1 for name,_ in fake.calls if name=="user_mouse_input"]),1)
         session.cleanup()
 
+    def test_all_test_channels_are_rejected_in_production_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for side in ("server","client","shared"):
+                folder=root/"src"/side; folder.mkdir(parents=True)
+                (folder/"Example.luau").write_text("return {}")
+            path=root/"src/server/Example.luau"
+            for marker in (qa.QA_MARKER,"StudioQaManualBegin"):
+                path.write_text("-- "+marker+"\nreturn {}")
+                with self.assertRaises(qa.QaError): qa.source_inventory(root)
+
     def test_timeout_keeps_same_request_and_never_sends_it_twice(self):
         client=qa.MCP.__new__(qa.MCP)
         client.timeout=.002; client.next_id=0; client.pending=None; client.replies=queue.Queue()
@@ -155,6 +167,8 @@ class StudioQaTests(unittest.TestCase):
         entries=qa.source_inventory()
         sources=[qa.sync_code(entries),qa.sync_code(entries,qa.qa_overrides(entries)),
                  (ROOT/"src/client/init.client.luau").read_text()+"\n"+(ROOT/"tools/studio_qa_client.luau").read_text()]
+        overrides=qa.qa_overrides(entries)
+        sources.append(overrides["src/server/init.server.luau"])
         code="local luau=require('@lune/luau')\n"
         for source in sources: code+="luau.compile("+qa.lua(source)+")\n"
         code+="local data="+qa.lua(data)+"\nprint(require('@lune/serde').encode('json',data))\n"
@@ -210,6 +224,8 @@ class StudioQaTests(unittest.TestCase):
         entries=qa.source_inventory(); before={e["path"]:e["source"] for e in entries}
         overrides=qa.qa_overrides(entries)
         self.assertIn(qa.QA_MARKER,overrides["src/client/init.client.luau"])
+        self.assertIn("StudioQaManualBegin",overrides["src/server/init.server.luau"])
+        self.assertNotIn("StudioQaManualBegin",before["src/server/init.server.luau"])
         self.assertNotIn(qa.QA_MARKER,qa.sync_code(entries))
         self.assertIn(qa.QA_MARKER,qa.sync_code(entries,overrides))
         self.assertEqual(before,{e["path"]:e["source"] for e in qa.source_inventory()})

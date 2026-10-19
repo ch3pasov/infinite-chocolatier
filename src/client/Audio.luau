@@ -163,7 +163,9 @@ function Audio:setOpen(open)
  self.panel.Visible=open; self.shade.Visible=open; self.drag=nil
  if self.view then
   self.view.audioSettingsOpen=self.panel.Visible
-  if self.panel.Visible and self.view.drag then self.view:endDrag(true) end
+  -- После отпускания мыши доводка разреза ещё активна, хотя drag уже пуст.
+  -- Окно звука прерывает её так же, как журнал и остальные верхние окна.
+  if self.panel.Visible then self.view:endDrag(true) end
   -- Кухня пересчитывает доступность управления по всем верхним окнам:
   -- закрытие звука не должно разблокировать всё ещё открытый дневник.
   if self.view.onOverlayChanged then self.view.onOverlayChanged() end

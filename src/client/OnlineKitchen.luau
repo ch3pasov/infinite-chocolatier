@@ -277,8 +277,12 @@ function Online:updateIslands(models)
  for _,entry in prompts do
   local prompt=entry.prompt
   local enabled=entry.current and k:canWalk()
-  local text=L.text('Choose a cafe')
-  if prompt.ActionText~=text then prompt.ActionText=text end
+  -- Только стрелка принадлежит каталогу посещений. У доски рейтингов
+  -- и будущих точек взаимодействия собственные подписи и обработчики.
+  if prompt.Name=='NextCafePrompt' then
+   local text=L.text('Choose a cafe')
+   if prompt.ActionText~=text then prompt.ActionText=text end
+  end
   if prompt.Enabled~=enabled then prompt.Enabled=enabled end
  end
  if not current then self:clearQueue(); return end

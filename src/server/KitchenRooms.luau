@@ -19,6 +19,27 @@ function Rooms.start(remote,visitRemote)
  if not PhysicsService:IsCollisionGroupRegistered(avatarGroup) then PhysicsService:RegisterCollisionGroup(avatarGroup) end
  PhysicsService:CollisionGroupSetCollidable(avatarGroup,avatarGroup,false)
  local homes,slots,visitors,byKey,pools={},{},{},{},{}
+ local socialChanged
+ local function notify() if socialChanged then socialChanged() end end
+ local function invalidateWatch(player)
+  local home=homes[player]
+  if home then home.watchTarget=nil; home.socialEpoch=(home.socialEpoch or 0)+1 end
+ end
+ local function hide(room,part)
+  if not part:IsA('BasePart') and not part:IsA('Decal') then return end
+  if room.hidden[part]==nil then
+   room.hidden[part]={transparency=part.Transparency,collide=part:IsA('BasePart') and part.CanCollide}
+  end
+  part.Transparency=1
+  if part:IsA('BasePart') then part.CanCollide=false end
+ end
+ local function atTable(player,room)
+  local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+  if not root then return false end
+  local p=root.Position-room.origin
+  -- Передняя сторона левого, ручного стола; правый принадлежит стажёру.
+  return math.abs(p.X+3.7)<=4 and p.Z>=2.9 and p.Z<=8 and p.Y>=0 and p.Y<=7
+ end
  local directory=Instance.new('Folder'); directory.Name='KitchenIslands'; directory.Parent=Workspace
  local function solid(parent,name,size,position)
   local p=Instance.new('Part'); p.Name=name; p.Size=size; p.Position=position
@@ -57,6 +78,7 @@ function Rooms.start(remote,visitRemote)
   end
  end
  local function enter(player,room)
+  invalidateWatch(player)
   local previous=visitors[player]; visitors[player]=room
   player:SetAttribute('VisitingKitchen',room.id); player:SetAttribute('VisitingCafeIndex',room.index)
   local char=player.Character; local root=char and char:FindFirstChild('HumanoidRootPart')
@@ -65,6 +87,7 @@ function Rooms.start(remote,visitRemote)
    root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyAngularVelocity=Vector3.zero
   end
   if previous and previous~=room and cleanup(previous) then refreshStaff() end
+  notify()
  end
  local create
  local function sign(room,name,x)
@@ -113,7 +136,7 @@ function Rooms.start(remote,visitRemote)
   local slot=1; while slots[slot] do slot+=1 end
   local origin=Vector3.new((slot-1)*256,0,1000)
   local model=Instance.new('Model'); model.Name='KitchenRoom_'..id..(if index==0 then '' else '_'..index); model.Parent=directory
-  local room={model=model,origin=origin,slot=slot,id=id,index=index,key=key,owner=player,count=0,mode='cut',hidden={}}
+  local room={model=model,origin=origin,slot=slot,id=id,index=index,key=key,owner=player,count=0,mode='cut',hidden={},friends={}}
   slots[slot]=room; byKey[key]=room
   model:SetAttribute('OwnerId',id); model:SetAttribute('CafeIndex',index); model:SetAttribute('RoomKey',key); model:SetAttribute('Origin',origin)
   model:SetAttribute('DisplayName',player.DisplayName or tostring(id)); model:SetAttribute('Username',player.Name or tostring(id))
@@ -135,18 +158,19 @@ function Rooms.start(remote,visitRemote)
   sign(room,'NextCafe',10.25); refreshStaff()
   return room
  end
- local function mode(player,value)
+ local function mode(player,value,targetId,side)
   local room=homes[player]; if not room or (value~='walk' and value~='cut' and value~='watch') then return end
+  local visited=visitors[player]
+  local target=if value=='watch' and room.mode=='walk' and side==1 and visited and visited.index==0
+   and visited.owner and visited.owner~=player and visited.id==targetId and atTable(player,visited) then visited.owner else nil
+  invalidateWatch(player); room.watchTarget=target
   if value=='cut' and visitors[player]~=room then enter(player,room) end
   room.mode=value; player:SetAttribute('KitchenMode',value)
   local char=player.Character
   if room.character~=char then room.character=char; room.hidden={} end
   if char then
    if value=='cut' then
-    for _,p in char:GetDescendants() do if p:IsA('BasePart') or p:IsA('Decal') then
-     if room.hidden[p]==nil then room.hidden[p]={transparency=p.Transparency,collide=p:IsA('BasePart') and p.CanCollide} end
-     p.Transparency=1; if p:IsA('BasePart') then p.CanCollide=false end
-    end end
+    for _,p in char:GetDescendants() do hide(room,p) end
    else
     for p,saved in room.hidden do if p.Parent then
      p.Transparency=saved.transparency; if p:IsA('BasePart') then p.CanCollide=saved.collide end
@@ -156,6 +180,7 @@ function Rooms.start(remote,visitRemote)
   end
   local root=char and char:FindFirstChild('HumanoidRootPart')
   if root then root.Anchored=value~='walk'; root.AssemblyLinearVelocity=Vector3.zero; root.AssemblyAngularVelocity=Vector3.zero end
+  notify()
  end
  local elapsed=0
  RunService.Heartbeat:Connect(function(dt)
@@ -164,8 +189,10 @@ function Rooms.start(remote,visitRemote)
    local room=visitors[player] or own; local root=player.Character and player.Character:FindFirstChild('HumanoidRootPart')
    if root then local p=root.Position-room.origin
     if p.Y< -8 or math.abs(p.X)>11 or p.Z< -7 or p.Z>17 then enter(player,room) end
+    if own.watchTarget and not atTable(player,room) then invalidateWatch(player) end
    end
   end
+  notify()
  end)
  local function add(player)
   if homes[player] then return end
@@ -186,14 +213,30 @@ function Rooms.start(remote,visitRemote)
     end
    end)
    if homes[player]~=room then return end
-   -- Даже при ошибке следующей страницы уже полученные друзья полезны.
-   if ok or #friends>#(pools[player.UserId] or {}) then pools[player.UserId]=friends end
+   -- Неполный ответ добавляет подтверждённых друзей, но не отменяет
+   -- прежних: отсутствие на первой странице ещё не означает удаление.
+   -- Только полный список заменяет старый и применяет разрыв дружбы.
+   if not ok then
+    local seen={}; local merged=table.clone(pools[player.UserId] or {})
+    for _,id in merged do seen[id]=true end
+    for _,id in friends do if not seen[id] then seen[id]=true; table.insert(merged,id) end end
+    friends=merged
+   end
+   pools[player.UserId]=friends
+   -- Проверки зрителей идут на каждом этапе и несколько раз в секунду.
+   -- Индекс строится только при обновлении API, а не сканирует весь список
+   -- друзей для каждой пары игроков в серверном цикле.
+   room.friends={}; for _,id in friends do room.friends[id]=true end
    room.model:SetAttribute('FriendListStatus',if ok then 'ready' else 'retrying')
-   refreshStaff()
+   refreshStaff(); notify()
+   if ok then task.delay(120,function() loadFriends(0) end) end
    if not ok then
     warn('Apprentice friends '..player.UserId..': '..tostring(err))
     if attempt<3 then task.delay(({5,20,60})[attempt+1],function() loadFriends(attempt+1) end)
-    else room.model:SetAttribute('FriendListStatus','unavailable') end
+    else
+     room.model:SetAttribute('FriendListStatus','unavailable')
+     task.delay(120,function() loadFriends(0) end)
+    end
    end
   end
   task.spawn(function() loadFriends(0) end)
@@ -205,6 +248,7 @@ function Rooms.start(remote,visitRemote)
    enter(player,visitors[player] or room); mode(player,room.mode)
   end
   local function clearCollisionBinding()
+   invalidateWatch(player); notify()
    if room.collisionAdded then room.collisionAdded:Disconnect(); room.collisionAdded=nil end
   end
   player.CharacterRemoving:Connect(clearCollisionBinding)
@@ -215,8 +259,14 @@ function Rooms.start(remote,visitRemote)
   end)
   player.CharacterAdded:Connect(function(char)
    clearCollisionBinding()
+   room.character=char; room.hidden={}
    local function collision(part)
-    if homes[player]==room and player.Character==char and part:IsA('BasePart') then part.CollisionGroup=avatarGroup end
+    if homes[player]~=room or player.Character~=char then return end
+    if part:IsA('BasePart') then part.CollisionGroup=avatarGroup end
+    -- Одежда и аксессуары могут прийти после CharacterAdded и mode(cut).
+    -- Сохраняем их собственную прозрачность до маски, иначе они останутся
+    -- парить у стола или не восстановятся при возвращении к прогулке.
+    if room.mode=='cut' then hide(room,part) end
    end
    room.collisionAdded=char.DescendantAdded:Connect(collision)
    for _,part in char:GetDescendants() do collision(part) end
@@ -226,12 +276,27 @@ function Rooms.start(remote,visitRemote)
    if humanoid then
     -- Клиент отдельно отключает этот же режим: настройка не реплицируется.
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing,false)
-    humanoid.Died:Connect(function() task.delay(3,spawn) end)
+    humanoid.Died:Connect(function()
+     if homes[player]~=room or player.Character~=char then return end
+     invalidateWatch(player); notify(); task.delay(3,spawn)
+    end)
    end
   end)
   task.spawn(spawn)
  end
- remote.OnServerEvent:Connect(mode); Players.PlayerAdded:Connect(add)
+ remote.OnServerEvent:Connect(function(player,value,targetId,side)
+  local home=homes[player]
+  -- Повтор команды не означает выход из режима: иначе он обнуляет эпоху
+  -- непрерывного наблюдения и лишний раз пересчитывает весь сервер.
+  -- watch без прежней цели по-прежнему может открыть примерку и снять зрителя.
+  if home and home.mode==value then
+   if value~='watch' or not home.watchTarget or (side==1 and targetId==home.watchTarget.UserId) then return end
+  end
+  mode(player,value,targetId,side)
+ end)
+ -- Внутренний mode после спавна всегда применяется заново: движок мог
+ -- завершить размещение и сбросить Anchored уже после CharacterAdded.
+ Players.PlayerAdded:Connect(add)
  Players.PlayerRemoving:Connect(function(player)
   local visiting=visitors[player]; local home=homes[player]
   if home and home.collisionAdded then home.collisionAdded:Disconnect(); home.collisionAdded=nil end
@@ -243,10 +308,49 @@ function Rooms.start(remote,visitRemote)
   if visiting and visiting.id~=player.UserId then cleanup(visiting) end
   -- PlayerRemoving ещё видит уходящего в GetPlayers; освобождать его внешность
   -- немедленно необязательно, а вход нового друга исключает её синхронно.
-  refreshStaff()
+  refreshStaff(); notify()
  end)
  for _,player in Players:GetPlayers() do add(player) end
- return {visiblePlayers=function(_,player)
+ local function isFriend(owner,guest)
+  return homes[owner]~=nil and homes[guest]~=nil and owner~=guest
+   and homes[owner].friends[guest.UserId]==true
+ end
+ return {onSocialChange=function(_,callback) socialChanged=callback end,
+ friendStatus=function(_,player)
+  local home=homes[player]
+  return if home then home.model:GetAttribute('FriendListStatus') or 'loading' else 'loading'
+ end,
+ isFriend=function(_,owner,guest) return isFriend(owner,guest) end,
+ hasOnlineFriend=function(_,owner)
+  for guest in homes do if isFriend(owner,guest) then return true end end
+  return false
+ end,
+ visits=function()
+  local result={}
+  for guest,room in visitors do
+   if room.index==0 and room.owner and homes[guest] and guest~=room.owner then
+    table.insert(result,{owner=room.owner,guest=guest})
+   end
+  end
+  return result
+ end,
+ manualContext=function(_,player)
+  local home=homes[player]
+  local char=player.Character; local root=char and char:FindFirstChild('HumanoidRootPart')
+  local hum=char and char:FindFirstChildOfClass('Humanoid')
+  if not root or not hum or (hum.Health and hum.Health<=0) then return nil end
+  return if home and home.mode=='cut' and visitors[player]==home then (home.socialEpoch or 0) else nil
+ end,
+ watching=function(_,owner,guest)
+  local home=homes[guest]; local room=visitors[guest]
+  if not home or not room or not homes[owner] or room.owner~=owner or room.index~=0
+   or home.mode~='watch' or home.watchTarget~=owner or not atTable(guest,room) then return nil end
+  local char=guest.Character; local humanoid=char and char:FindFirstChildOfClass('Humanoid')
+  -- Одна позиция корня ещё не подтверждает живого зрителя во время спавна.
+  if not humanoid or (humanoid.Health and humanoid.Health<=0) then return nil end
+  return home.socialEpoch
+ end,
+ visiblePlayers=function(_,player)
   local current=visitors[player] or homes[player]; if not current then return {} end
   local records={}
   for _,room in slots do

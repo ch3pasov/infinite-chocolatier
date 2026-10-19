@@ -114,6 +114,30 @@ local function move(events, pointer, x, y)
 end
 
 return function(harness)
+ harness.test('клиент отправляет начало, четыре разреза и две перестановки в серверном порядке',function()
+  local view,events=fixture('cut'); local reported={}
+  local Economy=require('../src/shared/Economy'); local Social=require('../src/server/SocialService')
+  local player={UserId=1}; local session={data=Economy.load(nil)}; local now=0
+  local social=Social.new(Economy,nil,{[player]=session},function() return true end,function() end,function() return now end,Config.Payout.minInterval)
+  view.remotes={manualStep={FireServer=function(_,step) table.insert(reported,step); social:step(player,step) end},
+   roundComplete={FireServer=function() table.insert(reported,'complete'); assert(social:complete(player)); Economy.round(session.data) end}}
+  local empty={GetChildren=function() return {} end}
+  view.hintLayer=empty; view.progressLayer=empty; view.seamLayer=empty; view.intactLayer={}
+  view.startPip=nil
+  local path=view.paths[1]; view.paths={path,path,path,path}
+  view.finishCut=nil; view.finishLargeAssembly=nil; view.finishRound=nil
+  view.drawSeam=function() end; view.showCutHint=function() end; view.showLargeHint=function() end
+  view.drawAssembledSeam=function() end; view.showStripHint=function() end; view.showRewardMarker=function() end
+  view.pieces={[view.trick.rewardPiece]={origin=V.zero,offset=V.zero,size=V.one}}
+  events.InputBegan:Fire(input('MouseButton1',0,0))
+  harness.equals(reported[1],'begin')
+  for _=1,4 do view:finishCut() end
+  events:stepAnimation(); harness.equals(view.active,'assembleLarge')
+  view:finishLargeAssembly(); harness.equals(view.active,'assembleStrip')
+  now=2; view:finishRound(); view:finishRound()
+  harness.equals(table.concat(reported,','),'begin,1,2,3,4,5,complete')
+  harness.equals(session.data.slices,1); harness.equals(session.data.rounds,1)
+ end)
 	harness.test("телефон и широкий экран показывают зрителю ту же перестановку, что ученик", function()
 		for _, layout in { "portrait", "landscape" } do
 			local view = planarFixture(layout)
@@ -190,6 +214,36 @@ return function(harness)
 		harness.equals(view.completed, 0); harness.equals(view.cutProgress, 95)
 		-- Поздняя награда не пытается создать объекты на уже удалённом Root.
 		view:playRewardEffect(10)
+	end)
+	harness.test("выход из нарезки останавливает уже начатую доводку и сохраняет продолжение", function()
+		for _,interrupt in {"walking","loading","focus","menu"} do
+			local view,events=fixture()
+			local pointer=input("Touch")
+			events.InputBegan:Fire(pointer,false); move(events,pointer,95); events.InputEnded:Fire(pointer)
+			harness.equals(view.active,"finishingCut"); harness.equals(view.drag,nil)
+			events:stepAnimation(); local progress=view.cutProgress
+			if interrupt=="focus" then events.WindowFocusReleased:Fire()
+			elseif interrupt=="menu" then events.MenuOpened:Fire()
+			else view:endDrag(true) end
+			events:finishAnimation()
+			harness.equals(view.completed,0,interrupt); harness.equals(view.active,"cut")
+			harness.near(view.cutProgress,progress); harness.equals(view.startPip.Visible,true)
+			local resumed=input("Touch",progress,0)
+			events.InputBegan:Fire(resumed,false); move(events,resumed,100); events.InputEnded:Fire(resumed)
+			harness.equals(view.completed,1,interrupt)
+		end
+	end)
+	harness.test("отменённая доводка не завершает новую попытку своими старыми таймерами", function()
+		local view,events=fixture()
+		local pointer=input("Touch")
+		events.InputBegan:Fire(pointer,false); move(events,pointer,95); events.InputEnded:Fire(pointer)
+		view:endDrag(true)
+		local resumed=input("Touch",95,0)
+		events.InputBegan:Fire(resumed,false); events.InputEnded:Fire(resumed)
+		harness.equals(view.active,"finishingCut")
+		for _=1,Config.Cutting.finishSnapSteps do events:stepAnimation() end
+		harness.equals(view.completed,0); harness.near(view.cutProgress,95)
+		events:finishAnimation(); harness.equals(view.completed,1)
 	end)
 	harness.test("меню Roblox и текстовое поле блокируют новый разрез даже без processed",function()
 		for _,mode in {'menu','text'} do

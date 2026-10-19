@@ -48,6 +48,43 @@ local function render(mode)
 end
 
 return function(harness)
+	harness.test("движение разреза обновляет прежние линии, границы и очистка сохраняют геометрию", function()
+		modules.Theme.cut=R.Color3.fromRGB(255,210,90)
+		local layer=R.Instance.new("Frame")
+		local view=setmetatable({progressLayer=layer,tileWidth=66},exports.Game)
+		local path={geom=Geom.path({V.zero,V.new(100,0),V.new(100,100)})}
+		view:drawProgress(path,1)
+		local first=layer:GetChildren()[1]; local corner=first:GetChildren()[1]
+		for progress=2,100 do
+			view:drawProgress(path,progress)
+			harness.equals(layer:GetChildren()[1],first,'линия пересоздана во время жеста')
+			harness.equals(first:GetChildren()[1],corner)
+			-- Vector2 хранит дробь с меньшей точностью, UDim округляет пиксели.
+			assert(math.abs(first.Position.X.Offset-progress/2)<1.01)
+			assert(math.abs(first.Size.X.Offset-math.max(progress,66*.065))<1.01)
+			harness.equals(first.Size.Y,R.UDim.new(0,66*.065))
+		end
+		view:drawProgress(path,125)
+		local children=layer:GetChildren(); harness.equals(#children,2)
+		local second=children[2]
+		harness.equals(first.BackgroundColor3,modules.Theme.cut); harness.equals(first.BackgroundTransparency,0)
+		harness.equals(first.ZIndex,610); harness.equals(first.AnchorPoint,V.new(.5,.5))
+		harness.equals(second.Position,R.UDim2.fromOffset(100,12.5))
+		harness.equals(second.Size,R.UDim2.fromOffset(25,66*.065)); harness.near(second.Rotation,90)
+		-- Назад через угол, другая линия и другой масштаб не оставляют хвост.
+		view:drawProgress(path,50); harness.equals(#layer:GetChildren(),1); harness.equals(second.Parent,nil)
+		view.tileWidth=160
+		view:drawProgress({geom=Geom.path({V.new(10,20),V.new(40,60)})},25)
+		harness.equals(first.Position,R.UDim2.fromOffset(17.5,30)); harness.equals(first.Size,R.UDim2.fromOffset(25,10.4))
+		assert(math.abs(first.Rotation-math.deg(math.atan2(40,30)))<.0001)
+		harness.equals(corner.CornerRadius,R.UDim.new(0,5))
+		view:drawProgress(path,0); harness.equals(#layer:GetChildren(),0)
+		view:drawProgress(path,10); first=layer:GetChildren()[1]
+		-- Сброс раунда очищает слой независимо от drawProgress.
+		first:Destroy(); view:drawProgress(path,20)
+		assert(layer:GetChildren()[1]~=first); harness.equals(#layer:GetChildren(),1)
+		layer:Destroy()
+	end)
 	harness.test("отложенный разлёт старого раунда не меняет новый раунд с той же фазой", function()
 		local root = R.Instance.new("Frame")
 		local view = setmetatable({ active = "cut", cutIndex = 1, paths = { {} }, status = {},

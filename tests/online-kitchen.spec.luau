@@ -162,10 +162,12 @@ return function(h)
   local sign=setmetatable({IsA=function(_,class) return class=='ProximityPrompt' end},{__index=values,__newindex=function(_,key,value)
    table.insert(writes,{key=key,value=value}); values[key]=value
   end})
-  local home=model(1,k.origin,{sign}); models={home}
+  local rankingSign={Name='RankingsPrompt',ActionText='View rankings',Enabled=true,IsA=function(_,class) return class=='ProximityPrompt' end}
+  local home=model(1,k.origin,{sign,rankingSign}); models={home}
   online:step(.5); h.equals(sign.ActionText,'Choose a cafe'); h.equals(#writes,1)
   for _=1,8 do online:step(.5) end
   h.equals(#writes,1,'подсказка выбора кафе не должна обновляться каждый опрос')
+  h.equals(rankingSign.ActionText,'View rankings','обновление островов переименовало чужую точку взаимодействия')
   home:SetAttribute('StaffRoster','1001,1002,1003'); home:SetAttribute('CafeCount',1); online:step(.5)
   h.equals(#online.queueStations,2); h.equals(online.queueStations[1].station.actor.identity,1002); h.equals(online.queueStations[2].station.actor.identity,1003)
   h.equals(online.queueStations[1].station.actor.visible,true)

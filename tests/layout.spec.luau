@@ -7,6 +7,17 @@ local Recipe = require("../src/shared/Recipe")
 local Geom = require("../src/shared/Geom")
 
 return function(harness)
+	harness.test('счётчик не пересекает расширенную панель Roblox и кнопку звука',function()
+		for _,width in {296,336,400,520} do
+			for _,freeStart in {120,164,192} do
+				local counter=Layout.counter(width,freeStart)
+				assert(counter.x>=freeStart+8)
+				assert(counter.x+counter.width<=width-76)
+			end
+		end
+		harness.equals(Layout.counter(400,164).compact,false)
+		harness.equals(Layout.counter(296,164).compact,true)
+	end)
 	local recipe = Recipe.build(Config.Recipe)
 	local tileWidth, tileHeight = 66, 104
 	local bounds = Layout.bounds(recipe, Config.Trick, tileWidth, tileHeight, Geom)

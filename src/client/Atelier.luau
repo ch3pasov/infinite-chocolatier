@@ -2,6 +2,7 @@
 -- Магазин живёт отдельным слоем: открытие не перестраивает шоколадку.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared").Config)
 local Catalog = require(ReplicatedStorage:WaitForChild("Shared").KitchenCatalog)
 local Economy = require(ReplicatedStorage:WaitForChild("Shared").Economy)
@@ -318,6 +319,8 @@ function Atelier.new(gui, gameView, remotes)
 	self.sidebar.Visible = false
 	self.journal = Journal.new(gui,gameView)
 	gameView.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:fit() end)
+	local topbarConnection=GuiService:GetPropertyChangedSignal('TopbarInset'):Connect(function() self:fit() end)
+	gui.Destroying:Connect(function() topbarConnection:Disconnect() end)
 	self:fit()
 	return self
 end
@@ -331,22 +334,27 @@ function Atelier:fit()
 	self.docked, self.landscape = mode.docked, mode.landscape
 	self.sidebar.Visible = mode.landscape
 	local counter, status = self.view.counter, self.view.status
+	self.compactCounter=false
 	if mode.landscape then
 		local top = if size.Y < 500 then 60 else 80
 		local height = size.Y - top - 16
-		local compact = height < 300
+		-- В низком телефоне длинной подсказке нужны хотя бы несколько строк;
+		-- прежний порог оставлял ей 39 px при высоте viewport 381 px.
+		local compact = height < 360
+		local tight = height < 280
 		self.sidebar.Position = UDim2.fromOffset(12, top)
 		self.sidebar.Size = UDim2.fromOffset(mode.left - 12, height)
 		counter.Parent = self.sidebar
 		counter.Position = UDim2.fromOffset(12, 12)
-		counter.Size = UDim2.new(1, -24, 0, if compact then 38 else 48)
+		counter.Size = UDim2.new(1, -24, 0, if tight then 28 elseif compact then 38 else 48)
 		self.metrics.Parent = self.sidebar
-		self.metrics.Position = UDim2.fromOffset(12, if compact then 54 else 64)
-		self.metrics.Size = UDim2.new(1, -24, 0, if compact then 40 else 54)
+		self.metrics.Position = UDim2.fromOffset(12, if tight then 44 elseif compact then 54 else 64)
+		self.metrics.Size = UDim2.new(1, -24, 0, if tight then 28 elseif compact then 40 else 54)
+		self.metrics.TextSize = if tight then 12 else 14
 		status.Parent = self.sidebar
 		status.AnchorPoint = Vector2.zero
-		self.journal:fit(self.sidebar,compact,UDim2.fromOffset(12,if compact then 100 else 124),UDim2.new(1,-24,0,if compact then 38 else 78))
-		local statusTop = if compact then 144 else 208
+		self.journal:fit(self.sidebar,compact,UDim2.fromOffset(12,if tight then 78 elseif compact then 100 else 124),UDim2.new(1,-24,0,if compact then 38 else 78))
+		local statusTop = if tight then 122 elseif compact then 144 else 208
 		status.Position = UDim2.fromOffset(12, statusTop)
 		status.Size = UDim2.new(1, -24, 0, math.max(20, height - statusTop - (if mode.docked then 16 else 58)))
 		status:FindFirstChildOfClass("UITextSizeConstraint").MaxTextSize = if size.Y < 500 then 18 else 22
@@ -356,11 +364,15 @@ function Atelier:fit()
 		self.open.Size = UDim2.new(1, -24, 0, 36)
 	else
 		counter.Parent = self.view.root
-		counter.Position = UDim2.fromOffset(128, 12)
+		local inset=GuiService.TopbarInset
+		local header=Layout.counter(size.X,if inset then inset.Min.X else 0)
+		self.compactCounter=header.compact
+		counter.Position = UDim2.fromOffset(header.x, 12)
 		-- Правая зона занята переключателем звука и остаётся свободной
 		-- после поворота телефона, а не только при создании интерфейса.
-		counter.Size = UDim2.new(1, -204, 0, 48)
+		counter.Size = UDim2.fromOffset(header.width,48)
 		self.metrics.Parent = self.view.root
+		self.metrics.TextSize = 14
 		self.metrics.Position = UDim2.new(0.04, 0, 0, 57)
 		self.metrics.Size = UDim2.new(0.92, 0, 0, 26)
 		status.Parent = self.view.root
@@ -390,7 +402,7 @@ function Atelier:fit()
 	self.panelBounds.MaxSize = if mode.docked then Vector2.new(10000, 10000) else Vector2.new(520, 690)
 	self.title.Size = UDim2.new(1, if mode.docked then -32 else -80, 0, 56)
 	if changed then self.confirmed = false; self.overlay.Visible = mode.docked end
-	self.view.inputBlocked = (self.overlay.Visible and not self.docked) or not (self.state and self.state.ready)
+	self:updateInput()
 	if self.state then self:update(self.state) end
 end
 
@@ -411,9 +423,18 @@ function Atelier:setOpen(open)
 	self.view:endDrag(true)
 	self.overlay.Visible = open
 	self.confirmed = false
-	self.view.inputBlocked = open or not (self.state and self.state.ready)
+	self:updateInput()
 	if self.state then self:update(self.state) end
 	if not open and self.onClose then self.onClose() end
+end
+
+function Atelier:updateInput()
+	local state=self.state
+	local blocked=(self.overlay.Visible and not self.docked) or not (state and state.ready) or state.manualReady==false
+	self.view.inputBlocked=blocked
+	-- Возрождение не сбрасывает готовые разрезы, но активный жест нельзя
+	-- завершать, пока сервер временно не принимает ручные этапы.
+	if blocked then self.view:endDrag(true) end
 end
 
 function Atelier:setQuantity(quantity)
@@ -525,13 +546,15 @@ function Atelier:update(state)
 	end
 	self.balanceTest.Visible=state.canTestBalance==true and self.mode~='kitchen'
 	L.set(self.togglePrestige,if state.prestigeDisabled then "Prestige bonus OFF · enable" else "Disable prestige bonus")
-	self.view.inputBlocked = self.overlay.Visible and not self.docked
-	L.set(self.view.counter, "PIECES  {amount}", {amount=format(state.slices)})
+	self:updateInput()
+	L.set(self.view.counter, if self.compactCounter then "{amount}" else "PIECES  {amount}", {amount=format(state.slices)})
 	if state.notice then
 		self.notice = state.notice
 		self.noticeUntil = os.clock() + 3
 	end
-	if self.noticeUntil and self.noticeUntil > os.clock() then
+	if state.manualReady==false and not self.view.observingKitchen then
+		L.set(self.metrics,"Preparing your worktable…")
+	elseif self.noticeUntil and self.noticeUntil > os.clock() then
 		L.set(self.metrics,self.notice.key,self.notice.args)
 	else
 		L.set(self.metrics,"+{manual} per trick  ·  {rate}/s  ·  ★ {stars}",{manual=format(state.manual),rate=format(state.rate),stars=format(state.stars)})
@@ -593,7 +616,7 @@ function Atelier:update(state)
 		if (state.offline or 0) >= 0.1 then
 			self.notice = {key="While you were away: +{amount}",args={amount=format(state.offline)}}
 			self.noticeUntil = os.clock() + 8
-			L.set(self.metrics,self.notice.key,self.notice.args)
+			if state.manualReady~=false then L.set(self.metrics,self.notice.key,self.notice.args) end
 		end
 	end
 end

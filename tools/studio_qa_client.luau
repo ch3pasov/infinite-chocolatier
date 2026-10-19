@@ -1,9 +1,12 @@
 --!nonstrict
 -- Не маппится Rojo: добавляется только в локальный entrypoint перед Play.
 assert(game:GetService("RunService"):IsStudio(), "QA requires Studio")
-local qa=Instance.new("BindableFunction"); qa.Name="StudioQaControl"; qa.Parent=player.PlayerGui
+-- PlayerGui удаляет прямых детей при возрождении. Постоянный игровой
+-- ScreenGui сохраняет и проверочный канал до завершения собственного Play.
+local qa=Instance.new("BindableFunction"); qa.Name="StudioQaControl"; qa.Parent=gui
 local renderedFrames=0
 local networkProbe
+local respawnProbe
 game:GetService("RunService").RenderStepped:Connect(function() renderedFrames+=1 end)
 local function waitUntil(predicate, seconds)
  local deadline=os.clock()+seconds
@@ -25,7 +28,8 @@ end
 local function dispatch(args)
  local state=atelier.state
  if args.action=="snapshot" then
-  return {ready=state and state.ready==true,workers=state and state.levels.workers,manual=state and state.manual}
+  return {ready=state and state.ready==true,manualReady=state and state.manualReady,
+   workers=state and state.levels and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
  if args.action=="captureView" then
@@ -42,6 +46,19 @@ local function dispatch(args)
   local camera=workspace.CurrentCamera
   return {ok=ready,renderReady=ready,scene=args.scene,frames=renderedFrames,
    fieldOfView=camera and camera.FieldOfView,viewport=camera and {x=camera.ViewportSize.X,y=camera.ViewportSize.Y}}
+ elseif args.action=="hintTiming" then
+  kitchen:setOpen(false); gameView:resetRound(); gameView.scene3D:syncHints()
+  local samples={}
+  for _=1,3 do
+   local elapsed=0
+   for _=1,10 do
+    local start=os.clock()
+    for _=1,100 do gameView.scene3D:syncHints() end
+    elapsed+=os.clock()-start; task.wait()
+   end
+   table.insert(samples,elapsed*1000)
+  end
+  return {ok=true,samplesMs=samples,iterations=1000,hints=#gameView.hintLayer:GetChildren()}
  elseif args.action=="avatarLifecycle" then
   local Animator=require(script.ChocolatierAnimator)
   local Appearance=require(script.FriendAppearance)
@@ -186,6 +203,40 @@ local function dispatch(args)
   local action=networkProbe.action; networkProbe=nil
   assert(action.cutting and action.knifePoint==Vector2.new(1.25,2.5),"Network pose changed")
   return {ok=true,transport="RemoteEvent",conditionalAuthor=true}
+ elseif args.action=="respawnPrepare" then
+  kitchen:setOpen(false); gameView:resetRound()
+  assert(waitUntil(function() return atelier.state.manualReady==true end,4),'Worktable was not ready')
+  local oldBegin=player:GetAttribute('StudioQaManualBegin')
+  gameView.manualStarted=true; gameView:reportStep('begin')
+  assert(waitUntil(function() return player:GetAttribute('StudioQaManualBegin')~=oldBegin end,4),'Begin was not accepted')
+  local progress=gameView.paths[1].geom.length*.4
+  gameView.cutProgress=progress; gameView:drawProgress(gameView.paths[1],progress)
+  gameView.drag={kind='cut',progress=progress,ready=false}
+  respawnProbe={character=player.Character,progress=progress,rounds=state.rounds}
+  respawnProbe.connection=remotes.stateSync.OnClientEvent:Connect(function(nextState)
+   if nextState.manualReady==false then
+    respawnProbe.sawUnready=true
+    task.defer(function()
+     if respawnProbe then respawnProbe.blocked=gameView.inputBlocked and gameView.drag==nil end
+    end)
+   end
+  end)
+  return {ok=true,progress=progress}
+ elseif args.action=="respawnFinish" then
+  local probe=assert(respawnProbe,'Respawn was not prepared')
+  local arrived=waitUntil(function()
+   return player.Character and player.Character~=probe.character and atelier.state.manualReady==true
+  end,12)
+  probe.connection:Disconnect(); respawnProbe=nil
+  assert(arrived,'New character did not restore the worktable')
+  assert(probe.sawUnready and probe.blocked,'Death did not block and release the cut')
+  assert(gameView.active=='cut' and gameView.cutIndex==1 and gameView.cutProgress==probe.progress,'Respawn reset cut progress')
+  assert(not gameView.inputBlocked and gameView.drag==nil,'Respawn left stale input')
+  gameView:finishCut()
+  assert(waitUntil(function() return player:GetAttribute('StudioQaManualStep')==1 end,4),'Resumed step was not accepted')
+  assert(atelier.state.rounds==probe.rounds,'Respawn produced a round reward')
+  gameView:resetRound()
+  return {ok=true,newCharacter=true,cutPreserved=true,inputRecovered=true,serverAcceptedAfterResume=true}
  elseif args.action=="gesture" then
   -- Только чтение. Резать, сдвигать и завершать раунд будет настоящий ввод
   -- user_mouse_input, не вызов Game:finishCut или RemoteEvent из теста.
@@ -226,7 +277,15 @@ local function dispatch(args)
   return {ok=true,levels=atelier.state.levels.craft,manual=atelier.state.manual,rate=atelier.state.rate}
  elseif args.action=="orders" then
   for i=1,4 do
-   local before=atelier.state.rounds; remotes.roundComplete:FireServer()
+   -- Здесь проверяется начисление заказа синтетическим протоколом.
+   -- Настоящие жесты и геометрия проверяются отдельным сценарием native input.
+   local before=atelier.state.rounds
+   local previousBegin=player:GetAttribute('StudioQaManualBegin')
+   remotes.manualStep:FireServer('cancel'); remotes.manualStep:FireServer('begin')
+   assert(waitUntil(function() return player:GetAttribute('StudioQaManualBegin')~=previousBegin end,4),'Server did not accept manual begin')
+   for step=1,#Config.Recipe.cuts+1 do remotes.manualStep:FireServer(step) end
+   task.wait(Config.Payout.minInterval+.05)
+   remotes.roundComplete:FireServer()
    assert(waitUntil(function() return atelier.state.rounds==before+1 end,3),"Round did not arrive")
    task.wait(Config.Payout.minInterval+.05)
   end
@@ -235,11 +294,38 @@ local function dispatch(args)
   assert(receipt and receipt.name==Config.Orders[1].name and receipt.number==1,'Order receipt missing')
   assert(receipt.bonus==atelier.state.manual*Config.Orders[1].bonusRounds,'Receipt has the wrong bonus')
   return {ok=true,orders=atelier.state.ordersCompleted,rounds=atelier.state.rounds,receipt=receipt}
+ elseif args.action=="cutInterruption" then
+  kitchen:setOpen(false); gameView:resetRound()
+  assert(waitUntil(function() return atelier.state.manualReady end,4),'Manual table is not ready')
+  local previousBegin=player:GetAttribute('StudioQaManualBegin')
+  gameView.manualStarted=true; gameView:reportStep('begin')
+  assert(waitUntil(function() return player:GetAttribute('StudioQaManualBegin')~=previousBegin end,4),'Server did not accept manual begin')
+  local path=gameView.paths[1]
+  local radius=math.min(Config.Cutting.finishSnapRadius/gameView.boardScale.Scale,path.geom.length*(1-Config.Cutting.finishSnapMinProgress))
+  gameView.cutProgress=path.geom.length-radius/2
+  local progress=gameView.cutProgress; local rounds=atelier.state.rounds
+  gameView:finishCutSmoothly(path); kitchen:setOpen(true)
+  assert(waitUntil(function() return player:GetAttribute('KitchenMode')=='walk' and atelier.state.manualReady==false end,4),'Server did not confirm walking')
+  task.wait(Config.Cutting.finishSnapDuration+.05)
+  assert(gameView.active=='cut' and gameView.cutIndex==1 and gameView.cutProgress==progress,'Walking completed or erased the pending cut')
+  assert(player:GetAttribute('StudioQaManualStep')==0,'Interrupted cut advanced the server')
+  kitchen:setOpen(false)
+  assert(waitUntil(function() return player:GetAttribute('KitchenMode')=='cut' and atelier.state.manualReady end,4),'Manual table did not recover')
+  gameView:finishCutSmoothly(path)
+  assert(waitUntil(function() return gameView.cutIndex==2 and player:GetAttribute('StudioQaManualStep')==1 end,4),'Resumed cut was not accepted by server')
+  assert(atelier.state.rounds==rounds,'Partial cut awarded a whole trick')
+  gameView:resetRound()
+  return {ok=true,cutPreserved=true,serverAcceptedAfterResume=true,noPrematureReward=true}
  elseif args.action=="journal" then
   atelier.journal:open()
   assert(gameView.journalOpen and atelier.journal.overlay.Visible,"Journal did not open")
   assert(atelier.journal.offlineCard.Visible,"Offline report is missing")
   local journal=atelier.journal; local saved=atelier.state
+  journal:selectPage('bonuses')
+  assert(journal.calculations.Visible and not journal.pages.Visible,'Bonus page did not open')
+  assert(saved.bonuses and saved.bonuses.manual==saved.manual,'Bonus snapshot differs from income')
+  assert(journal.bonusRows.online and journal.bonusRows.spectators and journal.bonusRows.cycle,'Bonus rows are missing')
+  journal:selectPage('journal')
   assert(journal.productionCard.Visible and journal.productionCycle.Visible,'Factory report is missing')
   local L=require(script.Localization)
   assert(journal.receiptCard.Visible and journal.receiptName.Text==L.text(saved.lastOrder.name),'Last order is missing from the journal')
@@ -277,6 +363,83 @@ local function dispatch(args)
   assert(not journal.overlay.Visible and not gameView.journalOpen and not kitchen.controls.controlsEnabled,'Return to cutting left journal or movement active')
   assert(gameView.cutIndex==cut and gameView.cutProgress==progress,'Reading changed the manual cut')
   return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds,factoryCafes=13,apprentices=25,emptyFactory=true,walkingJournal=true,movementRestored=true,cutPreserved=true}
+ elseif args.action=="rankings" then
+  assert(rankings,'Rankings not initialized')
+  local L=require(script.Localization);L.__qaLocale(args.locale)
+  local original=rankings.snapshot;local originalSize=rankings.panel.Size
+  local sample={studio=true,boards={}}
+  for _,key in {'pieces','guests','tricks'} do
+   local rows={};for i=1,10 do table.insert(rows,{id=i,name=string.rep('W',20),score=1e15-i}) end
+   sample.boards[key]={rows=rows,ready=true}
+  end
+  local cases={};local ok,result=pcall(function()
+   kitchen:setOpen(true);rankings.snapshot=sample;rankings:render();kitchen.online:step(.5)
+   for _,entry in rankings.world do
+    assert(entry.prompt.ActionText==L.text('View rankings'),'Island refresh replaced ranking action text')
+   end
+   rankings:open()
+   assert(rankings.overlay.Visible and not kitchen:canWalk(),'Rankings did not block walking')
+   assert(not atelier.journal.canOpen(),'Journal opened over rankings')
+   for _,size in {Vector2.new(296,520),Vector2.new(400,650),Vector2.new(520,238)} do
+    rankings.panel.Size=UDim2.fromOffset(size.X,size.Y);task.wait(.1);rankings:fit()
+    for _,key in {'pieces','guests','tricks'} do
+     rankings.key=key;rankings:render();task.wait(.1)
+     local texts=checkText(rankings.panel)
+     assert(rankings.scroll.AbsoluteSize.Y>=50,'Rankings hide all rows in landscape')
+     assert(rankings.rows[10].Position.Y.Offset+rankings.rows[10].AbsoluteSize.Y<=rankings.scroll.AbsoluteCanvasSize.Y,'Last rank cannot be scrolled into view')
+     table.insert(cases,{width=size.X,height=size.Y,key=key,texts=texts,rowsHeight=rankings.scroll.AbsoluteSize.Y})
+    end
+   end
+   local boards=0
+   for _,entry in rankings.world do boards+=1;checkText(entry.part) end
+   assert(boards>0,'No rankings board in the world')
+   local delayed=Instance.new('Model');delayed.Name='RankingsReplicationQA';delayed.Parent=workspace.KitchenIslands
+   task.wait(.05);assert(rankings.world[delayed]==nil,'Board created without room attributes')
+   delayed:SetAttribute('CafeIndex',0);delayed:SetAttribute('Origin',Vector3.new(4096,0,1000));task.wait(.05)
+   assert(rankings.world[delayed],'Late room attributes lost the board')
+   delayed:Destroy();task.wait(.05);assert(rankings.world[delayed]==nil and rankings.pendingRooms[delayed]==nil,'Departed room retained rankings')
+   return {ok=true,locale=args.locale,cases=cases,boards=boards,cloud=false}
+  end)
+  rankings.panel.Size=originalSize;rankings.snapshot=original;rankings:render()
+  rankings:close();assert(kitchen:canWalk(),'Closing rankings did not restore walking')
+  kitchen:setOpen(false)
+  assert(ok,result);return result
+ elseif args.action=="hudLayout" then
+  local L=require(script.Localization); L.__qaLocale(args.locale)
+  local original=gameView.root.Size
+  local probes={}; local cases={}
+  local ok,result=pcall(function()
+   for _,size in {Vector2.new(749,381),Vector2.new(568,320),Vector2.new(400,777),Vector2.new(296,600),Vector2.new(336,720),Vector2.new(1440,900)} do
+    gameView.root.Size=UDim2.fromOffset(size.X,size.Y); atelier:fit(); task.wait(.05)
+    assert(atelier.metrics.TextFits,'Production summary clipped: '..atelier.metrics.Text)
+    local hint=gameView.status:Clone(); hint.Name='HudHintQA'; hint.TextTransparency=1; hint.Parent=gameView.status.Parent
+    table.insert(probes,hint)
+    local hints=0
+    for index,instruction in Config.Trick.cutLabels do
+     L.set(hint,'Cut {step} of {total}: {instruction}',{step=index,total=4,instruction=L.token(instruction)})
+     task.wait(.05); assert(hint.TextFits,'Cut hint clipped: '..hint.Text); hints+=1
+    end
+    for _,source in {'Slide the large piece along the arrow — the other piece will follow','Slide the two-piece strip into the gap at the top',
+      'All four cuts are done — the bar separates into five pieces','Done! The bar is whole again, with one original piece left over'} do
+     L.set(hint,source); task.wait(.05); assert(hint.TextFits,'Phase hint clipped: '..hint.Text); hints+=1
+    end
+    local counter=gameView.counter:Clone(); counter.Name='HudCounterQA'; counter.TextTransparency=1; counter.Parent=gameView.counter.Parent
+    table.insert(probes,counter)
+    for _,amount in {0,Config.Economy.maxValue} do
+     L.set(counter,if atelier.compactCounter then '{amount}' else 'PIECES  {amount}',{amount=L.number(amount)})
+     task.wait(.05); assert(counter.TextFits,'Counter clipped: '..counter.Text)
+    end
+    if not atelier.landscape then
+     assert(counter.Position.X.Offset>=game:GetService('GuiService').TopbarInset.Min.X+8,'Counter overlaps Roblox controls')
+    end
+    table.insert(cases,{width=size.X,height=size.Y,hints=hints,hintHeight=hint.AbsoluteSize.Y,counterWidth=counter.AbsoluteSize.X,compact=atelier.compactCounter})
+    hint:Destroy(); counter:Destroy()
+   end
+   return {ok=true,locale=args.locale,cases=cases}
+  end)
+  for _,probe in probes do probe:Destroy() end
+  gameView.root.Size=original; atelier:fit()
+  assert(ok,result); return result
  elseif args.action=="layout" then
   require(script.Localization).__qaLocale(args.locale)
   gameView.root.Size=UDim2.fromOffset(360,780); atelier:fit(); atelier:setOpen(true)
@@ -352,6 +515,55 @@ local function dispatch(args)
   assert(kitchen.journalButton.TextFits,'Journal button text overflows')
   kitchen:setOpen(false)
   return {ok=true,locale=args.locale,receiptChecks=receiptChecks,rewardChecks=rewardChecks,saveChecks=saveChecks,prestigeChecks=prestigeChecks,texts=checked,width=atelier.panel.AbsoluteSize.X,title=title}
+ elseif args.action=="bonusLayout" then
+  local L=require(script.Localization); L.__qaLocale(args.locale)
+  local Economy=require(game.ReplicatedStorage.Shared.Economy)
+  -- Отдельный экземпляр настоящего журнала исключает гонку с ежесекундным
+  -- StateSync. Тестовый профиль не подменяет состояние игрока или сохранение.
+  local owner=Instance.new('ScreenGui'); owner.Name='BonusLayoutQA'; owner.IgnoreGuiInset=true; owner.Parent=player.PlayerGui
+  local root=Instance.new('Frame'); root.BackgroundTransparency=1; root.Size=UDim2.fromScale(1,1); root.Parent=owner
+  local view={root=root,endDrag=function() end}
+  local journal=require(script.Journal).new(owner,view)
+  local data=Economy.load({stars=4,collectionVersion=2,owned={workers_1=true,temper_1=true,library_1=true,clock_1=true},levels={kitchen=1,craft=2,recipe=2,speed=3,cafes=2}})
+  data.onlineFriend=true; Economy.addSocial(data,'guests',202,101); Economy.addSocial(data,'spectators',202,101)
+  local normal=Economy.snapshot(data); normal.ready=true
+  local extreme=Economy.load({stars=1000000,collectionVersion=2,owned={workers_1=true},levels={kitchen=1,craft=1e9,recipe=1e9,speed=1e9,cafes=10000}})
+  extreme.socialCounts={guests=1000000,spectators=1000000}; extreme.onlineFriend=true
+  local large=Economy.snapshot(extreme); large.ready=true
+  local cases={}
+  local ok,result=pcall(function()
+   journal:update(normal); journal:open(); journal:selectPage('bonuses')
+   for _,width in {296,336,496} do
+    journal.panel.Size=UDim2.fromOffset(width,650)
+    for index,snapshot in {normal,large} do
+     journal:update(snapshot); task.wait(.15)
+     local texts=checkText(journal.calculations); local count=0
+     for key,row in journal.bonusRows do
+      count+=1
+      local card=row.value.Parent
+      assert(card.AbsoluteSize.Y>0,'Collapsed bonus card: '..key)
+      assert(row.help.AbsolutePosition.Y>=row.value.AbsolutePosition.Y+row.value.AbsoluteSize.Y-1,'Overlapping bonus text: '..key)
+      assert(row.help.AbsolutePosition.Y+row.help.AbsoluteSize.Y<=card.AbsolutePosition.Y+card.AbsoluteSize.Y+1,'Clipped bonus explanation: '..key)
+      assert(not row.value.Text:find('{',1,true) and not row.help.Text:find('{',1,true),'Unformatted bonus: '..key)
+     end
+     assert(count==15 and texts==30,'Missing bonus rows')
+     local layout=journal.calculations:FindFirstChildOfClass('UIListLayout')
+     assert(journal.calculations.AbsoluteCanvasSize.Y>=layout.AbsoluteContentSize.Y-1,'Bonus cards cannot be scrolled to the end')
+     table.insert(cases,{width=journal.panel.AbsoluteSize.X,rows=count,texts=texts,large=index==2,
+      height=layout.AbsoluteContentSize.Y,cycle=journal.bonusRows.cycle.value.Text})
+    end
+   end
+   return {ok=true,locale=args.locale,cases=cases}
+  end)
+  if ok then
+   -- Фиксированная тестовая высота 650 px не должна попадать в живой
+   -- preview низкого телефона. Проверяем штатную адаптивную панель.
+   journal.panel.Size=UDim2.new(1,-24,1,-32); journal:update(normal); task.wait(.15)
+   ok=journal.panel.AbsolutePosition.Y>=0
+   if not ok then result='Journal overlaps Roblox top controls' end
+  end
+  if not (ok and args.preview) then owner:Destroy() end
+  assert(ok,result); return result
  elseif args.action=="kitchen" then
   assert(kitchen,"Kitchen is disabled"); kitchen:setOpen(true)
   -- При блокировке macOS RenderStepped может не работать. Вызываем тот же
@@ -662,12 +874,21 @@ local function dispatch(args)
     end
    end
   end
+  local function measure(run)
+   local elapsed=0
+   for _=1,10 do
+    local started=os.clock(); for _=1,10 do run() end
+    elapsed+=os.clock()-started
+    -- Большая очередь на слабом компьютере не должна исчерпывать лимит
+    -- одного Lua-потока. Ожидание кадра не входит в замер самого обхода.
+    task.wait()
+   end
+   return elapsed*1000
+  end
   local samples={}
   for _=1,3 do
-   local started=os.clock(); for _=1,100 do legacy() end
-   local before=(os.clock()-started)*1000
-   started=os.clock(); for _=1,100 do online:updateLocalVisibility(origin) end
-   table.insert(samples,{beforeMs=before,afterMs=(os.clock()-started)*1000})
+   local before=measure(legacy)
+   table.insert(samples,{beforeMs=before,afterMs=measure(function() online:updateLocalVisibility(origin) end)})
   end
   kitchen:setOpen(false)
   return {ok=true,checked=checked,descendants=#all,excluded=#excluded,samples=samples,iterations=100}

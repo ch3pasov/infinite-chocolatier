@@ -7,6 +7,7 @@ Remotes.Names = {
 	Folder = "InfiniteChocolateRemotes",
 	StateSync = "StateSync",
 	RoundComplete = "RoundComplete",
+	ManualStep = "ManualStep",
 	RequestState = "RequestState",
 	Purchase = "Purchase",
 	Prestige = "Prestige",
@@ -36,6 +37,7 @@ function Remotes.ensure(parent: Instance)
 	return {
 		stateSync = getEvent(Remotes.Names.StateSync),
 		roundComplete = getEvent(Remotes.Names.RoundComplete),
+		manualStep = getEvent(Remotes.Names.ManualStep),
 		requestState = getEvent(Remotes.Names.RequestState),
 		purchase = getEvent(Remotes.Names.Purchase),
 		prestige = getEvent(Remotes.Names.Prestige),

@@ -178,7 +178,7 @@ function Kitchen:unbindCharacter()
  end
 end
 function Kitchen:canWalk()
- return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen and not self.view.audioSettingsOpen) or false
+ return (self.opened and self.state and self.state.ready and not self.focus and not self.shopping and not self.browsing and not self.view.journalOpen and not self.view.diagnosticsOpen and not self.view.audioSettingsOpen and not self.view.rankingsOpen) or false
 end
 function Kitchen:refreshControls()
  if self:canWalk() then self.controls:Enable()
@@ -385,7 +385,7 @@ function Kitchen:watchPlayer(peer,side)
  side=if side==2 then 2 else 1
  if side==2 and (not peer.stations[2] or (not peer.staff and peer.model:GetAttribute('HasApprentice')~=true)) then return end
  self.watchPeer=peer; self.watchSide=side; self.focus=true
- self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch')
+ self.controls:Disable(); self.atelier.remotes.kitchenMode:FireServer('watch',peer.player.UserId,side)
  self.stage:activate(self.world,self.camera); self:step(0)
 end
 return Kitchen

@@ -37,11 +37,12 @@ local function instances()
 end
 local function fixture()
  local instance=instances()
- local input,errorSignal=signal(),signal()
+ local input,errorSignal,topbarSignal=signal(),signal(),signal()
  local shared=setmetatable({},{__index=function(_,name) return name end})
  local playerGui=instance('PlayerGui'); local gui=instance('ScreenGui'); gui.Parent=playerGui
  local view={gui=gui,root=instance('Frame'),counter=instance('TextLabel')}; view.root.Parent=gui; view.counter.Parent=view.root
  local services={ReplicatedStorage={WaitForChild=function() return shared end},UserInputService={InputBegan=input},
+  GuiService={GetPropertyChangedSignal=function() return topbarSignal end},
   ScriptContext={Error=errorSignal},Players={LocalPlayer={UserId=Config.BalanceTesterUserId}},RunService={IsStudio=function() return true end}}
  local modules={Config=Config,KitchenCatalog=require('../src/shared/KitchenCatalog'),Theme={},
   Localization={set=function(o,text) o.Text=text end,token=function(text) return text end},
@@ -59,7 +60,7 @@ local function fixture()
  Atelier.fit=function() end
  local atelier=Atelier.new(gui,view,{})
  local diagnostics=Diagnostics.new(playerGui,view)
- return {gui=gui,playerGui=playerGui,view=view,atelier=atelier,diagnostics=diagnostics,input=input,errors=errorSignal}
+ return {gui=gui,playerGui=playerGui,view=view,atelier=atelier,diagnostics=diagnostics,input=input,errors=errorSignal,topbar=topbarSignal}
 end
 return function(h)
  h.test('серверные снимки больше не обновляют удалённый клиентский интерфейс',function()
@@ -92,7 +93,7 @@ return function(h)
  h.test('удаление основного GUI убирает отдельные окна и все глобальные подписки меню',function()
   for _,removeReportFirst in {false,true} do
    local f=fixture(); local journal=f.playerGui:FindFirstChild('ChocolateJournal')
-   assert(journal); h.equals(f.input:count(),3); h.equals(f.errors:count(),1)
+   assert(journal); h.equals(f.input:count(),3); h.equals(f.errors:count(),1); h.equals(f.topbar:count(),1)
    local calls=0
    f.atelier.setOpen=function() calls+=1 end; f.atelier.overlay.Visible=true
    f.atelier.journal.close=function() calls+=1 end; f.atelier.journal.overlay.Visible=true
@@ -103,7 +104,7 @@ return function(h)
    end
    f.gui:Destroy(); f.gui:Destroy()
    h.equals(journal.destroyed,true); h.equals(f.diagnostics.gui.destroyed,true)
-   h.equals(f.input:count(),0); h.equals(f.errors:count(),0)
+   h.equals(f.input:count(),0); h.equals(f.errors:count(),0); h.equals(f.topbar:count(),0)
    h.equals(f.playerGui:FindFirstChild('ChocolateJournal'),nil)
    h.equals(f.playerGui:FindFirstChild('DeveloperDiagnostics'),nil)
    f.input:Fire({KeyCode=R.Enum.KeyCode.Escape}); h.equals(calls,3)

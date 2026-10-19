@@ -365,6 +365,7 @@ function Scene:reliefSeam(gui)
 end
 
 function Scene:syncHints()
+	self.hintStates=self.hintStates or {}
 	for _, layer in {self.view.hintLayer,self.view.progressLayer,self.view.seamLayer} do
 		for _, gui in layer:GetChildren() do
 			if gui:IsA("Frame") then
@@ -377,26 +378,38 @@ function Scene:syncHints()
 					end
 					continue
 				end
+				local size,position,anchor=gui.Size,gui.Position,gui.AnchorPoint
+				local rotation,tint,alpha=gui.Rotation,gui.BackgroundColor3,gui.BackgroundTransparency
+				local visible,start=gui.Visible,gui.Name=="Start"
+				local previous=self.hintStates[gui]
+				-- Пунктир обычно неподвижен весь разрез. Пересчитываем проекцию
+				-- и записываем свойства детали только при изменении исходного UI.
+				if previous and previous.size==size and previous.position==position and previous.anchor==anchor
+					and previous.rotation==rotation and previous.tint==tint and previous.alpha==alpha
+					and previous.visible==visible and previous.start==start and previous.layer==layer then continue end
+				self.hintStates[gui]={size=size,position=position,anchor=anchor,rotation=rotation,
+					tint=tint,alpha=alpha,visible=visible,start=start,layer=layer}
 				if not p then
-					p=part(self.overlay.world,"Guide",Vector3.one,CFrame.identity,gui.BackgroundColor3)
+					p=part(self.overlay.world,"Guide",Vector3.one,CFrame.identity,tint)
 					self.hints[gui]=p
 				end
-				local size = Vector2.new(gui.Size.X.Offset,gui.Size.Y.Offset)
-				local center = Vector2.new(gui.Position.X.Offset,gui.Position.Y.Offset)+size*(Vector2.new(0.5,0.5)-gui.AnchorPoint)
-				p.Size = Vector3.new(math.max(0.015,size.X*unit),0.018,math.max(0.015,size.Y*unit))*renderScale
+				local pixels=Vector2.new(size.X.Offset,size.Y.Offset)
+				local center=Vector2.new(position.X.Offset,position.Y.Offset)+pixels*(Vector2.new(0.5,0.5)-anchor)
+				p.Size = (if start then Vector3.new(pixels.X*unit,0.07,pixels.Y*unit)
+					else Vector3.new(math.max(0.015,pixels.X*unit),0.018,math.max(0.015,pixels.Y*unit)))*renderScale
 				-- Тёмная линия и её тонкая кромка раньше лежали в одной
 				-- плоскости. UI ZIndex сам по себе в 3D глубину не разделяет.
 				local height=if layer==self.view.seamLayer then 0.025+math.clamp(gui.ZIndex-410,0,1)*0.012
 					elseif layer==self.view.progressLayer then 0.055 else 0.08
-				p.CFrame = renderFrame(CFrame.new(center.X*unit,settings.surfaceHeight+height,center.Y*unit)*CFrame.Angles(0,-math.rad(gui.Rotation),0))
-				p.Color = gui.BackgroundColor3
-				p.Transparency = if gui.Visible then gui.BackgroundTransparency else 1
-				if gui.Name == "Start" then p.Shape=Enum.PartType.Ball; p.Size=Vector3.new(size.X*unit,0.07,size.Y*unit)*renderScale end
+				p.CFrame = renderFrame(CFrame.new(center.X*unit,settings.surfaceHeight+height,center.Y*unit)*CFrame.Angles(0,-math.rad(rotation),0))
+				p.Color = tint
+				p.Transparency = if visible then alpha else 1
+				p.Shape=if start then Enum.PartType.Ball else Enum.PartType.Block
 			end
 		end
 	end
 	for gui,p in self.hints do
-		if not gui.Parent then p:Destroy(); self.hints[gui]=nil end
+		if not gui.Parent then p:Destroy(); self.hints[gui]=nil; self.hintStates[gui]=nil end
 	end
 end
 

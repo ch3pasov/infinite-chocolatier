@@ -3,6 +3,7 @@
 local Config = require("./Config")
 local Catalog = require("./KitchenCatalog")
 local Orders = require("./Orders")
+local Social = require("./SocialProgress")
 local E = Config.Economy
 local Economy = {}
 local upgradeById = {}
@@ -51,6 +52,7 @@ function Economy.load(raw)
 		decor = {},
         collectionVersion=2, owned={}, equipped={}, legacyWorkers=0,
 	}
+	data.social, data.socialCounts = Social.load(raw.social)
 	data.orderProgress = math.floor(number(raw.orderProgress, 0, Orders.spec(data.ordersCompleted).rounds - 1))
 	for _, spec in E.upgrades do
 		data.levels[spec.id] = math.floor(number(levels[spec.id], 0, math.min(spec.maxLevel,1e9)))
@@ -106,21 +108,42 @@ function Economy.load(raw)
 	return data
 end
 
-function Economy.multiplier(data)
-	return (1 + data.levels.recipe * E.recipeBonus) * (1 + (if data.ignorePrestige then 0 else data.stars) * E.starBonus) * (1 + data.levels.temper * E.temperBonus)
+-- Единственный расчёт используется выплатами, предпросмотром и страницей бонусов.
+function Economy.breakdown(data)
+ local l=data.levels
+ local counts=data.socialCounts or {guests=0,spectators=0}
+ local b={base=Config.Payout.amount, craft=l.craft, library=l.library*E.libraryBonus,
+  stars=data.stars, starsEnabled=not data.ignorePrestige,
+  recipe=1+l.recipe*E.recipeBonus,
+  star=1+(if data.ignorePrestige then 0 else data.stars)*E.starBonus,
+  temper=1+l.temper*E.temperBonus,
+  online=if data.onlineFriend==true then E.friendOnlineMultiplier else 1,
+  guests=1+counts.guests*E.guestBonus, spectators=1+counts.spectators*E.spectatorBonus,
+  guestCount=counts.guests, spectatorCount=counts.spectators,
+  friendStatus=data.friendStatus or 'ready',
+  guestPercent=E.guestBonus*100, spectatorPercent=E.spectatorBonus*100,
+  starPercent=E.starBonus*100, workers=l.workers,
+  baseSeconds=E.apprenticeCycleSeconds,
+  skillSpeed=l.speed*E.apprenticeSpeedBonus, clockSpeed=l.clock*E.clockBonus,
+  maxValue=E.maxValue, offlineLimit=E.offlineLimit,
+ }
+ b.baseReward=b.base+b.craft+b.library
+ b.multiplier=b.recipe*b.star*b.temper*b.online*b.guests*b.spectators
+ b.uncappedManual=b.baseReward*b.multiplier
+ b.manual=math.min(E.maxValue,b.uncappedManual)
+ b.speed=1+b.skillSpeed+b.clockSpeed
+ b.cycleSeconds=b.baseSeconds/b.speed
+ b.cycleTotal=math.min(E.maxValue,b.workers*b.manual)
+ b.rate=math.min(E.maxValue,b.workers*b.manual/b.cycleSeconds)
+ b.orderFactor=Orders.spec(data.ordersCompleted).bonusRounds
+ b.orderBonus=Orders.snapshot(data,b.manual).bonus
+ return b
 end
-
-function Economy.manual(data)
-	return math.min(E.maxValue,(Config.Payout.amount + data.levels.craft + data.levels.library * E.libraryBonus) * Economy.multiplier(data))
-end
-
-function Economy.cycleSeconds(data)
-	return E.apprenticeCycleSeconds / (1 + data.levels.speed * E.apprenticeSpeedBonus + data.levels.clock * E.clockBonus)
-end
-
-function Economy.rate(data)
-	return math.min(E.maxValue,data.levels.workers * Economy.manual(data) / Economy.cycleSeconds(data))
-end
+function Economy.multiplier(data) return Economy.breakdown(data).multiplier end
+function Economy.manual(data) return Economy.breakdown(data).manual end
+function Economy.cycleSeconds(data) return Economy.breakdown(data).cycleSeconds end
+function Economy.rate(data) return Economy.breakdown(data).rate end
+Economy.addSocial = Social.add
 
 function Economy.price(data, id)
  local item=Catalog.byId[id]
@@ -170,8 +193,11 @@ function Economy.preview(data, id, quantity)
 	local after = Economy.load(data)
 	-- В сетевом снимке флаг называется иначе, чем в серверной сессии.
 	after.ignorePrestige = data.ignorePrestige == true or data.prestigeDisabled == true
-	local manual, rate = Economy.manual(after), Economy.rate(after)
-	local cycle, workers = Economy.cycleSeconds(after), after.levels.workers
+	after.onlineFriend = data.onlineFriend == true
+	after.socialCounts = table.clone(data.socialCounts or after.socialCounts)
+	local before = Economy.breakdown(after)
+	local manual, rate = before.manual, before.rate
+	local cycle, workers = before.cycleSeconds, before.workers
 	local missing = math.max(0, price - data.slices)
 	local waitSeconds = nil
 	if missing > 0 and rate > 0 and price <= E.maxValue then
@@ -186,10 +212,11 @@ function Economy.preview(data, id, quantity)
 		after.owned[id] = true
 	else after.levels[id] += math.max(1, count) end
 	recount(after)
+	local result = Economy.breakdown(after)
 	return {
-		manualGain = math.max(0, Economy.manual(after) - manual),
-		rateGain = math.max(0, Economy.rate(after) - rate),
-		cycleBefore = cycle, cycleAfter = Economy.cycleSeconds(after),
+		manualGain = math.max(0, result.manual - manual),
+		rateGain = math.max(0, result.rate - rate),
+		cycleBefore = cycle, cycleAfter = result.cycleSeconds,
 		workersGain = after.levels.workers - workers,
 		waitSeconds = waitSeconds,
 	}
@@ -218,17 +245,17 @@ function Economy.round(data)
 end
 
 function Economy.tick(data, elapsed)
-	local rate = Economy.rate(data)
-	if rate <= 0 then
+	local production = Economy.breakdown(data)
+	if production.rate <= 0 then
 		data.productionRemainder = 0
 		return 0
 	end
 	-- Храним долю готового фокуса: ускорение не стирает прогресс и не
 	-- начисляет задним числом ускоренные циклы. Оплата только за целые циклы.
-	local total = data.productionRemainder + number(elapsed, 0, E.offlineLimit) / Economy.cycleSeconds(data)
+	local total = data.productionRemainder + number(elapsed, 0, E.offlineLimit) / production.cycleSeconds
 	local cycles = math.floor(total + 1e-9)
 	data.productionRemainder = math.max(0, total - cycles)
-	return Economy.credit(data, data.levels.workers * Economy.manual(data) * cycles)
+	return Economy.credit(data, production.workers * production.manual * cycles)
 end
 
 function Economy.buy(data, id, quantity)
@@ -287,11 +314,19 @@ function Economy.prestige(data)
 end
 
 function Economy.snapshot(data)
-	local state = Economy.load(data)
-	state.manual = Economy.manual(data)
-	state.rate = Economy.rate(data)
-	state.cycleSeconds = Economy.cycleSeconds(data)
-	state.cycleReward = Economy.manual(data)
+	-- Не копируем и не отправляем полные пожизненные списки каждый тик.
+ local public=table.clone(data); public.social=nil
+ local state = Economy.load(public)
+ state.social=nil; state.socialCounts=table.clone(data.socialCounts)
+ state.onlineFriend=data.onlineFriend==true
+ -- Все поля одного снимка используют один расчёт, без повторного создания
+ -- таблиц множителей и премии на каждом серверном тике.
+ local bonuses=Economy.breakdown(data)
+ state.bonuses=bonuses
+	state.manual = bonuses.manual
+	state.rate = bonuses.rate
+	state.cycleSeconds = bonuses.cycleSeconds
+	state.cycleReward = bonuses.manual
 	state.order = Orders.snapshot(data, state.manual)
 	state.prestigeGain = Economy.prestigeGain(data)
 	state.prices = {}

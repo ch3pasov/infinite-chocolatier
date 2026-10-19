@@ -23,6 +23,42 @@ local function fixture(locale,cloud)
 	return L,function(nextLocale) service.RobloxLocaleId=nextLocale; changed.Fire() end
 end
 return function(h)
+	h.test('локализация: быстрый цикл не округляется до нуля ни в одном языке',function()
+		local L,switch=fixture('en-us')
+		local label={Destroying=signal()}
+		for _,sample in {{.009,'0.009'},{.00125,'0.00125'},{1e-8,'1e-08'},{0,'0'},{.25,'0.25'}} do
+			L.set(label,'Cycle: {seconds}s',{seconds=L.number(sample[1])})
+			h.equals(label.Text,'Cycle: '..sample[2]..'s')
+		end
+		L.set(label,'Each apprentice: +{reward} every {seconds}s',{reward=L.number(12),seconds=L.number(1e-8)})
+		switch('ru-ru'); assert(label.Text:find('1e%-08'))
+	end)
+	h.test('локализация: одинаковые кадры не переводятся повторно, изменения и язык обновляют текст',function()
+		local changed=signal(); local calls=0
+		local cloud={LocaleId='en-us',GetPropertyChangedSignal=function() return changed end,
+			FormatByKey=function(_,key,args) calls+=1; return Catalog.format(key,args,'en-us') end}
+		local L=fixture('en-us',cloud); local label={Destroying=signal()}
+		local args={price=L.number(17)}
+		L.set(label,'Buy · {price} pieces',args)
+		for _=1,100 do L.set(label,'Buy · {price} pieces',{price=L.number(17)}) end
+		h.equals(calls,1); h.equals(label.Text,'Buy · 17 pieces')
+		args.price.number=18; L.set(label,'Buy · {price} pieces',args)
+		h.equals(calls,2); h.equals(label.Text,'Buy · 18 pieces')
+		cloud.LocaleId='ru-ru'; changed.Fire()
+		h.equals(label.Text,'Купить · 18 долек'); h.equals(label.AutoLocalize,false)
+		L.set(label,'Buy · {price} pieces',{price=L.number(18)})
+		h.equals(calls,2)
+		cloud.LocaleId='en-us'; changed.Fire()
+		h.equals(calls,3); h.equals(label.Text,'Buy · 18 pieces')
+		L.set(label,'{amount}',{amount=L.token('Craftsmanship')})
+		h.equals(label.Text,'Craftsmanship'); local before=calls
+		L.set(label,'{amount}',{amount=L.token('Craftsmanship')}); h.equals(calls,before)
+		L.set(label,'{amount}',{amount=L.token('Recipe')}); h.equals(label.Text,'Recipe')
+		L.set(label,'{amount}',{}); h.equals(label.Text,'{amount}')
+		L.set(label,'While you were away'); before=calls
+		L.set(label,'While you were away',{}); h.equals(calls,before)
+		label.Destroying:Fire(); changed.Fire(); h.equals(calls,before)
+	end)
 	h.test('локализация: всплывающая награда сокращает большие числа и сохраняет малые',function()
 		local L,switch=fixture('en-us')
 		local label={Destroying=signal()}

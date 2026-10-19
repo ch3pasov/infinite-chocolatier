@@ -160,6 +160,12 @@ return function(h)
    f.audio:setOpen(true); f.audio:destroy(); h.equals(f.starter.enabled,enabled)
   end
  end)
+ h.test("окно звука прерывает доводку после отпускания мыши",function()
+  local f=fixture(); f.view.active='finishingCut'; f.view.drag=nil
+  f.audio:setOpen(true)
+  h.equals(f.view.cancelled,1); h.equals(f.view.audioSettingsOpen,true)
+  f.audio:setOpen(false); h.equals(f.view.cancelled,1)
+ end)
  h.test("ползунок владеет только своим пальцем, меню и потеря фокуса снимают захват",function()
   local f=fixture(); f.load(); local a=f.audio
   f.view.drag={}; a.toggle.Activated:Fire(); h.equals(a.panel.Visible,true)

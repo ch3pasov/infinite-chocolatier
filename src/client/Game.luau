@@ -152,6 +152,12 @@ local function cloneCanonicalTile(
 	return tile
 end
 
+local function positionSegment(frame: Frame, a: Vector2, b: Vector2, thickness: number)
+	frame.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
+	frame.Size = UDim2.fromOffset(math.max((b - a).Magnitude, thickness), thickness)
+	frame.Rotation = math.deg(math.atan2(b.Y - a.Y, b.X - a.X))
+end
+
 local function makeSegment(
 	parent: Instance,
 	a: Vector2,
@@ -163,9 +169,7 @@ local function makeSegment(
 ): Frame
 	local frame = Instance.new("Frame")
 	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
-	frame.Size = UDim2.fromOffset(math.max((b - a).Magnitude, thickness), thickness)
-	frame.Rotation = math.deg(math.atan2(b.Y - a.Y, b.X - a.X))
+	positionSegment(frame, a, b, thickness)
 	frame.BackgroundColor3 = color
 	frame.BackgroundTransparency = transparency or 0
 	frame.BorderSizePixel = 0
@@ -932,14 +936,29 @@ function Game:drawDashed(path: CutPath, parent: Instance, color: Color3)
 end
 
 function Game:drawProgress(path: CutPath, progress: number)
-	clear(self.progressLayer)
+	-- Каждый жест раньше пересоздавал UI и связанные 3D-детали. Сохраняем
+	-- линии до конца разреза; дети слоя сами отражают очистку нового раунда.
+	local lines = self.progressLayer:GetChildren()
+	local count = 0
+	local thickness = math.max(4, self.tileWidth * 0.065)
 	for _, segment in path.geom.segments do
 		local covered = math.clamp(progress - segment.start, 0, segment.len)
 		if covered > 0 then
 			local endPoint = segment.a + (segment.b - segment.a) * (covered / segment.len)
-			makeSegment(self.progressLayer, segment.a, endPoint, math.max(4, self.tileWidth * 0.065), Theme.cut, 0, 610)
+			count += 1
+			local line = lines[count] :: Frame?
+			if line then
+				if line.Size.Y ~= UDim.new(0, thickness) then
+					local corner = line:FindFirstChildOfClass("UICorner")
+					if corner then corner.CornerRadius = UDim.new(0, math.max(1, math.floor(thickness / 2))) end
+				end
+				positionSegment(line, segment.a, endPoint, thickness)
+			else
+				makeSegment(self.progressLayer, segment.a, endPoint, thickness, Theme.cut, 0, 610)
+			end
 		end
 	end
+	for index = count + 1, #lines do lines[index]:Destroy() end
 end
 
 function Game:drawSeam(path: CutPath)
@@ -1039,7 +1058,7 @@ end
 
 function Game:bindInput()
 	self.began = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen or self.audioSettingsOpen then
+		if processed or self.drag or self.inputBlocked or self.observingKitchen or self.diagnosticsOpen or self.journalOpen or self.audioSettingsOpen or self.rankingsOpen then
 			return
 		end
 		if GuiService.MenuIsOpen or UserInputService:GetFocusedTextBox() then return end
@@ -1056,6 +1075,9 @@ function Game:bindInput()
 			if (point - anchor).Magnitude <= startRadius
 				and math.abs(arc - self.cutProgress) <= startRadius
 			then
+                if self.cutIndex==1 and not self.manualStarted then
+                    self.manualStarted=true; self:reportStep('begin')
+                end
 				self.drag = {
 					kind = "cut",
 					progress = self.cutProgress,
@@ -1240,6 +1262,15 @@ end
 
 function Game:endDrag(cancelled: boolean?)
 	local drag = self.drag
+	if cancelled and self.active == "finishingCut" then
+		-- После отпускания drag уже пуст, но доводка ещё может отправить
+		-- следующий этап. В прогулке или при возрождении сервер его отвергнет.
+		-- Сохраняем достигнутую точку и отменяем старые таймеры даже тогда,
+		-- когда игрок сразу начинает новую доводку того же разреза.
+		self.animationToken += 1
+		self.active = "cut"
+		drag = { kind = "cut" }
+	end
 	if not drag then
 		return
 	end
@@ -1309,6 +1340,10 @@ function Game:endDrag(cancelled: boolean?)
 	end
 end
 
+function Game:reportStep(step)
+ if self.remotes and self.remotes.manualStep then self.remotes.manualStep:FireServer(step) end
+end
+
 function Game:finishCut()
 	if self.active ~= "cut" then
 		return
@@ -1322,6 +1357,7 @@ function Game:finishCut()
 	end
 	clear(self.hintLayer)
 	clear(self.progressLayer)
+	self:reportStep(self.cutIndex)
 	self:drawSeam(path)
 
 	if self.cutIndex < #self.paths then
@@ -1364,6 +1400,7 @@ function Game:finishLargeAssembly()
 	if self.active ~= "assembleLarge" then
 		return
 	end
+	self:reportStep(#self.paths+1)
 	local function joined()
 		if self.audio then self.audio:play("snap") end
 		self.active="assembleStrip"; self.stripProgress=0
@@ -1496,6 +1533,7 @@ function Game:beginReset()
 end
 
 function Game:resetRound()
+ self.manualStarted=false; self:reportStep("cancel")
 	self:cancelTweens()
 	if self.planarLayout and self:choosePieceLayout() then
 		self.layoutBounds=Layout.bounds(self.recipe,self.trick,self.tileWidth,self.tileHeight,Geom)

@@ -16,6 +16,9 @@ function L.token(source) return {source=source} end
 function L.number(value) return {number=value} end
 
 local function number(value)
+	-- Быстрый производственный цикл остаётся положительным во всех окнах,
+	-- включая каталог и наблюдение, а не только страницу расчётов.
+	if value~=0 and math.abs(value)<.01 then return string.format('%.3g',value) end
 	for _,unit in {{1e12,"T"},{1e9,"B"},{1e6,"M"},{1e3,"K"}} do
 		if value>=unit[1] then return string.format("%.1f",value/unit[1])..Catalog.format(unit[2],nil,locale) end
 	end
@@ -43,13 +46,32 @@ local function render(label,binding)
 	label.Text=result
 end
 
+local function sameArgs(a,b)
+	for key,value in a or {} do
+		local other=b and b[key]
+		if type(value)=="table" then
+			if type(other)~="table" or value.source~=other.source or value.number~=other.number then return false end
+		elseif value~=other then return false end
+	end
+	for key in b or {} do if not a or a[key]==nil then return false end end
+	return true
+end
+
 function L.set(label,source,args)
 	local binding=bindings[label]
+	if binding and binding.source==source and sameArgs(binding.args,args) then return end
 	if not binding then
 		binding={}; bindings[label]=binding
 		label.Destroying:Connect(function() bindings[label]=nil end)
 	end
-	binding.source=source; binding.args=args
+	-- Кухня обновляет подписи покадрово. Не вызываем облачный переводчик
+	-- повторно для прежнего текста; копия параметров замечает и изменение
+	-- ранее переданной таблицы. Смена языка обновляет все привязки в refresh.
+	binding.source=source; binding.args=nil
+	if args then
+		binding.args={}
+		for key,value in args do binding.args[key]=if type(value)=="table" then table.clone(value) else value end
+	end
 	render(label,binding)
 end
 

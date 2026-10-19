@@ -13,6 +13,8 @@ local Catalog = require(Shared.LocalizationCatalog)
 local Economy = require(Shared.Economy)
 local Remotes = require(Shared.Remotes)
 local ProfileStore = require(script.ProfileStore)
+local SocialService = require(script.SocialService)
+local rankings = require(script.RankingsService).start()
 local remotes = Remotes.ensure(ReplicatedStorage)
 local kitchens
 if Config.Kitchen.enabled and Config.Scene3D.enabled then
@@ -47,6 +49,7 @@ local function send(player, notice, reward)
 	local state = Economy.snapshot(session.data)
  if kitchens then kitchens:sync(player,state) end
 	state.ready = true
+ state.manualReady = not kitchens or kitchens:manualContext(player)~=nil
 	state.canTestBalance = player.UserId == Config.BalanceTesterUserId
 	state.prestigeDisabled = session.data.ignorePrestige == true
 	state.offline = session.offline
@@ -66,6 +69,14 @@ local function accrue(session)
 	session.tick = now
 end
 
+local social=SocialService.new(Economy,kitchens,sessions,activeSession,accrue,os.clock,Config.Payout.minInterval)
+local function refreshSocial()
+ local changed=social:refresh()
+ if changed then for player in changed do send(player) end end
+end
+if kitchens then kitchens:onSocialChange(refreshSocial) end
+remotes.manualStep.OnServerEvent:Connect(function(player,step) social:step(player,step) end)
+
 local function save(player, release)
 	local session = sessions[player]
 	if not session then return end
@@ -79,11 +90,15 @@ local function save(player, release)
 		return
 	end
 	session.saving = true
+	-- Снимок берётся до yielding UpdateAsync: новые раунды во время запроса
+	-- попадут в рейтинг только после собственного подтверждённого сохранения.
+	local rankingData={lifetime=session.data.lifetime,rounds=session.data.rounds,socialCounts=table.clone(session.data.socialCounts or {})}
 	local ok, written = pcall(function()
 		return session.storage:save(tostring(player.UserId), session.data, release)
 	end)
 	session.saving = false
 	if ok and written then
+		rankings:record(player.UserId,rankingData)
 		session.lastSave = os.clock()
 		session.nextSave = os.clock() + Config.Economy.saveInterval
 		session.saveStatus = "Progress saved"
@@ -97,8 +112,9 @@ local function save(player, release)
 		if not ok then
 			for _ = 1, 2 do
 				task.wait(1)
+				local retryRanking={lifetime=session.data.lifetime,rounds=session.data.rounds,socialCounts=table.clone(session.data.socialCounts or {})}
 				local retryOK, retryWritten = pcall(function() return session.storage:save(tostring(player.UserId), session.data, true) end)
-				if retryOK and retryWritten then break end
+				if retryOK and retryWritten then rankings:record(player.UserId,retryRanking);break end
 			end
 		end
 		sessions[player] = nil
@@ -143,6 +159,7 @@ local function join(player)
   if player.Parent then player:Kick(Catalog.format("Could not renew your save session. Rejoin to continue safely.", nil, player.LocaleId)) end
   return
  end
+ if not studio then rankings:record(player.UserId,data) end
 	local tick = os.clock()
 	-- Claim начисляет офлайн до начала запроса. Пока шёл успешный ответ,
 	-- стажёры тоже работали; переносим это время в живой таймер без потери
@@ -153,12 +170,14 @@ local function join(player)
 		lastAction = -math.huge, lastSave = os.clock(), nextSave = os.clock() + Config.Economy.saveInterval, saveStatus = "Progress saved" }
 	if not player.Parent or closing then save(player, true); loading[player] = nil; return end
 	loading[player] = nil
+ refreshSocial()
 	send(player)
 end
 
 Players.PlayerAdded:Connect(join)
 Players.PlayerRemoving:Connect(function(player)
 	requests[player] = nil
+ social:remove(player)
 	save(player, true)
 end)
 for _, player in Players:GetPlayers() do task.spawn(join, player) end
@@ -175,9 +194,13 @@ remotes.roundComplete.OnServerEvent:Connect(function(player)
 	if not session or not activeSession(player, session) then return end
 	local now = os.clock()
 	if now - session.lastRound < Config.Payout.minInterval then return end
+	local witnesses=social:complete(player)
+ if not witnesses then return end
 	session.lastRound = now
 	accrue(session)
 	local amount, completed = Economy.round(session.data)
+ -- Завершённый фокус рассчитан по прежнему бонусу; новый действует со следующего.
+ social:award(player,witnesses)
 	-- Квитанция живёт до выхода: очередной снимок или покупка не стирают
 	-- уже выданную премию и не пересчитывают её по новому уровню навыка.
 	if completed then
@@ -224,6 +247,7 @@ end)
 task.spawn(function()
 	while not closing do
 		task.wait(1)
+  refreshSocial()
 		for player, session in sessions do
 			if activeSession(player, session) then
 				accrue(session)

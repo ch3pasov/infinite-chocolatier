@@ -220,7 +220,7 @@ Config.JournalRanks = {
 
 Config.Payout = {
 	minInterval = 0.45,
-	-- Клиент отправляет только RoundComplete; это число читает только серверная
+	-- Клиент передаёт этапы и RoundComplete; это число читает только серверная
 	-- логика начисления и оно не приходит аргументом RemoteEvent.
 	amount = 1,
 }
@@ -250,6 +250,9 @@ Config.Economy = {
     libraryBonus = 2,
     clockBonus = 0.1,
     starBonus = 0.25,
+    friendOnlineMultiplier = 2,
+    guestBonus = 0.10,
+    spectatorBonus = 0.50,
     prestigeTarget = 5000,
     maxStars = 1000000,
     offlineLimit = 4 * 60 * 60,

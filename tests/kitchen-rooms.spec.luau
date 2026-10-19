@@ -53,9 +53,14 @@ return function(h)
   h.equals(a.hum.states.Jumping,nil)
   h.equals(physics.groups.ChocolateAvatars,false)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars'); h.equals(b.body.CollisionGroup,'ChocolateAvatars')
-  local accessory={IsA=function(_,kind) return kind=='BasePart' end}
+  local accessory={Transparency=.35,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}
   a.Character.DescendantAdded:Fire(accessory); h.equals(accessory.CollisionGroup,'ChocolateAvatars')
+  local decal={Transparency=.2,Parent=true,IsA=function(_,kind) return kind=='Decal' end}
+  a.Character.DescendantAdded:Fire(decal)
+  h.equals(accessory.Transparency,1); h.equals(accessory.CanCollide,false)
+  h.equals(decal.Transparency,1)
   local oldCharacter=a.Character
+  local oldHumanoid=a.hum
   a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)
   h.equals(controller:visiblePlayers(a)[2],true)
   h.equals(controller:visiblePlayers(b)[1],true)
@@ -96,8 +101,15 @@ return function(h)
   assert((a.KitchenOrigin-b.KitchenOrigin).Magnitude==256)
   remote.OnServerEvent:Fire(a,'walk'); h.equals(a.root.Anchored,false); h.equals(b.root.Anchored,true)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
+  h.near(accessory.Transparency,.35); h.equals(accessory.CanCollide,true)
+  h.near(decal.Transparency,.2)
+  local walkingAccessory={Transparency=.6,CanCollide=false,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}
+  a.Character.DescendantAdded:Fire(walkingAccessory)
+  h.near(walkingAccessory.Transparency,.6); h.equals(walkingAccessory.CanCollide,false)
   remote.OnServerEvent:Fire(a,'bogus'); h.equals(a.root.Anchored,false)
-  a.hum.Died:Fire(); delayed[1](); h.equals(a.root.Anchored,false)
+  a.hum.Died:Fire(); delayed[#delayed](); h.equals(a.root.Anchored,false)
+  local scheduled=#delayed; oldHumanoid.Died:Fire()
+  h.equals(#delayed,scheduled,'старый персонаж не запускает повторное возрождение')
   h.equals(a.hum.states.Climbing,false)
   h.equals(oldCharacter.DescendantAdded:count(),0); h.equals(a.Character.DescendantAdded:count(),1)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars')
@@ -152,6 +164,47 @@ return function(h)
   for _,bad in {1,{},0/0,math.huge,'2',2.5} do visitRemote.OnServerEvent:Fire(a,bad); h.equals(a.VisitingKitchen,1) end
   visitRemote.OnServerEvent:Fire(a,99999); h.equals(a.directoryAction,'unavailable')
   now+=1; visitRemote.OnServerEvent:Fire(a,2); h.equals(a.VisitingKitchen,2); h.equals(a.directoryAction,'arrived')
+  -- Сервер различает наблюдение ручного стола, стажёра и просто открытое меню.
+  h.equals(#controller:visits(),1)
+  h.equals(controller:manualContext(b)~=nil,true)
+  h.equals(controller:manualContext(a),nil)
+  remote.OnServerEvent:Fire(a,'watch',2,1)
+  h.equals(controller:watching(b,a),nil,'слишком далеко от стола')
+  remote.OnServerEvent:Fire(a,'walk'); a.root.Position=b.KitchenOrigin+R.Vector3.new(-3.7,3,5)
+  remote.OnServerEvent:Fire(a,'watch',999,1); h.equals(controller:watching(b,a),nil,'чужой ID')
+  remote.OnServerEvent:Fire(a,'walk')
+  remote.OnServerEvent:Fire(a,'watch',2,2); h.equals(controller:watching(b,a),nil,'стажёр')
+  remote.OnServerEvent:Fire(a,'walk')
+  remote.OnServerEvent:Fire(a,'watch',2,1); local watchEpoch=controller:watching(b,a); assert(watchEpoch)
+  local findHumanoid=a.Character.FindFirstChildOfClass
+  a.Character.FindFirstChildOfClass=function() return nil end
+  h.equals(controller:watching(b,a),nil,'персонаж без Humanoid ещё не готов наблюдать')
+  a.Character.FindFirstChildOfClass=findHumanoid
+  a.hum.Health=0; h.equals(controller:watching(b,a),nil,'погибший зритель не подтверждает этап')
+  a.hum.Health=100; h.equals(controller:watching(b,a),watchEpoch)
+  local notifications=0; controller:onSocialChange(function() notifications+=1 end)
+  for _=1,100 do remote.OnServerEvent:Fire(a,'watch',2,1) end
+  h.equals(controller:watching(b,a),watchEpoch,'повтор той же команды не прерывает наблюдение')
+  h.equals(notifications,0,'повторы не пересчитывают социальные состояния всего сервера')
+  local manualEpoch=controller:manualContext(b)
+  for _=1,100 do remote.OnServerEvent:Fire(b,'cut') end
+  h.equals(controller:manualContext(b),manualEpoch); h.equals(notifications,0)
+  remote.OnServerEvent:Fire(a,'watch')
+  h.equals(controller:watching(b,a),nil,'примерка всё ещё отменяет наблюдение за игроком')
+  for _=1,100 do remote.OnServerEvent:Fire(a,'watch') end
+  h.equals(notifications,1)
+  remote.OnServerEvent:Fire(a,'walk'); notifications=0
+  for _=1,100 do remote.OnServerEvent:Fire(a,'walk') end
+  h.equals(notifications,0)
+  remote.OnServerEvent:Fire(a,'watch',2,1); watchEpoch=controller:watching(b,a); assert(watchEpoch)
+  remote.OnServerEvent:Fire(a,'walk'); remote.OnServerEvent:Fire(a,'watch',2,1)
+  assert(controller:watching(b,a)~=watchEpoch,'выход и возврат не продлевают прежнее наблюдение')
+  a.root.Position=b.KitchenOrigin+R.Vector3.new(-3.7,3,-4)
+  h.equals(controller:watching(b,a),nil,'за столом вместо зрительской стороны')
+  run.Heartbeat:Fire(.25)
+  a.root.Position=b.KitchenOrigin+R.Vector3.new(-3.7,3,5)
+  h.equals(controller:watching(b,a),nil,'нельзя вернуться после нарушения без нового наблюдения')
+  remote.OnServerEvent:Fire(a,'walk')
   -- Свой пункт меню не обходит расстояние и режим прогулки.
   now+=1; a.root.Position=b.KitchenOrigin
   visitRemote.OnServerEvent:Fire(a,1); h.equals(a.VisitingKitchen,2); h.equals(a.directoryAction,'close')
@@ -203,10 +256,13 @@ return function(h)
   h.equals(e.VisitingKitchen,10); h.equals(e.VisitingCafeIndex,0)
   h.equals(#directory:GetChildren(),1)
   local friend=player(1001)
+  h.equals(controller:hasOnlineFriend(e),true)
+  h.equals(controller:isFriend(e,friend),true)
   assert(directory.KitchenRoom_10:GetAttribute('Staff1')~=1001)
   visit(e,10,false); h.equals(e.VisitingKitchen,1001); h.equals(e.VisitingCafeIndex,0)
   visit(e,1001,true); h.equals(e.VisitingKitchen,10)
   players.PlayerRemoving:Fire(friend)
+  h.equals(controller:hasOnlineFriend(e),false)
   local f=player(20); remote.OnServerEvent:Fire(f,'walk')
   visit(f,20,false); visit(f,10,false)
   h.equals(f.VisitingKitchen,10); h.equals(f.VisitingCafeIndex,0)
@@ -230,6 +286,34 @@ return function(h)
   h.equals(directory.KitchenRoom_30:GetAttribute('Staff1'),1001)
   h.equals(directory.KitchenRoom_30:GetAttribute('FriendListStatus'),'ready')
   players.PlayerRemoving:Fire(retryOwner)
+  players.GetFriendsAsync=fetch
+  -- Сбой посередине списка не доказывает, что старый друг удалён.
+  -- Новая полная загрузка, напротив, должна применить реальное удаление.
+  local knownFriend,newFriend=player(1001),player(1002)
+  local refreshes=0
+  players.GetFriendsAsync=function(self,id)
+   if id~=31 then return fetch(self) end
+   refreshes+=1
+   if refreshes==2 then
+    return {IsFinished=false,GetCurrentPage=function() return {{Id=1002},{Id=1003}} end,
+     AdvanceToNextPageAsync=function() error('next friend page unavailable') end}
+   end
+   return {IsFinished=true,GetCurrentPage=function() return {{Id=if refreshes==1 then 1001 else 1002}} end}
+  end
+  pending=#delayed
+  local refreshing=player(31)
+  h.equals(controller:isFriend(refreshing,knownFriend),true)
+  h.equals(controller:isFriend(refreshing,newFriend),false)
+  delayed[pending+1]()
+  h.equals(controller:isFriend(refreshing,knownFriend),true,'неполная страница не отменяет подтверждённую дружбу')
+  h.equals(controller:isFriend(refreshing,newFriend),true,'успевшая загрузиться новая дружба доступна')
+  h.equals(controller:hasOnlineFriend(refreshing),true)
+  delayed[#delayed]()
+  h.equals(controller:isFriend(refreshing,knownFriend),false,'полный список применяет удаление друга')
+  h.equals(controller:isFriend(refreshing,newFriend),true)
+  h.equals(directory.KitchenRoom_31:GetAttribute('FriendListStatus'),'ready')
+  players.PlayerRemoving:Fire(refreshing)
+  players.PlayerRemoving:Fire(knownFriend); players.PlayerRemoving:Fire(newFriend)
   players.GetFriendsAsync=fetch
   -- Общих друзей занимают только нанятые места. Покупка/престиж должны
   -- обновлять и домашнего актёра, и список для клиентской очереди.
