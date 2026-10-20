@@ -8,11 +8,13 @@
 
 ## Инструменты и локальный запуск
 
-Нужны Roblox Studio, Foreman и Python 3.9+. В [foreman.toml](../foreman.toml)
-закреплены Rojo 7.7.0 и Lune 0.10.5, чтобы локальная сборка совпадала с CI.
+Нужны Roblox Studio, Rokit и Python 3.9+. В [rokit.toml](../rokit.toml)
+закреплены Rojo 7.7.1 и Lune 0.10.5. GitHub Actions устанавливает эти же версии
+через [foreman.toml](../foreman.toml): оба файла обновляются вместе, чтобы
+локальная сборка совпадала с CI.
 
 ```sh
-foreman install
+rokit install
 python3 tools/check.py
 rojo build --output /tmp/infinite-chocolatier.rbxlx
 ```
