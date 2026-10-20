@@ -1,4 +1,4 @@
 # Закреплённые версии инструментов проекта.
 [tools]
-rojo = "rojo-rbx/rojo@7.7.0"
+rojo = "rojo-rbx/rojo@7.7.1"
 lune = "lune-org/lune@0.10.5"

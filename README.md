@@ -54,11 +54,12 @@
 
 ## Запустить из исходников
 
-Нужны **Roblox Studio**, **Foreman** и **Python 3.9+**.
-Версии Lune и Rojo закреплены в [foreman.toml](foreman.toml).
+Нужны **Roblox Studio**, **Rokit** и **Python 3.9+**.
+Версии Lune и Rojo закреплены в [rokit.toml](rokit.toml);
+GitHub Actions использует те же версии через [foreman.toml](foreman.toml).
 
 ```sh
-foreman install
+rokit install
 python3 tools/check.py
 rojo build --output /tmp/infinite-chocolatier.rbxlx
 ```
