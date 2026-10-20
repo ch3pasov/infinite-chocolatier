@@ -64,8 +64,9 @@ function Online:add(model)
  if peer.staff then Decor.update(peer,Queue.decor(id,index)) end
  local anchor=Instance.new('Part'); anchor.Name='PlayerWorktable'; anchor.Anchored=true
  anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one; anchor.Position=origin+Vector3.new(-3.7,2.5,3); anchor.Parent=world
- local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(if peer.staff then 'Watch apprentices' else 'Watch player')
+ local prompt=Instance.new('ProximityPrompt')
  prompt.ObjectText=author.DisplayName..(if peer.staff then ' · '..index else ' (@'..author.Name..')')
+ L.prompt(prompt,if peer.staff then 'Watch apprentices' else 'Watch player')
  prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor; peer.prompt=prompt
  prompt.Triggered:Connect(function() if k:canWalk() and peer.station then k:watchPlayer(peer) end end)
  if not peer.staff then
@@ -73,8 +74,7 @@ function Online:add(model)
   -- Отдельная подсказка выбирает именно этот стол, а не сетевую позу игрока.
   local anchor=Instance.new('Part'); anchor.Name='ApprenticeWorktable'; anchor.Anchored=true
   anchor.CanCollide=false; anchor.Transparency=1; anchor.Size=Vector3.one; anchor.Position=origin+Vector3.new(3.7,2.5,3); anchor.Parent=world
-  local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text('Watch apprentice')
-  prompt.ObjectText=L.text('Apprentice of {name}',{name=author.DisplayName})
+  local prompt=Instance.new('ProximityPrompt'); L.prompt(prompt,'Watch apprentice','Apprentice of {name}',{name=author.DisplayName})
   prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
   peer.apprenticePrompt=prompt
   prompt.Triggered:Connect(function()
@@ -280,8 +280,7 @@ function Online:updateIslands(models)
   -- Только стрелка принадлежит каталогу посещений. У доски рейтингов
   -- и будущих точек взаимодействия собственные подписи и обработчики.
   if prompt.Name=='NextCafePrompt' then
-   local text=L.text('Choose a cafe')
-   if prompt.ActionText~=text then prompt.ActionText=text end
+   L.prompt(prompt,'Choose a cafe')
   end
   if prompt.Enabled~=enabled then prompt.Enabled=enabled end
  end

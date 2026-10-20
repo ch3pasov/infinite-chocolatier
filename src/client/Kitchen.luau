@@ -113,7 +113,7 @@ function Kitchen.new(view,atelier)
  self.prompts={}
  local function prompt(name,caption,position,callback)
   local anchor=part(world,name,Vector3.new(.2,.2,.2),self.origin+position,cocoa); anchor.Transparency=1
-  local prompt=Instance.new('ProximityPrompt'); prompt.ActionText=L.text(caption); prompt.ObjectText=L.text(name)
+  local prompt=Instance.new('ProximityPrompt'); L.prompt(prompt,caption,name)
   prompt.MaxActivationDistance=5; prompt.RequiresLineOfSight=false; prompt.HoldDuration=0; prompt.ClickablePrompt=true; prompt.Enabled=false; prompt.Parent=anchor
   prompt.Triggered:Connect(function() if self:canWalk() then callback() end end)
   self.prompts[name]=prompt

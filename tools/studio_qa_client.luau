@@ -32,7 +32,49 @@ local function dispatch(args)
    workers=state and state.levels and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
- if args.action=="captureView" then
+ if args.action=='promptLocalization' then
+  local L=require(script.Localization)
+  local Catalog=require(game.ReplicatedStorage.Shared.LocalizationCatalog)
+  local observations={}
+  local function verify(prompt,action,object,params,literal)
+   assert(prompt,'Missing proximity prompt: '..action)
+   assert(prompt.AutoLocalize==false,'Engine may translate a finished prompt again')
+   assert(prompt.ActionText==Catalog.format(action,nil,args.locale),'Wrong action: '..prompt.ActionText)
+   local expected=if object then Catalog.format(object,params,args.locale) else literal
+   if expected then assert(prompt.ObjectText==expected,'Wrong object: '..prompt.ObjectText) end
+   table.insert(observations,{action=prompt.ActionText,object=prompt.ObjectText})
+  end
+  local function verifyAll(locale,neighbor)
+   args.locale=locale;L.__qaLocale(locale)
+   for _,spec in {{'My worktable','Cut chocolate'},{'Apprentice worktable','Watch apprentice'},{'Kitchen upgrades','My Kitchen'}} do
+    verify(kitchen.prompts[spec[1]],spec[2],spec[1])
+   end
+   local staff=kitchen.online.peers[tostring(player.UserId)..':1']
+   assert(staff,'Test staff cafe missing')
+   verify(staff.prompt,'Watch apprentices',nil,nil,staff.player.DisplayName..' · 1')
+   local arrow=workspace.KitchenIslands:FindFirstChild('NextCafePrompt',true)
+   verify(arrow,'Choose a cafe',nil,nil,'Infinite Chocolatier')
+   local board;for _,entry in rankings.world do if rankings:current(entry) then board=entry;break end end
+   verify(board and board.prompt,'View rankings','Global top 10')
+   if neighbor then
+    verify(neighbor.prompt,'Watch player',nil,nil,'Cocoa_Друг (@Watch_player)')
+    verify(neighbor.apprenticePrompt,'Watch apprentice','Apprentice of {name}',{name='Cocoa_Друг'})
+   end
+  end
+  kitchen:setOpen(true);kitchen.online:step(.5)
+  verifyAll('en-us');verifyAll('ru-ru')
+  -- Сосед появляется уже после смены языка. Все атрибуты задаём до Parent,
+  -- чтобы проверка перевода не создавала неполную сетевую комнату.
+  local room=Instance.new('Model');room.Name='PromptLocalizationQA'
+  for key,value in {OwnerId=-12345,CafeIndex=0,Origin=kitchen.origin+Vector3.new(4096,0,0),DisplayName='Cocoa_Друг',Username='Watch_player',OwnerOnline=false,HasApprentice=true} do room:SetAttribute(key,value) end
+  room.Parent=workspace.KitchenIslands;kitchen.online:step(.5)
+  local neighbor=kitchen.online.peers['-12345:0'];assert(neighbor,'Late neighbor missing')
+  verifyAll('ru-ru',neighbor);verifyAll('en-us',neighbor);verifyAll('ru-ru',neighbor)
+  room:Destroy();kitchen.online:step(.5)
+  assert(not kitchen.online.peers['-12345:0'],'Deleted neighbor retained')
+  kitchen:setWalking();kitchen:step(0)
+  return {ok=true,checks=observations,lateNeighbor=true,namesPreserved=true,removed=true}
+ elseif args.action=="captureView" then
   local frames=renderedFrames
   if args.scene=='cutting' then kitchen:setOpen(false)
   elseif args.scene=='kitchen' then kitchen:setOpen(true); kitchen:step(.5)

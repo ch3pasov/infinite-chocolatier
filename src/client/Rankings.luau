@@ -131,7 +131,7 @@ function Rankings:addBoard(room,origin)
  entry.hint=label(background,'Hint',20,Theme.accent)
  local inspect=Instance.new('TextButton');inspect.Name='Inspect';inspect.Text='';inspect.BackgroundTransparency=1;inspect.Size=UDim2.fromScale(1,1);inspect.ZIndex=5;inspect.Parent=background
  inspect.Activated:Connect(function() self:open(entry) end);entry.inspect=inspect
- local prompt=Instance.new('ProximityPrompt');prompt.Name='RankingsPrompt';prompt.ActionText=L.text('View rankings');prompt.ObjectText=L.text('Global top 10')
+ local prompt=Instance.new('ProximityPrompt');prompt.Name='RankingsPrompt';L.prompt(prompt,'View rankings','Global top 10')
  local anchor=Instance.new('Attachment');anchor.Position=Vector3.new(0,-.6,1.5);anchor.Parent=part
  prompt.MaxActivationDistance=4.5;prompt.RequiresLineOfSight=false;prompt.ClickablePrompt=true;prompt.Enabled=false;prompt.Parent=anchor;entry.prompt=prompt
  prompt.Triggered:Connect(function(player) if not player or player==Players.LocalPlayer then self:open(entry) end end)
@@ -226,7 +226,6 @@ function Rankings:render()
  elseif pending then status='Loading rankings'
  elseif not hasRows then status='No records yet · saved progress will appear here' end
  for _,entry in self.world do
-  entry.prompt.ActionText=L.text('View rankings');entry.prompt.ObjectText=L.text('Global top 10')
   L.set(entry.status,status)
   L.set(entry.hint,if self.entry==entry then 'Scroll each list with the wheel or a finger' else 'Approach the board to see all 10 players')
   for key,column in entry.columns do

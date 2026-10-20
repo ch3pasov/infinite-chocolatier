@@ -143,7 +143,10 @@ return function(h)
    state={ready=true},atelier={remotes={kitchenAction=remote}}},{__index=Kitchen})
   function k:setWalking() self.focus=false; self.watchPeer=nil; self.watchSide=nil; self.walked=true end
   function k:watchPlayer(p,side) self.watchPeer=p; self.watchSide=side or 1; self.focus=true end
-  local modules={Catalog=require('../src/shared/KitchenCatalog'),Structure=require("../src/shared/KitchenStructure"),Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function(room,state) room.testEquipped=state.equipped end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={text=function(t) return t end},Station={new=function(_,parent)
+  local modules={Catalog=require('../src/shared/KitchenCatalog'),Structure=require("../src/shared/KitchenStructure"),Roster=require("../src/shared/StaffRoster"),Queue=require("../src/shared/CafeQueue"),Config=Config,Decor={update=function(room,state) room.testEquipped=state.equipped end},Wire=Wire,Action=Action,Shell={new=function() end},Localization={prompt=function(p,action,object)
+   if p.ActionText~=action then p.ActionText=action end
+   if object then p.ObjectText=object end
+  end},Station={new=function(_,parent)
    local s={actor={setIdentity=function(self,id) self.identity=id end,setVisible=function(self,v) self.visible=v end},pose=function(self,a) self.action=a end,destroy=function(self) self.destroyed=true end}
    if not string.match(parent.Name or "","^QueueRoom_") then table.insert(stations,s) end; return s
   end}}

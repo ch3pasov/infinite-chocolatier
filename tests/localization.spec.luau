@@ -9,8 +9,9 @@ local function signal()
 	local callbacks={}
 	return {Connect=function(_,fn) table.insert(callbacks,fn) end,Fire=function() for _,fn in callbacks do fn() end end}
 end
-local function fixture(locale,cloud)
+local function fixture(locale,cloud,defer)
 	local changed=signal()
+	local pending
 	local service={RobloxLocaleId=locale,GetPropertyChangedSignal=function() return changed end,
 		GetTranslatorForPlayerAsync=function() if not cloud then error('offline') end; return cloud end}
 	local L=luau.load(fs.readFile('src/client/Localization.luau'),{environment={
@@ -18,11 +19,52 @@ local function fixture(locale,cloud)
 			if name=='LocalizationService' then return service end
 			if name=='Players' then return {LocalPlayer={}} end
 			return {WaitForChild=function() return {LocalizationCatalog='catalog'} end}
-		end},require=function() return Catalog end,task={spawn=function(fn) fn() end},
+		end},require=function() return Catalog end,task={spawn=function(fn) if defer then pending=fn else fn() end end},
 	},injectGlobals=true})()
-	return L,function(nextLocale) service.RobloxLocaleId=nextLocale; changed.Fire() end
+	return L,function(nextLocale) service.RobloxLocaleId=nextLocale; changed.Fire() end,function() pending() end
 end
 return function(h)
+	h.test('локализация: обе строки подсказки получают русский после загрузки языка',function()
+		local changed=signal()
+		local cloud={LocaleId='ru-ru',GetPropertyChangedSignal=function() return changed end}
+		local L,_,loaded=fixture('en-us',cloud,true)
+		local prompt={Destroying=signal()}
+		L.prompt(prompt,'Watch apprentice','Apprentice worktable')
+		h.equals(prompt.ActionText,'Watch apprentice'); h.equals(prompt.ObjectText,'Apprentice worktable')
+		loaded()
+		h.equals(prompt.ActionText,'Смотреть ученика'); h.equals(prompt.ObjectText,'Стол ученика')
+		h.equals(prompt.AutoLocalize,false)
+		cloud.LocaleId='en-us'; changed.Fire()
+		h.equals(prompt.ActionText,'Watch apprentice'); h.equals(prompt.ObjectText,'Apprentice worktable')
+	end)
+	h.test('локализация: имена в подсказках сохраняются, параметры обновляются и освобождаются',function()
+		local L,switch=fixture('ru-ru')
+		local peer={Destroying=signal(),ObjectText='Cut chocolate (@Watch_player)'}
+		L.prompt(peer,'Watch player')
+		h.equals(peer.ActionText,'Смотреть игрока'); h.equals(peer.ObjectText,'Cut chocolate (@Watch_player)')
+		h.equals(peer.AutoLocalize,false)
+		local apprentice={Destroying=signal()}; local args={name='Cocoa_Друзья'}
+		L.prompt(apprentice,'Watch apprentice','Apprentice of {name}',args)
+		h.equals(apprentice.ObjectText,Catalog.format('Apprentice of {name}',args,'ru'))
+		args.name='Друг'; L.prompt(apprentice,'Watch apprentice','Apprentice of {name}',args)
+		switch('en-us'); h.equals(apprentice.ObjectText,'Apprentice of Друг')
+		apprentice.Destroying:Fire(); switch('ru-ru')
+		h.equals(apprentice.ObjectText,'Apprentice of Друг')
+		h.equals(peer.ObjectText,'Cut chocolate (@Watch_player)')
+	end)
+	h.test('локализация: повторный опрос подсказки не перезапускает её текст',function()
+		local L,switch=fixture('en-us'); local values={}; local writes={}
+		local prompt=setmetatable({Destroying=signal()},{__index=values,__newindex=function(_,key,value)
+			values[key]=value; writes[key]=(writes[key] or 0)+1
+		end})
+		L.prompt(prompt,'View rankings','Global top 10')
+		for _=1,100 do L.prompt(prompt,'View rankings','Global top 10') end
+		h.equals(writes.ActionText,1); h.equals(writes.ObjectText,1)
+		switch('ru-ru'); h.equals(prompt.ActionText,'Смотреть рейтинг'); h.equals(prompt.ObjectText,'Общий топ-10')
+		h.equals(writes.ActionText,2); h.equals(writes.ObjectText,2)
+		prompt.Destroying:Fire(); switch('en-us')
+		h.equals(writes.ActionText,2); h.equals(writes.ObjectText,2)
+	end)
 	h.test('локализация: быстрый цикл не округляется до нуля ни в одном языке',function()
 		local L,switch=fixture('en-us')
 		local label={Destroying=signal()}

@@ -39,6 +39,18 @@ function L.text(source,args)
 end
 
 local function render(label,binding)
+	if binding.prompt then
+		-- Встроенная подсказка не должна повторно переводить готовый текст
+		-- и имена игроков. Обе строки обновляются вместе с языком интерфейса.
+		if label.AutoLocalize~=false then label.AutoLocalize=false end
+		local action=L.text(binding.source,binding.args)
+		if label.ActionText~=action then label.ActionText=action end
+		if binding.objectSource then
+			local object=L.text(binding.objectSource,binding.args)
+			if label.ObjectText~=object then label.ObjectText=object end
+		end
+		return
+	end
 	-- Русский не отдаём повторно машинному переводчику. Английские исходники
 	-- остаются доступны автоматическому сбору текста Roblox.
 	local result,translated=L.text(binding.source,binding.args)
@@ -57,9 +69,9 @@ local function sameArgs(a,b)
 	return true
 end
 
-function L.set(label,source,args)
+local function bind(label,source,args,prompt,objectSource)
 	local binding=bindings[label]
-	if binding and binding.source==source and sameArgs(binding.args,args) then return end
+	if binding and binding.source==source and binding.objectSource==objectSource and sameArgs(binding.args,args) then return end
 	if not binding then
 		binding={}; bindings[label]=binding
 		label.Destroying:Connect(function() bindings[label]=nil end)
@@ -67,12 +79,20 @@ function L.set(label,source,args)
 	-- Кухня обновляет подписи покадрово. Не вызываем облачный переводчик
 	-- повторно для прежнего текста; копия параметров замечает и изменение
 	-- ранее переданной таблицы. Смена языка обновляет все привязки в refresh.
-	binding.source=source; binding.args=nil
+	binding.source=source; binding.args=nil; binding.prompt=prompt; binding.objectSource=objectSource
 	if args then
 		binding.args={}
 		for key,value in args do binding.args[key]=if type(value)=="table" then table.clone(value) else value end
 	end
 	render(label,binding)
+end
+
+function L.set(label,source,args) bind(label,source,args) end
+
+-- ObjectText без шаблона остаётся буквальным: это имя игрока или название
+-- игры. Привязка живёт до Destroy(), в том числе у серверных стрелок кафе.
+function L.prompt(prompt,actionSource,objectSource,args)
+	bind(prompt,actionSource,args,true,objectSource)
 end
 
 local function refresh()
