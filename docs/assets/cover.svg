@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" role="img" aria-labelledby="title desc">
+<title id="title">Infinite Chocolatier</title>
+<desc id="desc">Маленький фокус. Большое шоколадное дело. Иллюстрация плитки с одной лишней долькой.</desc>
+<defs>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#211813"/><stop offset="1" stop-color="#3a251a"/></linearGradient>
+  <linearGradient id="tile" x2="0.8" y2="1"><stop stop-color="#925532"/><stop offset="0.5" stop-color="#6d381f"/><stop offset="1" stop-color="#4e2617"/></linearGradient>
+  <linearGradient id="face" x2="1" y2="1"><stop stop-color="#85482a"/><stop offset="1" stop-color="#66321c"/></linearGradient>
+  <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#f5ce91" opacity=".08"/></pattern>
+  <g id="square"><rect width="48" height="55" rx="6" fill="url(#tile)"/><path d="M5 8 9 4H39L43 8V47L39 51H9L5 47Z" fill="url(#face)" stroke="#b8794e" stroke-opacity=".34"/><path d="M9 9H39" stroke="#cb9163" stroke-opacity=".32"/></g>
+</defs>
+<rect width="1280" height="440" rx="24" fill="url(#bg)"/>
+<rect x="1" y="1" width="1278" height="438" rx="23" fill="none" stroke="#bb8852" stroke-opacity=".35"/>
+<path d="M760 0H1256Q1280 0 1280 24V416Q1280 440 1256 440H760Z" fill="url(#dots)"/>
+<circle cx="1020" cy="208" r="184" fill="none" stroke="#edbb70" stroke-opacity=".10"/>
+<circle cx="1020" cy="208" r="156" fill="none" stroke="#edbb70" stroke-opacity=".07"/>
+<g font-family="Arial, Helvetica, sans-serif">
+  <text x="66" y="62" font-size="14" letter-spacing="4" font-weight="700" fill="#e8b66a">A LITTLE CHOCOLATE MAGIC</text>
+  <g font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="#fff0d5">
+    <text x="62" y="148" font-size="72">Infinite</text>
+    <text x="62" y="230" font-size="82">Chocolatier</text>
+  </g>
+  <path d="M66 265H142" stroke="#e8b66a" stroke-width="3"/>
+  <text x="66" y="309" font-size="22" fill="#e9d5b8">Маленький фокус.</text>
+  <text x="66" y="341" font-size="22" fill="#e9d5b8">Большое шоколадное дело.</text>
+  <text x="66" y="401" font-size="13" letter-spacing="2" fill="#bd9b77">ROBLOX   /   LUAU   /   RU + EN</text>
+</g>
+<g transform="translate(875 56) rotate(13 140 155)">
+  <rect x="-9" y="-9" width="279" height="333" rx="12" fill="#150d09" opacity=".45" transform="translate(5 10)"/>
+  <rect x="-9" y="-9" width="279" height="333" rx="12" fill="#412114" stroke="#a46b41" stroke-width="1.5"/>
+<use href="#square" x="0" y="0"/>
+<use href="#square" x="52" y="0"/>
+<use href="#square" x="104" y="0"/>
+<use href="#square" x="156" y="0"/>
+<use href="#square" x="208" y="0"/>
+<use href="#square" x="0" y="63"/>
+<use href="#square" x="52" y="63"/>
+<use href="#square" x="104" y="63"/>
+<use href="#square" x="156" y="63"/>
+<use href="#square" x="208" y="63"/>
+<use href="#square" x="0" y="126"/>
+<use href="#square" x="52" y="126"/>
+<use href="#square" x="104" y="126"/>
+<use href="#square" x="156" y="126"/>
+<use href="#square" x="208" y="126"/>
+<use href="#square" x="0" y="189"/>
+<use href="#square" x="52" y="189"/>
+<use href="#square" x="104" y="189"/>
+<use href="#square" x="156" y="189"/>
+<use href="#square" x="208" y="189"/>
+<use href="#square" x="0" y="252"/>
+<use href="#square" x="52" y="252"/>
+<use href="#square" x="104" y="252"/>
+<use href="#square" x="156" y="252"/>
+<use href="#square" x="208" y="252"/>
+<path d="M-3 209 259 103" stroke="#ffdc8f" stroke-width="2.5" stroke-dasharray="9 7"/>
+</g>
+<g transform="translate(801 320) rotate(-12 24 28)"><use href="#square"/>
+<path d="M-12 3 -20 -5M-16 21H-28M48 -9 54 -20" stroke="#f7cc7f" stroke-width="2" stroke-linecap="round"/></g>
+<g font-family="Arial, Helvetica, sans-serif" fill="#efc989">
+  <text x="774" y="421" font-size="14" letter-spacing="1">+1 ДОЛЬКА. ЕЩЁ ОДНО НАЧАЛО.</text>
+</g>
+</svg>

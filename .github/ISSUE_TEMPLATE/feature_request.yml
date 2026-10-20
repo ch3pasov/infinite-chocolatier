@@ -1,0 +1,22 @@
+name: Идея для игры
+description: Расскажите, чего не хватает вашему шоколадному кафе.
+title: "[Идея] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу игрока нужно решить?
+      description: Опишите ситуацию, в которой вам чего-то не хватает.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Как это могло бы работать?
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Примеры или наброски
+      description: Необязательно; можно приложить изображение.

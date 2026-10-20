@@ -1,0 +1,48 @@
+name: Ошибка в игре
+description: Помогите воспроизвести и исправить проблему.
+title: "[Ошибка] "
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить
+      description: Что вы делали перед появлением ошибки?
+      placeholder: "1. Зашёл в кафе…\n2. Открыл…\n3. Нажал…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что произошло
+      description: Сюда можно перетащить снимок или короткую запись.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Устройство
+      placeholder: Например, iPhone в горизонтальном положении или Mac с мышью
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Язык игры
+      options:
+        - Русский
+        - English
+        - Другой
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия игры
+      description: Если версия видна на экране или в отчёте владельца.
+      placeholder: v106 или Studio
