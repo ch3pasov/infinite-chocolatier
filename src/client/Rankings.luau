@@ -90,9 +90,12 @@ end
 function Rankings:addBoard(room,origin)
  if self.world[room] then return end
  local part=Instance.new('Part');part.Name='GlobalRankingsBoard';part.Anchored=true;part.CanCollide=false;part.CanQuery=false;part.CanTouch=false
- -- Камера прогулки смотрит с юга. Доска над дальней стеной видна из кафе
- -- и не заслоняет проход, аватар, столы или купленный настенный декор.
- part.Size=Vector3.new(17,7,.35);part.Position=origin+Vector3.new(0,10,-6.2);part.Color=Theme.panel;part.Material=Enum.Material.Wood;part.Parent=room
+ -- Экран закреплён на внутренней стороне левой стены, ниже её верхнего
+ -- края. Задняя часть стены свободна от покупного панно на Z=8;
+ -- к рейтингу можно пройти по боковому проходу рядом с ручным столом.
+ part.Size=Vector3.new(9.7,4,.25)
+ part.CFrame=CFrame.new(origin+Vector3.new(-10.25,4.1,-.5))*CFrame.Angles(0,math.pi/2,0)
+ part.Color=Theme.panel;part.Material=Enum.Material.Wood;part.Parent=room
  local surface=Instance.new('SurfaceGui');surface.Name='RankingsSurface';surface.Face=Enum.NormalId.Back;surface.CanvasSize=Vector2.new(1020,420)
  -- Текст не темнеет вместе с деревянной панелью; дальние копии не рисуют
  -- плавающие подписи над соседними островами за пределами прогулочной кухни.
@@ -114,8 +117,10 @@ function Rankings:addBoard(room,origin)
  end
  local footer=label(surface,'Open',UDim2.fromOffset(20,338),UDim2.new(1,-40,0,60),23,Theme.muted);entry.footer=footer
  local prompt=Instance.new('ProximityPrompt');prompt.Name='RankingsPrompt';prompt.ActionText=L.text('View rankings');prompt.ObjectText=L.text('Global top 10')
- local anchor=Instance.new('Attachment');anchor.Position=Vector3.new(0,-6.5,1.3);anchor.Parent=part
- prompt.MaxActivationDistance=8;prompt.RequiresLineOfSight=false;prompt.Parent=anchor
+ -- Точка взаимодействия вынесена со стены в свободный проход на высоту
+ -- персонажа: для открытия не нужно прыгать на стол или тянуться вверх.
+ local anchor=Instance.new('Attachment');anchor.Position=Vector3.new(0,-.6,1.5);anchor.Parent=part
+ prompt.MaxActivationDistance=4.5;prompt.RequiresLineOfSight=false;prompt.Parent=anchor
  entry.prompt=prompt
  prompt.Triggered:Connect(function(player) if not player or player==Players.LocalPlayer then self:open() end end)
  self:render()
