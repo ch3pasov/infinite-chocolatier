@@ -363,46 +363,99 @@ local function dispatch(args)
   assert(not journal.overlay.Visible and not gameView.journalOpen and not kitchen.controls.controlsEnabled,'Return to cutting left journal or movement active')
   assert(gameView.cutIndex==cut and gameView.cutProgress==progress,'Reading changed the manual cut')
   return {ok=true,offline=atelier.state.offline,seconds=atelier.state.offlineReport.seconds,factoryCafes=13,apprentices=25,emptyFactory=true,walkingJournal=true,movementRestored=true,cutPreserved=true}
+ elseif args.action=="rankingsView" then
+  assert(rankings,'Rankings missing')
+  if args.locale then require(script.Localization).__qaLocale(args.locale) end
+  if args.fixture then
+   kitchen:setOpen(true)
+   local rows={};for i=1,10 do rows[i]={id=-i,name=string.format('QA_Player_%02d',i),score=1000-i*10} end
+   rankings.snapshot={studio=true,boards={pieces={ready=true,rows=rows},guests={ready=true,rows=rows},tricks={ready=true,rows=rows}}};rankings:render()
+  end
+  if args.close then rankings:close() end
+  local entry
+  for _,item in rankings.world do if rankings:current(item) then entry=item;break end end
+  assert(entry,'Current board missing')
+  if args.open then rankings:open(entry) end
+  local camera=workspace.CurrentCamera
+  local root=game.Players.LocalPlayer.Character.HumanoidRootPart
+  local function vec(v) return {x=v.X,y=v.Y,z=if typeof(v)=='Vector3' then v.Z else nil} end
+  local function project(x,y)
+   local canvas=entry.surface.CanvasSize
+   local point=entry.part.CFrame:PointToWorldSpace(Vector3.new((x/canvas.X-.5)*entry.part.Size.X,(.5-y/canvas.Y)*entry.part.Size.Y,entry.part.Size.Z/2+.02))
+   local p,visible=camera:WorldToViewportPoint(point);return {x=p.X,y=p.Y,visible=visible}
+  end
+  local columns={}
+  for key,column in entry.columns do
+   local x=column.frame.Position.X.Offset+column.scroll.Position.X.Offset+column.scroll.AbsoluteSize.X*.5
+   local y=column.frame.Position.Y.Offset+column.scroll.Position.Y.Offset+column.scroll.AbsoluteSize.Y*.5
+   columns[key]={scroll=column.scroll.CanvasPosition.Y,enabled=column.scroll.ScrollingEnabled,visible=column.frame.Visible,input=project(x,y),rowsHeight=column.scroll.AbsoluteSize.Y,canvas=column.scroll.AbsoluteCanvasSize.Y}
+  end
+  return {ok=true,opened=rankings.entry==entry,ready=rankings.camera:ready(),portrait=entry.portrait,canWalk=kitchen:canWalk(),columns=columns,
+   position=vec(root.Position),camera={position=vec(camera.CFrame.Position),look=vec(camera.CFrame.LookVector),name=camera.Name,fov=camera.FieldOfView},
+   viewport=vec(camera.ViewportSize),boardTopLeft=project(0,0),boardBottomRight=project(entry.surface.CanvasSize.X,entry.surface.CanvasSize.Y),
+   promptDistance=(root.Position-entry.prompt.Parent.WorldPosition).Magnitude,range=entry.prompt.MaxActivationDistance,texts=checkText(entry.surface)}
  elseif args.action=="rankings" then
   assert(rankings,'Rankings not initialized')
+  rankings:close()
   local L=require(script.Localization);L.__qaLocale(args.locale)
-  local original=rankings.snapshot;local originalSize=rankings.panel.Size
+  local original=rankings.snapshot
   local sample={studio=true,boards={}}
   for _,key in {'pieces','guests','tricks'} do
    local rows={};for i=1,10 do table.insert(rows,{id=i,name=string.rep('W',20),score=1e15-i}) end
    sample.boards[key]={rows=rows,ready=true}
   end
-  local cases={};local ok,result=pcall(function()
+  local root=game.Players.LocalPlayer.Character.HumanoidRootPart
+  local previousPosition=root.CFrame
+  local ok,result=pcall(function()
    kitchen:setOpen(true);rankings.snapshot=sample;rankings:render();kitchen.online:step(.5)
+   local board
    for _,entry in rankings.world do
     assert(entry.prompt.ActionText==L.text('View rankings'),'Island refresh replaced ranking action text')
+    if rankings:current(entry) then board=entry end
    end
-   rankings:open()
-   assert(rankings.overlay.Visible and not kitchen:canWalk(),'Rankings did not block walking')
+   assert(board,'No current rankings board')
+   assert(board.surface.Parent==game.Players.LocalPlayer.PlayerGui and board.surface.Adornee==board.part and board.part.CanQuery,'Surface cannot receive native input')
+   local origin=board.room:GetAttribute('Origin');local center=board.part.Position-origin
+   assert(center.Z-board.part.Size.X/2>9.25 and center.Z+board.part.Size.X/2<17,'Board is not in front of the painting')
+   local previousCamera=workspace.CurrentCamera
+   -- Только исходная точка теста: нативный подход проверяется отдельно через CUA.
+   local anchor=board.prompt.Parent.WorldPosition
+   root.CFrame=CFrame.new(anchor.X,root.Position.Y,anchor.Z)
+   rankings:open(board)
+   assert(rankings.entry==board and not kitchen:canWalk(),'Rankings did not block walking')
+   assert(workspace.CurrentCamera==rankings.camera.camera and not rankings.camera:ready(),'Camera did not start turning')
+   for _,column in board.columns do assert(not column.scroll.ScrollingEnabled,'Scrolling started before camera turn') end
    assert(not atelier.journal.canOpen(),'Journal opened over rankings')
-   for _,size in {Vector2.new(296,520),Vector2.new(400,650),Vector2.new(520,238)} do
-    rankings.panel.Size=UDim2.fromOffset(size.X,size.Y);task.wait(.1);rankings:fit()
-    for _,key in {'pieces','guests','tricks'} do
-     rankings.key=key;rankings:render();task.wait(.1)
-     local texts=checkText(rankings.panel)
-     assert(rankings.scroll.AbsoluteSize.Y>=50,'Rankings hide all rows in landscape')
-     assert(rankings.rows[10].Position.Y.Offset+rankings.rows[10].AbsoluteSize.Y<=rankings.scroll.AbsoluteCanvasSize.Y,'Last rank cannot be scrolled into view')
-     table.insert(cases,{width=size.X,height=size.Y,key=key,texts=texts,rowsHeight=rankings.scroll.AbsoluteSize.Y})
-    end
+   task.wait(.65)
+   assert(rankings.camera:ready(),'Camera transition did not finish')
+   local cases={}
+   for key,column in board.columns do
+    assert(column.scroll.ScrollingEnabled and column.scroll.Active,'Native scrolling stayed disabled')
+    local last=column.rows[10]
+    assert(last.Position.Y.Offset+last.AbsoluteSize.Y<=column.scroll.AbsoluteCanvasSize.Y,'Last rank cannot be scrolled into view')
+    local before=column.scroll.CanvasPosition
+    rankings:render();assert(column.scroll.CanvasPosition==before,'Refreshing data resets scrolling')
+    table.insert(cases,{key=key,rows=#column.rows,rowsHeight=column.scroll.AbsoluteSize.Y})
    end
-   local boards=0
-   for _,entry in rankings.world do boards+=1;checkText(entry.part) end
-   assert(boards>0,'No rankings board in the world')
-   local delayed=Instance.new('Model');delayed.Name='RankingsReplicationQA';delayed.Parent=workspace.KitchenIslands
-   task.wait(.05);assert(rankings.world[delayed]==nil,'Board created without room attributes')
+   local texts=checkText(board.surface)
+   rankings:close();assert(workspace.CurrentCamera==previousCamera and kitchen:canWalk(),'Closing did not restore camera and movement')
+   rankings:open(board);task.wait(.05);rankings:close()
+   assert(workspace.CurrentCamera==previousCamera,'Early cancellation lost walking camera')
+   local delayed=Instance.new('Model');delayed.Name='RankingsReplicationQA'
+   -- Полные подписи нужны соседнему контроллеру кафе; здесь задерживаем
+   -- только атрибуты, от которых зависит создание самой доски рейтинга.
+   delayed:SetAttribute('DisplayName','QA visitor');delayed:SetAttribute('Username','QA_Visitor');delayed:SetAttribute('OwnerOnline',false)
+   delayed.Parent=workspace.KitchenIslands
    delayed:SetAttribute('CafeIndex',0);delayed:SetAttribute('Origin',Vector3.new(4096,0,1000));task.wait(.05)
-   assert(rankings.world[delayed],'Late room attributes lost the board')
-   delayed:Destroy();task.wait(.05);assert(rankings.world[delayed]==nil and rankings.pendingRooms[delayed]==nil,'Departed room retained rankings')
-   return {ok=true,locale=args.locale,cases=cases,boards=boards,cloud=false}
+   assert(rankings.world[delayed]==nil,'Board created without owner')
+   delayed:SetAttribute('OwnerId',-123);task.wait(.05)
+   assert(rankings.world[delayed],'Late attributes lost board')
+   local surface=rankings.world[delayed].surface
+   delayed:Destroy();task.wait(.05);assert(rankings.world[delayed]==nil and rankings.pendingRooms[delayed]==nil and not surface.Parent,'Departed room retained surface or board')
+   return {ok=true,locale=args.locale,cases=cases,texts=texts,portrait=board.portrait,cloud=false,cameraRestored=true,earlyCancel=true,partZ=center.Z}
   end)
-  rankings.panel.Size=originalSize;rankings.snapshot=original;rankings:render()
-  rankings:close();assert(kitchen:canWalk(),'Closing rankings did not restore walking')
-  kitchen:setOpen(false)
+  rankings:close();rankings.snapshot=original;rankings:render()
+  root.CFrame=previousPosition;kitchen:setOpen(false)
   assert(ok,result);return result
  elseif args.action=="hudLayout" then
   local L=require(script.Localization); L.__qaLocale(args.locale)

@@ -2,6 +2,11 @@
 -- Английский источник и ручной русский перевод; CSV для Roblox строится из этого каталога.
 local Catalog = {}
 Catalog.entries = {
+ ["Pieces"]="Дольки",
+ ["Guests"]="Гости",
+ ["Tricks"]="Фокусы",
+ ["Back to cafe"]="Вернуться в кафе",
+ ["Scroll each list with the wheel or a finger"]="Листай списки колёсиком или пальцем",
  ["Global top 10"]="Общий топ-10",
  ["Lifetime pieces"]="Дольки за всё время",
  ["Unique guests"]="Уникальные гости",
