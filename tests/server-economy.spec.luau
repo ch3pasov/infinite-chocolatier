@@ -18,7 +18,7 @@ local function fixture(studio, seed, userId, savedAt, options)
 	local now = 1000
 	local sent = {}
 	local events = {}
-	for _, name in { "stateSync", "requestState", "roundComplete", "manualStep", "purchase", "prestige" } do
+	for _, name in { "stateSync", "requestState", "roundComplete", "manualStep", "purchase", "prestige", "staffChoice" } do
 		events[name] = { OnServerEvent = signal(), FireClient = function(_, _, state) table.insert(sent, state) end }
 	end
 	local player = makePlayer(userId)
@@ -67,6 +67,29 @@ local function fixture(studio, seed, userId, savedAt, options)
 		record = function() return record end }
 end
 return function(h)
+ h.test('сервер выбора стажёра проверяет друга, присутствие, найм и форму запроса до записи',function()
+  local current,allowed=0,true
+  local rooms={sync=function(_,_,state) current=state.apprenticeUserId end,visiblePlayers=function() return {} end,
+   onSocialChange=function() end,manualContext=function() return 1 end,hasOnlineFriend=function() return false end,visits=function() return {} end,
+   canChooseStaff=function(_,_,id) return id==0 or (allowed and id==456) end,
+   staffPage=function() return {items={},page=1,pages=1,selected=current} end}
+  local f=fixture(false,{collectionVersion=2,owned={workers_1=true},levels={kitchen=1},slices=100},123,nil,{rooms=rooms})
+  local function choose(id)
+   f.advance(1);f.events.staffChoice.OnServerEvent:Fire(f.player,{action='select',id=id,query='',page=1,request=1})
+  end
+  choose(456);h.equals(f.latest().apprenticeUserId,nil,'последний ответ — страница, без копии кошелька')
+  h.equals(current,456)
+  for _,bad in {999,123,-1,1.5,0/0,math.huge,'456',{}} do choose(bad);h.equals(current,456) end
+  allowed=false;choose(456);h.equals(current,456)
+  choose(0);h.equals(current,0)
+  for _,request in {{action='select',id=456,query='',page=0/0,request=1},{action='select',id=456,query=string.rep('x',81),page=1,request=1}} do
+   f.advance(1);f.events.staffChoice.OnServerEvent:Fire(f.player,request);h.equals(current,0)
+  end
+  f.players.PlayerRemoving:Fire(f.player);h.equals(f.record().data.apprenticeUserId,0)
+  local noHire=fixture(false,{collectionVersion=2,levels={kitchen=1}},123,nil,{rooms=rooms})
+  noHire.events.staffChoice.OnServerEvent:Fire(noHire.player,{action='select',id=456,query='',page=1,request=1})
+  noHire.players.PlayerRemoving:Fire(noHire.player);h.equals(noHire.record().data.apprenticeUserId,0)
+ end)
  h.test('рейтинг получает подтверждённый профиль, а не покупку или сырой раунд клиента',function()
   local f=fixture(false,{lifetime=100,rounds=4})
   h.equals(#f.rankingRecords,1);h.equals(f.rankingRecords[1].lifetime,100)
@@ -171,10 +194,11 @@ return function(h)
   h.equals(f.latest().slices,1441)
  end)
  h.test('сервер не обещает неполученную награду при полном кошельке',function()
-  local f=fixture(false,{slices=Config.Economy.maxValue-1.5,orderProgress=3,productionRemainder=0})
+  local unit=2^20
+  local f=fixture(false,{slices=Config.Economy.maxSlices-4*unit,orderProgress=3,productionRemainder=0,levels={craft=3*unit-1}})
   f.complete(f.player)
-  h.equals(f.latest().reward,1.5); h.equals(f.latest().lastOrder.bonus,.5)
-  h.equals(f.latest().notice.args.bonus,.5)
+  h.equals(f.latest().reward,4*unit); h.equals(f.latest().lastOrder.bonus,unit)
+  h.equals(f.latest().notice.args.bonus,unit)
   f.advance(); f.complete(f.player)
   h.equals(f.latest().reward,0); h.equals(f.latest().notice.key,'Trick complete · wallet full')
   for _=1,5 do f.advance(); f.complete(f.player) end
@@ -350,7 +374,7 @@ return function(h)
   f.complete(f.player); f.events.roundComplete.OnServerEvent:Fire(f.player)
   h.equals(f.latest().slices,6); h.equals(f.latest().order.progress,1)
   f.players.PlayerRemoving:Fire(f.player)
-  h.equals(f.record().version,5); h.equals(f.record().data.ordersCompleted,1)
+  h.equals(f.record().version,6); h.equals(f.record().data.ordersCompleted,1)
   h.equals(f.record().data.orderProgress,1)
  end)
  h.test("бонус престижа отключает только админ, звёзды сохраняются",function()

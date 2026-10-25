@@ -19,6 +19,13 @@ function Rooms.start(remote,visitRemote)
  if not PhysicsService:IsCollisionGroupRegistered(avatarGroup) then PhysicsService:RegisterCollisionGroup(avatarGroup) end
  PhysicsService:CollisionGroupSetCollidable(avatarGroup,avatarGroup,false)
  local homes,slots,visitors,byKey,pools={},{},{},{},{}
+ local leaving={}
+ local function onlinePlayers()
+  local online={}
+  for _,player in Players:GetPlayers() do if not leaving[player.UserId] then online[player.UserId]=true end end
+  for player in homes do online[player.UserId]=true end
+  return online
+ end
  local socialChanged
  local function notify() if socialChanged then socialChanged() end end
  local function invalidateWatch(player)
@@ -29,6 +36,9 @@ function Rooms.start(remote,visitRemote)
   if not part:IsA('BasePart') and not part:IsA('Decal') then return end
   if room.hidden[part]==nil then
    room.hidden[part]={transparency=part.Transparency,collide=part:IsA('BasePart') and part.CanCollide}
+   -- Клиент клонирует готовый аватар для стола, поэтому временную маску
+   -- передаём отдельно от настоящей прозрачности тела и аксессуаров.
+   part:SetAttribute('KitchenOriginalTransparency',part.Transparency)
   end
   part.Transparency=1
   if part:IsA('BasePart') then part.CanCollide=false end
@@ -56,17 +66,16 @@ function Rooms.start(remote,visitRemote)
   return true
  end
  local function refreshStaff()
-  local online={}
-  for _,player in Players:GetPlayers() do online[player.UserId]=true end
-  for player in homes do online[player.UserId]=true end
-  local capacities={}
+  local online=onlinePlayers()
+  local capacities,choices={},{}
+  for _,home in slots do if home.index==0 then choices[home.id]=home.apprenticeUserId end end
   for _,room in slots do if room.model:GetAttribute('HasApprentice') then
    -- После ухода владельца в очереди остаются только комнаты с гостями.
    -- Исчезнувшие покупные кафе больше не должны удерживать общих друзей.
    local capacity=if room.index>0 then room.index*2+1 elseif room.owner then 1+room.count*2 else 1
    capacities[room.id]=math.max(capacities[room.id] or 0,capacity)
   end end
-  local rosters=Roster.build(pools,online,capacities)
+  local rosters=Roster.build(pools,online,capacities,choices)
   for _,room in slots do
    -- Дальние копии получают те же назначения, что посещаемая комната.
    room.model:SetAttribute("StaffRoster",table.concat(rosters[room.id] or {},","))
@@ -174,6 +183,7 @@ function Rooms.start(remote,visitRemote)
    else
     for p,saved in room.hidden do if p.Parent then
      p.Transparency=saved.transparency; if p:IsA('BasePart') then p.CanCollide=saved.collide end
+     p:SetAttribute('KitchenOriginalTransparency',nil)
     end end
     room.hidden={}
    end
@@ -196,6 +206,7 @@ function Rooms.start(remote,visitRemote)
  end)
  local function add(player)
   if homes[player] then return end
+  leaving[player.UserId]=nil
   local room=create(player,0); room.owner=player; room.mode='cut'; room.hidden={}
   room.model:SetAttribute('OwnerOnline',true); homes[player]=room; visitors[player]=room
   player:SetAttribute('VisitingKitchen',room.id); player:SetAttribute('VisitingCafeIndex',0)
@@ -203,12 +214,15 @@ function Rooms.start(remote,visitRemote)
   refreshStaff()
   local function loadFriends(attempt)
    if homes[player]~=room then return end
-   local friends={}
+   local friends,details={},{}
    local ok,err=pcall(function()
     if player.UserId<=0 then return end
     local pages=Players:GetFriendsAsync(player.UserId)
     while true do
-     for _,friend in pages:GetCurrentPage() do if type(friend.Id)=='number' and friend.Id>0 then table.insert(friends,friend.Id) end end
+     for _,friend in pages:GetCurrentPage() do if type(friend.Id)=='number' and friend.Id>0 and friend.Id~=player.UserId then
+      table.insert(friends,friend.Id)
+      details[friend.Id]={id=friend.Id,name=friend.Username or tostring(friend.Id),displayName=friend.DisplayName or friend.Username or tostring(friend.Id)}
+     end end
      if pages.IsFinished then break end; pages:AdvanceToNextPageAsync()
     end
    end)
@@ -221,7 +235,9 @@ function Rooms.start(remote,visitRemote)
     for _,id in merged do seen[id]=true end
     for _,id in friends do if not seen[id] then seen[id]=true; table.insert(merged,id) end end
     friends=merged
+    for id,detail in room.friendDetails or {} do if not details[id] then details[id]=detail end end
    end
+   room.friendDetails=details
    pools[player.UserId]=friends
    -- Проверки зрителей идут на каждом этапе и несколько раз в секунду.
    -- Индекс строится только при обновлении API, а не сканирует весь список
@@ -255,6 +271,7 @@ function Rooms.start(remote,visitRemote)
   local avatarRevision=0
   player.CharacterAppearanceLoaded:Connect(function(char)
    if homes[player]~=room or player.Character~=char then return end
+   char:SetAttribute('AvatarReady',true)
    avatarRevision+=1; player:SetAttribute('AvatarRevision',avatarRevision)
   end)
   player.CharacterAdded:Connect(function(char)
@@ -298,6 +315,7 @@ function Rooms.start(remote,visitRemote)
  -- завершить размещение и сбросить Anchored уже после CharacterAdded.
  Players.PlayerAdded:Connect(add)
  Players.PlayerRemoving:Connect(function(player)
+  leaving[player.UserId]=true
   local visiting=visitors[player]; local home=homes[player]
   if home and home.collisionAdded then home.collisionAdded:Disconnect(); home.collisionAdded=nil end
   homes[player]=nil; visitors[player]=nil
@@ -306,8 +324,8 @@ function Rooms.start(remote,visitRemote)
    room.owner=nil; room.character=nil; room.hidden={}; room.model:SetAttribute('OwnerOnline',false); cleanup(room)
   end
   if visiting and visiting.id~=player.UserId then cleanup(visiting) end
-  -- PlayerRemoving ещё видит уходящего в GetPlayers; освобождать его внешность
-  -- немедленно необязательно, а вход нового друга исключает её синхронно.
+  -- GetPlayers ещё содержит уходящего. Исключение возвращает личный выбор
+  -- сразу, без ожидания нового входа или фонового обновления друзей.
   refreshStaff(); notify()
  end)
  for _,player in Players:GetPlayers() do add(player) end
@@ -319,6 +337,19 @@ function Rooms.start(remote,visitRemote)
  friendStatus=function(_,player)
   local home=homes[player]
   return if home then home.model:GetAttribute('FriendListStatus') or 'loading' else 'loading'
+ end,
+ canChooseStaff=function(_,player,id)
+  local home=homes[player]
+  return home~=nil and (id==0 or (home.friends[id]==true and not onlinePlayers()[id]))
+ end,
+ staffPage=function(_,player,query,page)
+  local home=homes[player]; if not home then return {items={},page=1,pages=1,total=0,status='loading'} end
+  local result=Roster.page(pools[player.UserId],onlinePlayers(),home.friendDetails or {},query,page)
+  result.status=home.model:GetAttribute('FriendListStatus') or 'loading'
+  result.current=home.model:GetAttribute('Staff1') or 0
+  result.selected=home.apprenticeUserId or 0
+  result.selectedName=(home.friendDetails or {})[result.selected]
+  return result
  end,
  isFriend=function(_,owner,guest) return isFriend(owner,guest) end,
  hasOnlineFriend=function(_,owner)
@@ -360,7 +391,9 @@ function Rooms.start(remote,visitRemote)
  end,sync=function(_,player,state)
   local home=homes[player]; if not home then return end
   local count=state.levels.cafes or 0; local hired=state.owned.workers_1==true
-  local staffChanged=home.count~=count or home.model:GetAttribute('HasApprentice')~=hired
+  local selected=state.apprenticeUserId or 0
+  local staffChanged=home.count~=count or home.model:GetAttribute('HasApprentice')~=hired or home.apprenticeUserId~=selected
+  home.apprenticeUserId=selected
   home.count=count; home.model:SetAttribute('CafeCount',home.count)
   local appearance=Catalog.appearance(state)
   if home.model:GetAttribute('CafeAppearance')~=appearance then home.model:SetAttribute('CafeAppearance',appearance) end

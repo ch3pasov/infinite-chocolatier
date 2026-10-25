@@ -80,23 +80,48 @@ function Appearance.getPlayer(players,userId)
  if type(players.GetPlayerByUserId)~='function' then return nil end
  return players:GetPlayerByUserId(userId)
 end
--- За столом нужен текущий аватар, а не его преобразование в R6 или старое
--- описание из кэша аккаунта. Transparency скрытого персонажа сюда не входит.
+-- Копируем готового персонажа: ранний GetAppliedDescription может успешно
+-- вернуть пустое описание с чёрными цветами и без одежды. Копия сохраняет
+-- фактические меши, текстуры, R6/R15 и многослойную одежду без нового API-запроса.
 function Appearance.createPlayerRig(players,defaultDescription,userId,fallbackRigType,isCurrent)
  if isCurrent and not isCurrent() then return false,nil,false end
  local player=Appearance.getPlayer(players,userId)
- local character=player and player.Character
- local humanoid=character and character:FindFirstChildOfClass('Humanoid')
- if humanoid then
-  local ok,description=pcall(function() return humanoid:GetAppliedDescription() end)
-  if not ok then return false,nil,false,description end
-  if isCurrent and not isCurrent() then description:Destroy(); return false,nil,false end
-  local created,rig=pcall(function()
-   return players:CreateHumanoidModelFromDescriptionAsync(description,humanoid.RigType)
-  end)
-  description:Destroy()
-  return created,rig,created,if created then nil else rig,character
+ if not player then return Appearance.createRig(players,defaultDescription,userId,fallbackRigType,isCurrent) end
+ local character=player.Character
+ if not character then return false,nil,false,'Player character is loading' end
+ local function current()
+  return player.Character==character and (not isCurrent or isCurrent())
  end
- return Appearance.createRig(players,defaultDescription,userId,fallbackRigType,isCurrent)
+ -- Готовность принадлежит конкретному спавну, а не ревизии Player от прошлой
+ -- жизни. Ожидание ограничено и отменяется при удалении станции/персонажа.
+ for _=1,100 do
+  if not current() then return false,nil,false end
+  if character:GetAttribute('AvatarReady') then break end
+  task.wait(.1)
+ end
+ if not current() then return false,nil,false end
+ if not character:GetAttribute('AvatarReady') then return false,nil,false,'Player appearance is loading' end
+ if not character:FindFirstChildOfClass('Humanoid') or not character:FindFirstChild('HumanoidRootPart') then
+  return false,nil,false,'Player rig is loading'
+ end
+ local archivable=character.Archivable
+ local ok,rig=pcall(function()
+  character.Archivable=true
+  return character:Clone()
+ end)
+ character.Archivable=archivable
+ if not ok or not rig then return false,nil,false,if ok then 'Player clone is unavailable' else rig end
+ for _,item in rig:GetDescendants() do
+  if item:IsA('BaseScript') or item:IsA('Tool') or item:IsA('ForceField') then item:Destroy()
+  elseif item:IsA('BasePart') or item:IsA('Decal') then
+   -- Серверная и локальная маски скрывают оригинал при нарезке/наблюдении;
+   -- они не должны сделать невидимой его рабочую копию.
+   local transparency=item:GetAttribute('KitchenOriginalTransparency')
+   if transparency~=nil then item.Transparency=transparency end
+   item.LocalTransparencyModifier=0
+   item:SetAttribute('KitchenOriginalTransparency',nil)
+  end
+ end
+ return true,rig,true,nil,character
 end
 return Appearance

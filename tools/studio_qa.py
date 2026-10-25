@@ -424,7 +424,10 @@ class Session:
 
     def smoke(self):
         checks = self.start_test()
-        for name, options in [("avatarLifecycle", {}), ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("cutInterruption", {}), ("journal", {}),
+        for name, options in [("avatarLifecycle", {}), ("playerAvatar", {}),
+                              ("staffChoiceOpen", {"locale": "en-us", "picker": True}),
+                              ("staffChoiceOpen", {"locale": "ru-ru", "picker": True}), ("staffChoiceClose", {}),
+                              ("loadingRecovery", {}), ("purchase", {}), ("apprenticeTempo", {}), ("orders", {}), ("cutInterruption", {}), ("journal", {}),
                               ("rankings", {"locale": "en-us"}), ("rankings", {"locale": "ru-ru"}),
                               ("hudLayout", {"locale": "en-us"}), ("hudLayout", {"locale": "ru-ru"}),
                               ("layout", {"locale": "en-us"}), ("layout", {"locale": "ru-ru"}),

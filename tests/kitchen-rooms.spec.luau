@@ -38,9 +38,11 @@ return function(h)
     if self.Character then self.CharacterRemoving:Fire(self.Character) end
     assert(#world:GetChildren()>0,'спавн без пола')
     local root={Position=R.Vector3.zero}; local hum={Died=signal(),states={},SetStateEnabled=function(self,state,value) self.states[state.Name]=value end}
-    local body={Transparency=.2,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}; self.body=body
+    local body={Transparency=.2,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end,
+     SetAttribute=function(self,k,v) self[k]=v end}; self.body=body
     self.Character={DescendantAdded=signal(),WaitForChild=function() return root end,FindFirstChild=function() return root end,
-     GetDescendants=function() return {body} end,FindFirstChildOfClass=function() return hum end,PivotTo=function(_,cf) self.position=cf.Position; root.Position=cf.Position end}
+     GetDescendants=function() return {body} end,FindFirstChildOfClass=function() return hum end,PivotTo=function(_,cf) self.position=cf.Position; root.Position=cf.Position end,
+     SetAttribute=function(self,k,v) self[k]=v end}
     self.CharacterAdded:Fire(self.Character); self.root=root; self.hum=hum
     -- Движок завершает размещение после CharacterAdded.
     self.position=R.Vector3.zero; root.Anchored=false
@@ -53,15 +55,18 @@ return function(h)
   h.equals(a.hum.states.Jumping,nil)
   h.equals(physics.groups.ChocolateAvatars,false)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars'); h.equals(b.body.CollisionGroup,'ChocolateAvatars')
-  local accessory={Transparency=.35,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}
+  local accessory={Transparency=.35,CanCollide=true,Parent=true,IsA=function(_,kind) return kind=='BasePart' end,SetAttribute=function(self,k,v) self[k]=v end}
   a.Character.DescendantAdded:Fire(accessory); h.equals(accessory.CollisionGroup,'ChocolateAvatars')
-  local decal={Transparency=.2,Parent=true,IsA=function(_,kind) return kind=='Decal' end}
+  local decal={Transparency=.2,Parent=true,IsA=function(_,kind) return kind=='Decal' end,SetAttribute=function(self,k,v) self[k]=v end}
   a.Character.DescendantAdded:Fire(decal)
   h.equals(accessory.Transparency,1); h.equals(accessory.CanCollide,false)
   h.equals(decal.Transparency,1)
   local oldCharacter=a.Character
   local oldHumanoid=a.hum
+  h.equals(oldCharacter.AvatarReady,nil); h.near(a.body.KitchenOriginalTransparency,.2)
+  h.near(accessory.KitchenOriginalTransparency,.35); h.near(decal.KitchenOriginalTransparency,.2)
   a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)
+  h.equals(oldCharacter.AvatarReady,true)
   h.equals(controller:visiblePlayers(a)[2],true)
   h.equals(controller:visiblePlayers(b)[1],true)
   h.equals(controller:visiblePlayers(a)[1],nil)
@@ -103,6 +108,7 @@ return function(h)
   h.near(a.body.Transparency,.2); h.equals(a.body.CanCollide,true)
   h.near(accessory.Transparency,.35); h.equals(accessory.CanCollide,true)
   h.near(decal.Transparency,.2)
+  h.equals(a.body.KitchenOriginalTransparency,nil); h.equals(accessory.KitchenOriginalTransparency,nil)
   local walkingAccessory={Transparency=.6,CanCollide=false,Parent=true,IsA=function(_,kind) return kind=='BasePart' end}
   a.Character.DescendantAdded:Fire(walkingAccessory)
   h.near(walkingAccessory.Transparency,.6); h.equals(walkingAccessory.CanCollide,false)
@@ -114,7 +120,9 @@ return function(h)
   h.equals(oldCharacter.DescendantAdded:count(),0); h.equals(a.Character.DescendantAdded:count(),1)
   h.equals(a.body.CollisionGroup,'ChocolateAvatars')
   a.CharacterAppearanceLoaded:Fire(oldCharacter); h.equals(a.AvatarRevision,1)
+  h.equals(a.Character.AvatarReady,nil,'прошлый спавн не подтверждает внешность нового')
   a.CharacterAppearanceLoaded:Fire(a.Character); h.equals(a.AvatarRevision,2)
+  h.equals(a.Character.AvatarReady,true)
   local staleAccessory={IsA=function() return true end}; oldCharacter.DescendantAdded:Fire(staleAccessory)
   h.equals(staleAccessory.CollisionGroup,nil)
   h.near((a.position-(a.KitchenOrigin+R.Vector3.new(0,3,12))).Magnitude,0)
@@ -347,5 +355,26 @@ return function(h)
   h.equals(roster(50),'1001,1002,1003')
   players.PlayerRemoving:Fire(y); players.PlayerRemoving:Fire(guest)
   h.equals(#directory:GetChildren(),0)
+  local chosen=player(70)
+  local chosenState={levels={cafes=2},owned={workers_1=true},cycleSeconds=10,apprenticeUserId=1004}
+  controller:sync(chosen,chosenState)
+  h.equals(directory.KitchenRoom_70:GetAttribute('Staff1'),1004)
+  h.equals(controller:canChooseStaff(chosen,1004),true);h.equals(controller:canChooseStaff(chosen,9999),false)
+  local page=controller:staffPage(chosen,'1004',1)
+  h.equals(page.items[1].id,1004);h.equals(page.selected,1004);h.equals(page.current,1004)
+  local joined=player(1004)
+  h.equals(controller:canChooseStaff(chosen,1004),false)
+  assert(directory.KitchenRoom_70:GetAttribute('Staff1')~=1004)
+  h.equals(controller:staffPage(chosen,'1004',1).total,0)
+  players.PlayerRemoving:Fire(joined)
+  h.equals(directory.KitchenRoom_70:GetAttribute('Staff1'),1004,'выход друга сразу возвращает сохранённый выбор')
+  chosenState.apprenticeUserId=0;controller:sync(chosen,chosenState)
+  h.equals(directory.KitchenRoom_70:GetAttribute('Staff1'),1001)
+  chosenState.apprenticeUserId=1004;controller:sync(chosen,chosenState)
+  local remainingGuest=player(71);remote.OnServerEvent:Fire(remainingGuest,'walk');visit(remainingGuest,71,false)
+  h.equals(remainingGuest.VisitingKitchen,70)
+  players.PlayerRemoving:Fire(chosen)
+  h.equals(directory.KitchenRoom_70:GetAttribute('Staff1'),1004,'гость сохраняет оформление покинутого кафе')
+  players.PlayerRemoving:Fire(remainingGuest);h.equals(#directory:GetChildren(),0)
  end)
 end

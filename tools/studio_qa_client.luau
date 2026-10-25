@@ -32,6 +32,30 @@ local function dispatch(args)
    workers=state and state.levels and state.levels.workers,manual=state and state.manual}
  end
  assert(state and state.ready,"Client state is not ready")
+ if args.action=='staffChoiceOpen' then
+  if args.locale then require(script.Localization).__qaLocale(args.locale) end
+  kitchen:setOpen(true);kitchen:step(.5);kitchen:openShop()
+  atelier.selectedPlace='workers';atelier:update(state)
+  if args.picker then
+   atelier.staffPicker:setOpen(true)
+   assert(waitUntil(function() return atelier.staffPicker.received==atelier.staffPicker.request end,15),'Staff list did not arrive')
+  end
+  local picker=atelier.staffPicker
+  return {ok=true,opened=picker.opened,candidates=#picker.rows,selected=atelier.state.apprenticeUserId,
+   texts=if picker.opened then checkText(picker.frame) else checkText(atelier.cards.workers_1.frame)}
+ elseif args.action=='staffChoiceSelect' then
+  local picker=atelier.staffPicker;local id=args.id
+  assert(picker.opened,'Staff picker is closed');picker:send('select',id)
+  assert(waitUntil(function() return atelier.state.apprenticeUserId==id and picker.received==picker.request end,10),'Staff selection was not accepted')
+  local home=workspace.KitchenIslands:FindFirstChild('KitchenRoom_'..player.UserId)
+  if id>0 then assert(home:GetAttribute('Staff1')==id,'Selected friend did not reach main table') end
+  kitchen:step(.5)
+  return {ok=true,selected=id,mainStaff=home:GetAttribute('Staff1'),texts=checkText(picker.frame)}
+ elseif args.action=='staffChoiceClose' then
+  atelier:setOpen(false);kitchen:setOpen(false)
+  assert(not atelier.staffPicker.opened,'Picker remained open')
+  return {ok=true}
+ end
  if args.action=='promptLocalization' then
   local L=require(script.Localization)
   local Catalog=require(game.ReplicatedStorage.Shared.LocalizationCatalog)
@@ -138,7 +162,7 @@ local function dispatch(args)
   assert(ok,result); return result
  elseif args.action=="playerAvatar" then
   local Animator=require(script.ChocolatierAnimator)
-  assert(waitUntil(function() return player.Character and player.Character:FindFirstChildOfClass('Humanoid') end,30),'Walking avatar did not load')
+  assert(waitUntil(function() return player.Character and player.Character:GetAttribute('AvatarReady') and player.Character:FindFirstChildOfClass('Humanoid') end,30),'Walking avatar did not load')
   local character=args.character or player.Character; local humanoid=character:FindFirstChildOfClass('Humanoid')
   local parent=Instance.new('Model'); parent.Name='PlayerAppearanceQA'; parent.Parent=kitchen.world
   local actor=Animator.new(parent,'LiveAvatar',-3.7,true,kitchen.origin,args.userId or player.UserId)
@@ -149,7 +173,7 @@ local function dispatch(args)
    assert(copy.RigType==humanoid.RigType,'Walking avatar changed rig type at table')
    assert(math.abs(actor.rig:GetScale()-character:GetScale())<.001,'Walking avatar changed model scale')
    local sourceDescription=humanoid:GetAppliedDescription(); local tableDescription=copy:GetAppliedDescription()
-   for _,property in {'Head','Torso','LeftArm','RightArm','LeftLeg','RightLeg','Shirt','Pants','GraphicTShirt','Face','HeightScale','WidthScale','DepthScale','HeadScale','BodyTypeScale','ProportionScale'} do
+   for _,property in {'Head','Torso','LeftArm','RightArm','LeftLeg','RightLeg','HeadColor','TorsoColor','LeftArmColor','RightArmColor','LeftLegColor','RightLegColor','Shirt','Pants','GraphicTShirt','Face','HeightScale','WidthScale','DepthScale','HeadScale','BodyTypeScale','ProportionScale'} do
     assert(sourceDescription[property]==tableDescription[property],'Avatar changed '..property)
    end
    local function accessories(description)
@@ -158,13 +182,38 @@ local function dispatch(args)
    end
    assert(accessories(sourceDescription)==accessories(tableDescription),'Avatar lost accessories or layered clothing')
    sourceDescription:Destroy(); tableDescription:Destroy()
+   -- Два пустых описания раньше тоже проходили сравнение. Проверяем
+   -- фактическую геометрию/одежду и снятие масок, которыми видит игрок.
+   local visualParts=0
+   local function compare(source,target)
+    for _,item in source:GetChildren() do
+     if item:IsA('BaseScript') or item:IsA('Tool') or item:IsA('ForceField') then continue end
+     local properties=if item:IsA('MeshPart') then {'Color','Size','MeshId','TextureID'}
+      elseif item:IsA('BasePart') then {'Color','Size'} elseif item:IsA('Decal') then {'Texture'}
+      elseif item:IsA('Shirt') then {'ShirtTemplate'} elseif item:IsA('Pants') then {'PantsTemplate'}
+      elseif item:IsA('ShirtGraphic') then {'Graphic'} else {}
+     local copyItem=target:FindFirstChild(item.Name)
+     if not copyItem then
+      assert(#properties==0 and not item:IsA('Accessory') and not item:IsA('SurfaceAppearance') and not item:IsA('DataModelMesh') and not item:IsA('CharacterMesh') and not item:IsA('BodyColors'),'Missing avatar item '..item:GetFullName())
+      continue
+     end
+     for _,property in properties do assert(copyItem[property]==item[property],'Changed visual '..item.Name..'.'..property) end
+     if item:IsA('BasePart') or item:IsA('Decal') then
+      local transparency=item:GetAttribute('KitchenOriginalTransparency') or item.Transparency
+      assert(copyItem.Transparency==transparency and copyItem.LocalTransparencyModifier==0,'Copied avatar mask '..item.Name)
+      visualParts+=1
+     end
+     compare(item,copyItem)
+    end
+   end
+   compare(character,actor.rig)
    local ikCount=0
    for _,entry in actor.ik do
     assert(entry.control.ChainRoot and entry.control.EndEffector and entry.control.Target,'Incomplete arm IK')
     ikCount+=1
    end
    assert(ikCount==(if humanoid.RigType==Enum.HumanoidRigType.R15 then 2 else 0),'Wrong arm rig')
-   return {ok=true,rigType=copy.RigType.Name,scale=actor.rig:GetScale(),accessoriesKept=true,descriptionKept=true,ikArms=ikCount}
+   return {ok=true,rigType=copy.RigType.Name,scale=actor.rig:GetScale(),accessoriesKept=true,descriptionKept=true,visualParts=visualParts,ikArms=ikCount}
   end)
   actor:destroy(); parent:Destroy()
   assert(ok,result); return result

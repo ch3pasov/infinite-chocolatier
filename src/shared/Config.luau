@@ -257,6 +257,8 @@ Config.Economy = {
     maxStars = 1000000,
     offlineLimit = 4 * 60 * 60,
     maxValue = 1e15,
+    -- Кошелёк растёт отдельно: новый запас не поднимает цены и предел выплат.
+    maxSlices = 1e21,
     saveInterval = 30,
     leaseSeconds = 180,
 }

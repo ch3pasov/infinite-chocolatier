@@ -32,6 +32,7 @@ local remotes = {
 	kitchenMode = remotesFolder:WaitForChild(Remotes.Names.KitchenMode) :: RemoteEvent,
 	kitchenAction = remotesFolder:WaitForChild(Remotes.Names.KitchenAction) :: RemoteEvent,
 	cafeVisit = remotesFolder:WaitForChild(Remotes.Names.CafeVisit) :: RemoteEvent,
+	staffChoice = remotesFolder:WaitForChild(Remotes.Names.StaffChoice) :: RemoteEvent,
 }
 
 local gameView = Game.new(gui, remotes)

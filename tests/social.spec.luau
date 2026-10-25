@@ -111,7 +111,7 @@ return function(h)
   d.earned=5000; assert(E.prestige(d))
   h.equals(d.socialCounts.guests,1); h.equals(d.socialCounts.spectators,1)
   d.owned.workers_1=true; d.levels.workers=1; d.onlineFriend=true
-  assert(a:save('101',d,true)); h.equals(record.version,5)
+  assert(a:save('101',d,true)); h.equals(record.version,6)
   h.equals(record.data.onlineFriend,nil)
   now+=10
   local b=Store.new(db,E,Config.Economy,'B',function() return now end)

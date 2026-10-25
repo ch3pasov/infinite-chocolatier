@@ -231,6 +231,33 @@ remotes.purchase.OnServerEvent:Connect(function(player, id, quantity)
 		else "Cannot purchase: check your balance and upgrade level")
 end)
 
+remotes.staffChoice.OnServerEvent:Connect(function(player, request)
+ local session=sessions[player]
+ if not kitchens or not session or not activeSession(player,session) or type(request)~='table' then return end
+ local action,query,page,token=request.action,request.query,request.page,request.request
+ if (action~='list' and action~='select') or type(query)~='string' or #query>80
+  or type(page)~='number' or page~=page or page%1~=0 or page<1 or page>1000000
+  or type(token)~='number' or token~=token or token%1~=0 or token<1 or token>2147483647 then return end
+ local now=os.clock(); if now-(session.lastStaffRequest or -math.huge)<.15 then return end
+ session.lastStaffRequest=now
+ local notice
+ if action=='select' then
+  local id=request.id
+  local valid=type(id)=='number' and id==id and id>=0 and id<=9007199254740991 and id%1==0
+   and session.data.owned.workers_1==true and kitchens:canChooseStaff(player,id)
+  if valid then
+   session.data.apprenticeUserId=id
+   -- sync обновляет главный стол и резервации остальных кафе. Выбор
+   -- не покупает работника, не меняет кошелёк или производственный цикл.
+   send(player)
+   notice='Apprentice selected'
+  else notice='That friend is unavailable. Choose another apprentice.' end
+ end
+ local result=kitchens:staffPage(player,query,page)
+ result.request=token; result.notice=notice
+ remotes.staffChoice:FireClient(player,result)
+end)
+
 remotes.prestige.OnServerEvent:Connect(function(player)
 	local session = sessions[player]
 	if not session or not activeSession(player, session) then return end

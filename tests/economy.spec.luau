@@ -4,16 +4,40 @@ local Config = require("../src/shared/Config")
 local Store = require("../src/server/ProfileStore")
 
 return function(h)
+ h.test('кошелёк растёт в миллион раз, сохраняет баланс выше прежней границы и ограничивает избыток',function()
+  local data=E.load({slices=1e15-.5,productionRemainder=0})
+  h.equals(E.credit(data,3),3);h.equals(data.slices,1e15+2.5)
+  h.equals(E.snapshot(data).slices,data.slices)
+  local record
+  local store=Store.new({UpdateAsync=function(_,_,fn) record=fn(record);return record end},E,Config.Economy,'Wallet',function() return 1000 end)
+  assert(store:claim('user'));assert(store:save('user',data,true))
+  h.equals(store:claim('user').slices,1e15+2.5)
+  local capped=E.load({slices=1e30,earned=1e30,lifetime=1e30,productionRemainder=0,levels={craft=200}})
+  h.equals(capped.slices,1e21);h.equals(capped.slices/1e15,1e6)
+  h.equals(capped.earned,1e15);h.equals(capped.lifetime,1e15);h.equals(E.price(capped,'craft'),1e15)
+ end)
+ h.test('выбор стажёра сохраняется в профиле и после престижа, не меняя производство',function()
+  local data=E.load({collectionVersion=2,owned={workers_1=true},levels={kitchen=1},apprenticeUserId=123456,earned=5000})
+  local before=E.rate(data);local copied=E.load(data);h.equals(copied.apprenticeUserId,123456);h.equals(E.rate(copied),before)
+  h.equals(E.snapshot(data).apprenticeUserId,123456)
+  local record
+  local store=Store.new({UpdateAsync=function(_,_,fn) record=fn(record);return record end},E,Config.Economy,'A',function() return 1000 end)
+  assert(store:claim('user'));assert(store:save('user',data,true))
+  h.equals(store:claim('user').apprenticeUserId,123456);h.equals(record.version,6)
+  assert(E.prestige(data));h.equals(data.apprenticeUserId,123456);h.equals(data.owned.workers_1,false)
+  for _,bad in {'123',-1,0/0,math.huge,{}} do h.equals(E.load({apprenticeUserId=bad}).apprenticeUserId,0) end
+ end)
 	h.test('награда у предела кошелька показывает только добавленные дольки',function()
-		local cap=Config.Economy.maxValue
-		local data=E.load({slices=cap-.5,earned=0,lifetime=0,productionRemainder=0})
-		h.equals(E.credit(data,3),.5)
-		h.equals(data.slices,cap); h.equals(data.earned,3); h.equals(data.lifetime,3)
-		h.equals(E.credit(data,3),0)
-		local order=E.load({slices=cap-1.5,orderProgress=3,productionRemainder=0})
+		-- У 1e21 проверяем представимые суммы: шаг double уже больше одной дольки.
+		local cap,unit=Config.Economy.maxSlices,2^20
+		local data=E.load({slices=cap-2*unit,earned=0,lifetime=0,productionRemainder=0})
+		h.equals(E.credit(data,3*unit),2*unit)
+		h.equals(data.slices,cap); h.equals(data.earned,3*unit); h.equals(data.lifetime,3*unit)
+		h.equals(E.credit(data,3*unit),0)
+		local order=E.load({slices=cap-4*unit,orderProgress=3,productionRemainder=0,levels={craft=3*unit-1}})
 		local amount,receipt=E.round(order)
-		h.equals(amount,1.5); h.equals(receipt.bonus,.5)
-		h.equals(order.ordersCompleted,1); h.equals(order.earned,2)
+		h.equals(amount,4*unit); h.equals(receipt.bonus,unit)
+		h.equals(order.ordersCompleted,1); h.equals(order.earned,6*unit)
 		order.orderProgress=order.orderProgress+5
 		local full,completed=E.round(order)
 		h.equals(full,0); h.equals(completed.bonus,0); h.equals(order.ordersCompleted,2)
@@ -246,11 +270,12 @@ return function(h)
 	h.test("офлайн-отчёт ограничивает время и показывает только реально полученную сумму",function()
 		local a,b,time=fixture(); local d=a:claim("user")
 		E.credit(d,Config.Economy.maxValue); E.buy(d,"kitchen"); E.buy(d,"workers_1")
-		-- Оставляем ровно семь долек до предела кошелька.
-		d.slices=Config.Economy.maxValue-7
+		-- Запас и выплата кратны точности double возле новой границы.
+		local unit=2^20;d.levels.craft=unit-1
+		d.slices=Config.Economy.maxSlices-unit
 		assert(a:save("user",d,true)); time(1000+3600*9)
 		local loaded,amount,report=b:claim("user")
-		h.equals(amount,7); h.equals(loaded.slices,Config.Economy.maxValue)
+		h.equals(amount,unit); h.equals(loaded.slices,Config.Economy.maxSlices)
 		h.equals(report.seconds,4*3600); h.equals(report.capped,true)
 	end)
 	h.test("просроченный сервер не перезаписывает захваченный другим профиль", function()
@@ -299,10 +324,10 @@ return function(h)
  h.test('хранилище переводит старую запись в формат коллекции и не читает будущую версию',function()
   local record={version=1,savedAt=1000,data={slices=200,levels={workers=7,clock=4}}}
   local store=Store.new({UpdateAsync=function(_,_,transform) local next=transform(record); if next then record=next end; return next end},E,Config.Economy,'A',function() return 1000 end)
-  local data=store:claim('user'); h.equals(record.version,5)
+  local data=store:claim('user'); h.equals(record.version,6)
   h.equals(data.levels.workers,7); assert(data.owned.clock_4); h.equals(data.equipped.clock,'clock_4')
   assert(store:save('user',data,true)); h.equals(record.data.collectionVersion,2)
-  record.version=6; h.equals(store:claim('user'),nil); h.equals(record.version,6)
+  record.version=7; h.equals(store:claim('user'),nil); h.equals(record.version,7)
  end)
 
 end

@@ -14,13 +14,13 @@ function ProfileStore:hasLease(key, reserve)
  return (self.leases[key] or 0) - self.now() > (reserve or 0)
 end
 
--- Версия 5 защищает пожизненные социальные множества от старых серверов.
+-- Версия 6 не даёт старому серверу стереть сохранённый выбор стажёра.
 function ProfileStore:claim(key)
 	local offline = 0
 	local away = { seconds = 0, capped = false }
 	local now = self.now()
 	local record = self.store:UpdateAsync(key, function(old)
-		if type(old) == "table" and old.version and old.version > 5 then return nil end
+		if type(old) == "table" and old.version and old.version > 6 then return nil end
 		if type(old) == "table" and old.owner and old.owner ~= self.token
 			and type(old.expires) == "number" and old.expires > now then return nil end
 		local data = self.economy.load(if type(old) == "table" then old.data else nil)
@@ -41,7 +41,7 @@ function ProfileStore:claim(key)
 		else
 			self.pendingClaims[key] = { amount = offline, report = table.clone(away) }
 		end
-		return { version = 5, owner = self.token, expires = now + self.settings.leaseSeconds, savedAt = now, data = data }
+		return { version = 6, owner = self.token, expires = now + self.settings.leaseSeconds, savedAt = now, data = data }
 	end)
 	-- Только неопределённый сетевой исход оставляет отчёт следующей попытке.
 	-- После обычного ответа повторный claim не показывает старую выплату.
@@ -60,7 +60,7 @@ function ProfileStore:save(key, data, release)
 		written = false
 		if type(old) ~= "table" or old.owner ~= self.token then return nil end
 		written = true
-		return { version = 5, owner = if release then nil else self.token,
+		return { version = 6, owner = if release then nil else self.token,
 			expires = if release then 0 else now + self.settings.leaseSeconds,
 			savedAt = now, data = snapshot }
 	end)

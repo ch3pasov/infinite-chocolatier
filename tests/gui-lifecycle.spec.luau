@@ -31,38 +31,65 @@ local function instances()
   end
   function o:FindFirstChild(name) for _,child in objects do if child.Parent==self and child.Name==name then return child end end end
   function o:WaitForChild(name) return assert(self:FindFirstChild(name),name) end
+  function o:ReleaseFocus() self.focusReleased=true end
   table.insert(objects,o); return o
  end
  return instance
 end
-local function fixture()
+local function fixture(withStaff)
  local instance=instances()
  local input,errorSignal,topbarSignal=signal(),signal(),signal()
+ local added,removing,staffSignal=signal(),signal(),signal();local requests,timers={},{}
+ local staffRemote={OnClientEvent=staffSignal,FireServer=function(_,request) table.insert(requests,request) end}
  local shared=setmetatable({},{__index=function(_,name) return name end})
  local playerGui=instance('PlayerGui'); local gui=instance('ScreenGui'); gui.Parent=playerGui
  local view={gui=gui,root=instance('Frame'),counter=instance('TextLabel')}; view.root.Parent=gui; view.counter.Parent=view.root
  local services={ReplicatedStorage={WaitForChild=function() return shared end},UserInputService={InputBegan=input},
   GuiService={GetPropertyChangedSignal=function() return topbarSignal end},
-  ScriptContext={Error=errorSignal},Players={LocalPlayer={UserId=Config.BalanceTesterUserId}},RunService={IsStudio=function() return true end}}
+  ScriptContext={Error=errorSignal},Players={LocalPlayer={UserId=Config.BalanceTesterUserId},PlayerAdded=added,PlayerRemoving=removing},RunService={IsStudio=function() return true end}}
  local modules={Config=Config,KitchenCatalog=require('../src/shared/KitchenCatalog'),Theme={},
-  Localization={set=function(o,text) o.Text=text end,token=function(text) return text end},
+  Localization={set=function(o,text) o.Text=text end,token=function(text) return text end,text=function(text) return text end},
   DecorThumbnails={new=function(parent) local o=instance('ViewportFrame'); o.Parent=parent; return o end}}
  local function load(name)
   return luau.load(fs.readFile('src/client/'..name..'.luau'),{environment={
    game={GetService=function(_,key) return services[key] or {} end},script={Parent=shared},
    require=function(key) return modules[key] or {} end,Instance={new=instance},
    Enum=R.Enum,Color3=R.Color3,Vector2=R.Vector2,UDim=R.UDim,UDim2=R.UDim2,
+   task={delay=function(seconds,fn) table.insert(timers,{seconds=seconds,fn=fn}) end},
   },injectGlobals=true})()
  end
  modules.Journal=load('Journal')
+ modules.StaffPicker=load('StaffPicker')
  local Atelier,Diagnostics=load('Atelier'),load('Diagnostics')
  -- Размеры проверяются отдельно; здесь исполняются создание и очистка меню.
  Atelier.fit=function() end
- local atelier=Atelier.new(gui,view,{})
+ local atelier=Atelier.new(gui,view,if withStaff then {staffChoice=staffRemote} else {})
  local diagnostics=Diagnostics.new(playerGui,view)
- return {gui=gui,playerGui=playerGui,view=view,atelier=atelier,diagnostics=diagnostics,input=input,errors=errorSignal,topbar=topbarSignal}
+ return {gui=gui,playerGui=playerGui,view=view,atelier=atelier,diagnostics=diagnostics,input=input,errors=errorSignal,topbar=topbarSignal,
+  added=added,removing=removing,staffSignal=staffSignal,requests=requests,
+  flush=function() local queue=table.clone(timers);table.clear(timers);for _,timer in queue do if timer.seconds==.3 then timer.fn() end end end}
 end
 return function(h)
+ h.test('меню стажёра отбрасывает старые ответы и объединяет поиск, отправляя только последний выбор',function()
+  local f=fixture(true);local picker=f.atelier.staffPicker
+  picker:setOpen(true);local stale=picker.request
+  picker.query='alice';picker:send('list');f.flush();h.equals(#f.requests,1);h.equals(f.requests[1].query,'alice')
+  picker:receive({request=stale,items={{id=1}}});h.equals(#picker.rows,0)
+  picker:receive({request=picker.request,page=1,pages=2,total=13,status='ready',selected=7,current=7,
+   selectedName={displayName='Alice',name='alice'},items={{id=7,name='alice',displayName='Alice'}}})
+  h.equals(#picker.rows,1);picker.rows[1].Activated:Fire();f.flush()
+  h.equals(f.requests[2].id,7);h.equals(f.requests[2].action,'select')
+  picker:send('select',8);picker:send('select',9);f.flush();h.equals(#f.requests,3);h.equals(f.requests[3].id,9)
+  picker.next.Activated:Fire();f.flush();h.equals(f.requests[4].action,'list');h.equals(f.requests[4].page,2)
+  picker:setOpen(false);picker:receive({request=picker.request,items={}});h.equals(#picker.rows,1)
+ end)
+ h.test('закрытие и удаление меню стажёра отменяют отправку и освобождают глобальные подписки',function()
+  local f=fixture(true);local picker=f.atelier.staffPicker
+  h.equals(f.added:count(),1);h.equals(f.staffSignal:count(),1)
+  picker:setOpen(true);picker:setOpen(false);f.flush();h.equals(#f.requests,0)
+  picker:setOpen(true);f.gui:Destroy();f.flush();h.equals(#f.requests,0)
+  h.equals(f.added:count(),0);h.equals(f.removing:count(),0);h.equals(f.staffSignal:count(),0)
+ end)
  h.test('серверные снимки больше не обновляют удалённый клиентский интерфейс',function()
   local instance=instances(); local playerGui=instance('PlayerGui')
   local stateSync=signal(); local requests,updates,rewards=0,0,0; local view

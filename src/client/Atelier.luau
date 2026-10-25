@@ -11,6 +11,7 @@ local Theme = require(script.Parent.Theme)
 local Layout = require(script.Parent.Layout)
 local Thumbnails = require(script.Parent.DecorThumbnails)
 local Journal = require(script.Parent.Journal)
+local StaffPicker = require(script.Parent.StaffPicker)
 local Atelier = {}
 Atelier.__index = Atelier
 
@@ -245,6 +246,9 @@ function Atelier.new(gui, gameView, remotes)
 		buy.Position = UDim2.new(0, 12, 1, -48)
 		buy.Size = UDim2.new(1, -24, 0, 36)
 		local function activate()
+            if spec.id=='workers_1' and self.mode=='kitchen' and self.state and self.state.owned.workers_1 and self.staffPicker then
+             self.staffPicker:setOpen(true); return
+            end
             if spec.group and self.onPreview and self.state and self.state.ready then self.returningFromPreview=true; self.onPreview(spec.id); return end
 			self:purchase(spec)
 		end
@@ -322,6 +326,7 @@ function Atelier.new(gui, gameView, remotes)
 	local topbarConnection=GuiService:GetPropertyChangedSignal('TopbarInset'):Connect(function() self:fit() end)
 	gui.Destroying:Connect(function() topbarConnection:Disconnect() end)
 	self:fit()
+	if remotes.staffChoice then self.staffPicker=StaffPicker.new(panel,remotes.staffChoice,function() if self.state then self:update(self.state) end end) end
 	return self
 end
 
@@ -407,6 +412,7 @@ function Atelier:fit()
 end
 
 function Atelier:setMode(mode)
+    if self.staffPicker and self.staffPicker.opened then self.staffPicker:setOpen(false) end
     self.scrollPositions=self.scrollPositions or {}
     self.scrollPositions[self.mode or 'upgrades']=self.scroll.CanvasPosition
     self.mode=mode
@@ -420,6 +426,7 @@ end
 
 function Atelier:setOpen(open)
 	if self.docked then return end
+	if not open and self.staffPicker then self.staffPicker:setOpen(false) end
 	self.view:endDrag(true)
 	self.overlay.Visible = open
 	self.confirmed = false
@@ -536,6 +543,11 @@ function Atelier:update(state)
 	self.placeMap.Visible=kitchen and self.selectedPlace==nil
 	self.placesBack.Visible=kitchen and self.selectedPlace~=nil
 	self.scroll.Visible=not kitchen or self.selectedPlace~=nil
+	self.balance.Visible=not (self.staffPicker and self.staffPicker.opened)
+	if self.staffPicker and self.staffPicker.opened then
+	 if not kitchen or not state.owned.workers_1 then self.staffPicker:setOpen(false)
+	 else self.placeMap.Visible=false;self.placesBack.Visible=false;self.scroll.Visible=false end
+	end
 	self.scroll.Position=UDim2.fromOffset(12,160)
 	self.scroll.Size=UDim2.new(1,-24,1,-202)
 	self.quantityBar.Visible=not kitchen
@@ -605,6 +617,7 @@ function Atelier:update(state)
             elseif state.owned[id] then L.set(card.buy,'View · owned')
             elseif price==0 then L.set(card.buy,'Preview · free apprentice')
             else L.set(card.buy,'Preview · {price} pieces',{price=format(price)}) end
+            if id=='workers_1' and state.owned[id] and kitchen then L.set(card.buy,'Choose apprentice') end
         elseif not price then L.set(card.buy,'Maximum level')
         elseif canBuy then L.set(card.buy,if quantity==1 then 'Buy · {price} pieces' else 'Buy ×{count} · {price} pieces',{price=format(price),count=count})
         else L.set(card.buy,if quantity==10 then '×10: {price} · need {missing} more' else 'Price {price} · need {missing} more',{price=format(price),missing=format(math.max(0,price-state.slices))}) end

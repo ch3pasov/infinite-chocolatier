@@ -38,7 +38,7 @@ function Economy.load(raw)
 	raw = if type(raw) == "table" then raw else {}
 	local levels = if type(raw.levels) == "table" then raw.levels else {}
 	local data = {
-		slices = number(raw.slices, 0, E.maxValue),
+		slices = number(raw.slices, 0, E.maxSlices),
 		earned = number(raw.earned, 0, E.maxValue),
 		lifetime = number(raw.lifetime, 0, E.maxValue),
 		stars = math.floor(number(raw.stars, 0, E.maxStars)),
@@ -51,6 +51,8 @@ function Economy.load(raw)
 		levels = {},
 		decor = {},
         collectionVersion=2, owned={}, equipped={}, legacyWorkers=0,
+		-- Это предпочтение внешности, поэтому престиж его не стирает.
+		apprenticeUserId = math.floor(number(raw.apprenticeUserId, 0, 9007199254740991)),
 	}
 	data.social, data.socialCounts = Social.load(raw.social)
 	data.orderProgress = math.floor(number(raw.orderProgress, 0, Orders.spec(data.ordersCompleted).rounds - 1))
@@ -101,7 +103,7 @@ function Economy.load(raw)
 	if raw.productionRemainder == nil and data.stars == 0 and data.levels.recipe == 0 then
 		local corrected = math.ceil(data.slices * 10 - 1e-9) / 10
 		local bonus = math.max(0, corrected - data.slices)
-		data.slices = math.min(E.maxValue, data.slices + bonus)
+		data.slices = math.min(E.maxSlices, data.slices + bonus)
 		data.earned = math.min(E.maxValue, data.earned + bonus)
 		data.lifetime = math.min(E.maxValue, data.lifetime + bonus)
 	end
@@ -225,7 +227,7 @@ end
 function Economy.credit(data, amount)
 	amount = number(amount, 0, E.maxValue)
 	local before = data.slices
-	data.slices = math.min(E.maxValue, data.slices + amount)
+	data.slices = math.min(E.maxSlices, data.slices + amount)
 	data.earned = math.min(E.maxValue, data.earned + amount)
 	data.lifetime = math.min(E.maxValue, data.lifetime + amount)
 	-- Статистика труда растёт как прежде, но всплывающая награда должна
